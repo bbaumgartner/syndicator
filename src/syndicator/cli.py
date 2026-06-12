@@ -105,7 +105,6 @@ def done(
 @app.command()
 def catchup(
     post: str = typer.Option(None, "--post", help="Slug to process (default: oldest pending)."),
-    dry_run: bool = typer.Option(False, "--dry-run", help="No LLM calls, no link checks."),
     force: bool = typer.Option(False, "--force", help="Re-export even already exported/published channels."),
     no_verify_links: bool = typer.Option(False, "--no-verify-links", help="Skip live URL verification."),
 ) -> None:
@@ -125,7 +124,7 @@ def catchup(
 
     typer.echo(f"Processing {blog_post.slug} ...")
     export_dir = run_social_for_post(
-        cfg, blog_post, dry_run=dry_run, force=force, verify_links=not no_verify_links
+        cfg, blog_post, force=force, verify_links=not no_verify_links
     )
     if export_dir is None:
         raise typer.Exit(0)
@@ -136,7 +135,12 @@ def catchup(
 @app.command()
 def run(
     post: list[str] = typer.Option(None, "--post", help="Limit to specific slugs."),
-    dry_run: bool = typer.Option(False, "--dry-run", help="No LLM, no git, bundles to runs/dry-site/."),
+    try_run: bool = typer.Option(
+        False, "--try-run",
+        help="Do everything for real (incl. LLM calls and social exports) but skip the "
+             "final git commit/push; nothing goes live, blog links in the social "
+             "packages resolve only after a real run pushes the site.",
+    ),
     force: bool = typer.Option(False, "--force", help="Re-process even unchanged posts."),
     site_only: bool = typer.Option(False, "--site-only", help="Skip social exports."),
     social_only: bool = typer.Option(False, "--social-only", help="Skip the website pipeline."),
@@ -149,7 +153,7 @@ def run(
     run_all(
         cfg,
         slugs=post or None,
-        dry_run=dry_run,
+        try_run=try_run,
         force=force,
         site_only=site_only,
         social_only=social_only,

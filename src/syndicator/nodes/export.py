@@ -74,7 +74,7 @@ def export_package(
         youtube_links=youtube,
         language=ch_cfg.language,
         generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        model=ch_cfg.caption_model if not llm.dry_run else "dry-run",
+        model=ch_cfg.caption_model,
     )
 
     (pkg_dir / "caption.txt").write_text(text + "\n", encoding="utf-8")
@@ -151,7 +151,7 @@ def export_social(
     for channel, intents in plans.items():
         lang = cfg.shared.channels[channel].language
         if lang not in links:
-            links[lang] = resolve_post_url(cfg, post.slug, lang, verify=verify_links and not llm.dry_run)
+            links[lang] = resolve_post_url(cfg, post.slug, lang, verify=verify_links)
         url = links[lang]
 
         manifests[channel] = []

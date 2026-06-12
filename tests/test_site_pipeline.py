@@ -13,8 +13,7 @@ from syndicator.nodes.watch import is_relevant_path
 from syndicator.pipeline import run_site_for_post, site_changed_posts
 from syndicator.state import StateStore
 
-from conftest import make_cfg
-from test_translate import FakeLLM
+from conftest import FakeLLM, make_cfg
 
 
 def test_site_changed_posts_detection(tmp_path: Path):
@@ -52,17 +51,26 @@ def test_run_site_for_post_writes_and_skips(tmp_path: Path):
     assert llm2.calls == 0
 
 
-def test_run_site_dry_run_does_not_touch_site_repo(tmp_path: Path):
+def test_run_site_try_run_does_real_work_but_records_no_hugo_state(tmp_path: Path):
     cfg = make_cfg(tmp_path)
     store = StateStore(cfg.state_dir)
     posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
     post = posts["2026-05-19_Charly_Superstar"]
 
-    assert run_site_for_post(cfg, post, FakeLLM(), store, dry_run=True) is True
-    assert not (cfg.hugo_posts_dir / post.slug).exists()
-    assert (cfg.try_run_output_dir / "dry-site" / "content" / "posts" / post.slug / "index.de.md").exists()
-    # Dry run must not record state for hugo.
+    llm = FakeLLM()
+    assert run_site_for_post(cfg, post, llm, store, try_run=True) is True
+    # Real bundle + translations land in the site repo working tree.
+    bundle = cfg.hugo_posts_dir / post.slug
+    assert (bundle / "index.de.md").exists()
+    assert (bundle / "index.en.md").exists()
+    assert llm.calls > 0
+    # Hugo state stays unrecorded so the next real run picks the post up...
     assert store.load(post.slug).channel("hugo").source_hash == ""
+    # ...but translations are cached: the follow-up real run costs no LLM calls.
+    llm2 = FakeLLM()
+    assert run_site_for_post(cfg, post, llm2, store) is True
+    assert llm2.calls == 0
+    assert store.load(post.slug).channel("hugo").source_hash != ""
 
 
 def _git(cwd: Path, *args: str):
@@ -88,9 +96,6 @@ def test_commit_and_push_with_local_remote(tmp_path: Path):
 
     (site / "content" / "posts" / "new.md").write_text("x", encoding="utf-8")
     assert has_changes(cfg)
-    assert commit_and_push(cfg, dry_run=True) is False  # dry run: no commit
-    assert has_changes(cfg)
-
     assert commit_and_push(cfg) is True
     assert not has_changes(cfg)
     log_remote = subprocess.run(
@@ -115,9 +120,6 @@ def test_journeymap_wrapper_with_fake_binaries(tmp_path: Path):
     assert generate_journey_map(cfg) is True
     assert (cfg.local.sailingnomads_dir / "data" / "journey.json").exists()
     assert (cfg.local.sailingnomads_dir / "static" / "journey-map.mp4").exists()
-
-    # Dry run does nothing but succeeds.
-    assert generate_journey_map(cfg, dry_run=True) is True
 
 
 def test_watch_ignore_rules():

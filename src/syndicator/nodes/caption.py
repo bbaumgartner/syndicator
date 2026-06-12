@@ -110,17 +110,12 @@ def generate_caption(
     }
     user = json.dumps(context, ensure_ascii=False, indent=1)
 
-    dry = SocialDraft(
-        text=f"[dry-run caption {intent.channel} #{intent.index} {post.slug}]",
-        hashtags=["#sailing"],
-    )
     draft = llm.complete_structured(
         node=f"caption_{intent.channel}",
         model=ch_cfg.caption_model,
         system=system,
         user_content=user,
         schema=SocialDraft,
-        dry_run_result=dry,
     )
     draft = _sanitize(draft)
 
@@ -137,22 +132,21 @@ def _enforce_x_budget(
     if len(draft.text) <= budget:
         return draft
 
-    if not llm.dry_run:
-        retry_user = (
-            user
-            + f"\n\nYour previous text was {len(draft.text)} characters; the hard limit is {budget}."
-            + f" Rewrite it shorter:\n{draft.text}"
-        )
-        shorter = llm.complete_structured(
-            node="caption_x",
-            model=ch_cfg.caption_model,
-            system=system,
-            user_content=retry_user,
-            schema=SocialDraft,
-        )
-        shorter = _sanitize(shorter)
-        if shorter.text and len(shorter.text) <= budget:
-            return SocialDraft(text=shorter.text, hashtags=shorter.hashtags or draft.hashtags)
+    retry_user = (
+        user
+        + f"\n\nYour previous text was {len(draft.text)} characters; the hard limit is {budget}."
+        + f" Rewrite it shorter:\n{draft.text}"
+    )
+    shorter = llm.complete_structured(
+        node="caption_x",
+        model=ch_cfg.caption_model,
+        system=system,
+        user_content=retry_user,
+        schema=SocialDraft,
+    )
+    shorter = _sanitize(shorter)
+    if shorter.text and len(shorter.text) <= budget:
+        return SocialDraft(text=shorter.text, hashtags=shorter.hashtags or draft.hashtags)
 
     return SocialDraft(
         text=draft.text[: budget - 1].rstrip() + "…",

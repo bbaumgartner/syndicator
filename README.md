@@ -17,8 +17,8 @@ posting; API posting and an agent mode are later phases. See
 
 A lightweight, file-based pipeline (no workflow framework): pure-code nodes for
 parsing/media/publishing, LLM nodes defined by a prompt template in `prompts/`
-plus a model from `syndicator.yaml`. Intermediate artifacts live in `runs/`
-(local scratch); final state and exports live in `<saillog>/.syndicator/`,
+plus a model from `syndicator.yaml`. State and exports live in
+`<saillog>/.syndicator/`,
 which Syncthing mirrors between the Mac and the Ubuntu server. State is tracked
 per post *and* per channel (hugo, facebook, instagram, x, substack, medium),
 which drives the catch-up backlog for old posts.

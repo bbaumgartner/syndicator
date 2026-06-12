@@ -1,5 +1,7 @@
-"""OpenAI wrapper: per-node model selection, retries, structured outputs,
-and a dry-run mode that never calls the network.
+"""OpenAI wrapper: per-node model selection, retries, structured outputs.
+
+Tests inject a fake client with the same interface instead of this class
+(see tests/conftest.py), so production code carries no test logic.
 """
 
 from __future__ import annotations
@@ -25,14 +27,9 @@ def image_data_url(path: Path) -> str:
 
 
 class LLMClient:
-    """Thin wrapper around the OpenAI API.
+    """Thin wrapper around the OpenAI API."""
 
-    ``dry_run=True`` returns canned outputs, so the whole pipeline can run
-    without network access or API costs.
-    """
-
-    def __init__(self, dry_run: bool = False, max_retries: int = 3):
-        self.dry_run = dry_run
+    def __init__(self, max_retries: int = 3):
         self.max_retries = max_retries
         self._client = None
 
@@ -69,9 +66,6 @@ class LLMClient:
         user: str,
         temperature: float | None = None,
     ) -> str:
-        if self.dry_run:
-            return f"[dry-run:{node}]"
-
         def call(temp=temperature):
             try:
                 completion = self.client.chat.completions.create(
@@ -99,13 +93,7 @@ class LLMClient:
         user_content: str | list,
         schema: type[T],
         temperature: float | None = None,
-        dry_run_result: T | None = None,
     ) -> T:
-        if self.dry_run:
-            if dry_run_result is not None:
-                return dry_run_result
-            return schema.model_construct()
-
         def call(temp=temperature):
             try:
                 completion = self.client.chat.completions.parse(

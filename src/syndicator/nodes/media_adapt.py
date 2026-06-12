@@ -31,8 +31,8 @@ class CropFocus(BaseModel):
 
 
 def get_crop_focus(path: Path, cfg: Config, llm: LLMClient) -> CropFocus:
-    """Ask a vision model for the focal point; center on failure/dry-run."""
-    if not cfg.shared.media.crop_focus.enabled or llm.dry_run:
+    """Ask a vision model for the focal point; center on failure."""
+    if not cfg.shared.media.crop_focus.enabled:
         return CropFocus()
     try:
         with Image.open(path) as im:

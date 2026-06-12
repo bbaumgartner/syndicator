@@ -54,14 +54,10 @@ def _resolve_binary(cfg: Config, name: str, configured: str) -> list[str] | None
     return None
 
 
-def generate_journey_map(cfg: Config, dry_run: bool = False) -> bool:
+def generate_journey_map(cfg: Config) -> bool:
     """Regenerate data/journey.json and static/journey-map.mp4 in the site repo."""
     journey_json = cfg.local.sailingnomads_dir / "data" / "journey.json"
     journey_mp4 = cfg.local.sailingnomads_dir / "static" / "journey-map.mp4"
-
-    if dry_run:
-        log.info("[dry-run] would regenerate %s and %s", journey_json, journey_mp4)
-        return True
 
     jm = _resolve_binary(cfg, "journeymap", cfg.local.journeymap_bin)
     am = _resolve_binary(cfg, "animatemap", cfg.local.animatemap_bin)

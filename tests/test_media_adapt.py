@@ -8,7 +8,6 @@ import pytest
 from PIL import Image
 
 from syndicator.config import ImageSpec, VideoSpec
-from syndicator.llm import LLMClient
 from syndicator.model import MediaRef
 from syndicator.nodes.media_adapt import (
     CropFocus,
@@ -19,7 +18,7 @@ from syndicator.nodes.media_adapt import (
     probe_video,
 )
 
-from conftest import make_cfg
+from conftest import FakeLLM, make_cfg
 
 FFMPEG = shutil.which("ffmpeg") is not None
 
@@ -111,7 +110,7 @@ def test_adapt_video_passthrough_copy(tmp_path: Path):
 
 def test_adapt_media_for_channel_dispatch(tmp_path: Path):
     cfg = make_cfg(tmp_path)
-    llm = LLMClient(dry_run=True)
+    llm = FakeLLM()
     out_dir = tmp_path / "out"
 
     img = make_image(tmp_path / "photo.jpg")

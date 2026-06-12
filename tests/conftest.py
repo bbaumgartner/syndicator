@@ -3,8 +3,28 @@
 from pathlib import Path
 
 from syndicator.config import Config, LocalConfig, SharedConfig
+from syndicator.llm import LLMClient
+from syndicator.model import SocialDraft
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+class FakeLLM(LLMClient):
+    """Injected LLM strategy for tests: canned outputs, no network, no cost."""
+
+    def __init__(self):
+        super().__init__()
+        self.calls = 0
+
+    def complete_text(self, node, model, system, user, temperature=None):
+        self.calls += 1
+        return f"[{node}] {user}"
+
+    def complete_structured(self, node, model, system, user_content, schema, temperature=None):
+        self.calls += 1
+        if schema is SocialDraft:
+            return SocialDraft(text=f"[fake {node}]", hashtags=["#sailing"])
+        return schema()
 
 
 def make_cfg(tmp_path: Path) -> Config:
@@ -38,7 +58,7 @@ def make_cfg(tmp_path: Path) -> Config:
             },
         }
     )
-    local = LocalConfig(saillog_dir=saillog, sailingnomads_dir=site, try_run_output_dir=str(tmp_path / "runs"))
+    local = LocalConfig(saillog_dir=saillog, sailingnomads_dir=site)
     return Config(shared=shared, local=local, repo_root=tmp_path)
 
 

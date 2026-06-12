@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-from syndicator.llm import LLMClient
 from syndicator.nodes.extract import scan_blog_posts
 from syndicator.nodes.hugo import write_bundle
 from syndicator.nodes.translate import (
@@ -13,19 +12,7 @@ from syndicator.nodes.translate import (
 )
 from syndicator.state import StateStore
 
-from conftest import make_cfg
-
-
-class FakeLLM(LLMClient):
-    """Returns canned 'translations' and counts calls."""
-
-    def __init__(self):
-        super().__init__(dry_run=False)
-        self.calls = 0
-
-    def complete_text(self, node, model, system, user, temperature=None):  # noqa: D102
-        self.calls += 1
-        return f"[{node}] {user}"
+from conftest import FakeLLM, make_cfg
 
 
 def test_restore_asset_references_positional():

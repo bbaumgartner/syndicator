@@ -111,7 +111,6 @@ class LocalConfig(BaseModel):
     converter_repo_dir: Path | None = None
     journeymap_bin: str = ""
     animatemap_bin: str = ""
-    try_run_output_dir: str = "runs"
 
 
 class Config(BaseModel):
@@ -133,11 +132,6 @@ class Config(BaseModel):
     @property
     def exports_dir(self) -> Path:
         return self.data_dir / "exports"
-
-    @property
-    def try_run_output_dir(self) -> Path:
-        p = Path(self.local.try_run_output_dir)
-        return p if p.is_absolute() else self.repo_root / p
 
     @property
     def journals_dir(self) -> Path:

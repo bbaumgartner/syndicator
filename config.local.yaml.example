@@ -13,6 +13,3 @@ converter_repo_dir: /Users/benno/git/logseq-to-hugo-converter
 # Optional prebuilt binaries; leave empty to use "go run" from converter_repo_dir.
 journeymap_bin: ""
 animatemap_bin: ""
-
-# Local scratch dir for intermediate artifacts (relative to repo root or absolute).
-try_run_output_dir: runs

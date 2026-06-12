@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-from syndicator.llm import LLMClient
 from syndicator.model import MediaRef, PostIntent, SocialDraft
 from syndicator.nodes.caption import (
     _sanitize,
@@ -14,7 +13,7 @@ from syndicator.nodes.extract import scan_blog_posts
 from syndicator.nodes.social_plan import plan_social
 from syndicator.siteurl import hugo_path_segment, post_url
 
-from conftest import create_dummy_assets, make_cfg
+from conftest import FakeLLM, create_dummy_assets, make_cfg
 
 
 def intent_with_media(channel="facebook", n=2):
@@ -57,7 +56,7 @@ def make_cfg_channel(name):
     return ChannelConfig(kind="social", link_mode=modes[name], max_chars=280 if name == "x" else None)
 
 
-def test_x_budget_truncation_in_dry_run():
+def test_x_budget_enforcement():
     cfg_ch = make_cfg_channel("x")
     budget = x_text_budget(cfg_ch)
     assert budget == 280 - 25 - 25
@@ -65,20 +64,28 @@ def test_x_budget_truncation_in_dry_run():
     long_draft = SocialDraft(text="a" * 400, hashtags=[])
     from syndicator.nodes.caption import _enforce_x_budget
 
-    llm = LLMClient(dry_run=True)
-    fixed = _enforce_x_budget(long_draft, cfg_ch, "sys", "user", llm)
+    # The LLM rewrite fits the budget -> used as-is.
+    fixed = _enforce_x_budget(long_draft, cfg_ch, "sys", "user", FakeLLM())
+    assert fixed.text == "[fake caption_x]"
+
+    # Rewrite still too long -> hard truncation with ellipsis.
+    class StillTooLongLLM(FakeLLM):
+        def complete_structured(self, node, model, system, user_content, schema, temperature=None):
+            return SocialDraft(text="b" * 400, hashtags=[])
+
+    fixed = _enforce_x_budget(long_draft, cfg_ch, "sys", "user", StillTooLongLLM())
     assert len(fixed.text) <= budget
     assert fixed.text.endswith("…")
 
 
-def test_generate_caption_dry_run_full_flow(tmp_path: Path):
+def test_generate_caption_full_flow(tmp_path: Path):
     cfg = make_cfg(tmp_path)
     posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
     post = posts["2026-06-10_Griechenland_❤️"]
     create_dummy_assets([post])
     plans = plan_social(post, cfg)
 
-    llm = LLMClient(dry_run=True)
+    llm = FakeLLM()
     for channel, intents in plans.items():
         for intent in intents:
             draft = generate_caption(post, intent, cfg, llm)

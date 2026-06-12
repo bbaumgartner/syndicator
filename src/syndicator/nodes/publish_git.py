@@ -31,15 +31,10 @@ def has_changes(cfg: Config) -> bool:
     return bool(result.stdout.strip())
 
 
-def commit_and_push(cfg: Config, dry_run: bool = False, message: str = COMMIT_MESSAGE) -> bool:
+def commit_and_push(cfg: Config, message: str = COMMIT_MESSAGE) -> bool:
     """Returns True when a commit was pushed."""
     if not has_changes(cfg):
         log.info("site repo clean — nothing to commit")
-        return False
-
-    if dry_run:
-        status = _git(cfg, "status", "--porcelain").stdout.strip()
-        log.info("[dry-run] would commit and push:\n%s", status)
         return False
 
     _git(cfg, "add", "--all")

@@ -17,12 +17,12 @@ detect changed/new posts (per-channel state in saillog/.syndicator/state/)
 ```
 
 - **State and exports** live in `<saillog>/.syndicator/` and are mirrored by
-  Syncthing: generate on the server, review on the Mac, automatic archive.
+Syncthing: generate on the server, review on the Mac, automatic archive.
 - **One watcher**: the daemon runs on the server. The Mac is for manual
-  commands (`catchup`, `review`, `done`, `run`). A lock file in
-  `.syndicator/` prevents simultaneous pipeline runs.
+commands (`catchup`, `review`, `done`, `run`). A lock file in
+`.syndicator/` prevents simultaneous pipeline runs.
 - **Channel status lifecycle**: `pending` → `exported` (package generated) →
-  `published` (you posted it manually and ran `syndicator done`).
+`published` (you posted it manually and ran `syndicator done`).
 
 ## One-time setup on a machine
 
@@ -54,44 +54,41 @@ social/substack/medium pending except Renan). Steps to switch the website
 pipeline:
 
 1. **Parity check** (Mac or server):
-
-   ```bash
+  ```bash
    uv run syndicator parity
-   ```
-
+  ```
    `DIFF` entries mean the Logseq source changed after the last old-converter
    run (at bootstrap time: `Frühlingspläne_2026` and `Athen`). They will be
    regenerated and re-translated on the first run — that is correct and what
    the old converter would also have done.
-
-2. **Dry run** and inspect what would change:
+2. **Try run** — does everything for real (incl. LLM translations and the
+   social export packages for new posts) but skips the final git
+   commit/push, so nothing goes live:
 
    ```bash
-   uv run syndicator run --dry-run        # bundles land in runs/dry-site/
+   uv run syndicator run --try-run
+   git -C ~/git/sailingnomads status      # inspect the uncommitted changes
+   uv run syndicator review               # inspect the social packages
    ```
 
+   Keep the changes and the next real run commits them (translations are
+   cached, no second LLM cost); or discard them with git, and the next run
+   regenerates everything. Blog links inside the social packages resolve
+   once the site is pushed. To redo social packages after a try run, use
+   `syndicator catchup --force --post <slug>`.
 3. **Stop the old watcher** (wherever it runs; on the server typically):
-
-   ```bash
+  ```bash
    sudo systemctl disable --now logseq-watch-and-convert.service
-   ```
-
+  ```
 4. **First real run**, watch the output (translations for the two stale
-   posts):
-
-   ```bash
-   uv run syndicator run
-   ```
-
-   Then verify https://www.sailingnomads.ch/ (post pages, languages,
+  posts):
+   Then verify [https://www.sailingnomads.ch/](https://www.sailingnomads.ch/) (post pages, languages,
    journey map).
-
 5. **Enable the daemon** on the server:
-
-   ```bash
+  ```bash
    sudo systemctl enable --now syndicator-watch.service
    journalctl -u syndicator-watch -f
-   ```
+  ```
 
 ## Daily workflows
 
@@ -133,19 +130,20 @@ uv run syndicator parity                       # fresh render vs live repo
 ## Troubleshooting
 
 - **"pipeline lock held by another machine"**: a run is active on the other
-  machine, or it crashed. The lock expires after 1 h; to clear immediately,
-  delete `<saillog>/.syndicator/lock.json`.
-- **Syncthing conflict files** (`*.sync-conflict-*`) in `.syndicator/state/`:
-  rare (one file per post, atomic writes). Keep the newer file, delete the
-  conflict copy; worst case re-run `syndicator bootstrap` and re-mark with
-  `syndicator done`.
+machine, or it crashed. The lock expires after 1 h; to clear immediately,
+delete `<saillog>/.syndicator/lock.json`.
+- **Syncthing conflict files** (`*.sync-conflict-`*) in `.syndicator/state/`:
+rare (one file per post, atomic writes). Keep the newer file, delete the
+conflict copy; worst case re-run `syndicator bootstrap` and re-mark with
+`syndicator done`.
 - **Re-translate a post**: `uv run syndicator run --post <slug> --force`
-  (re-renders the bundle and re-translates all languages).
+(re-renders the bundle and re-translates all languages).
 - **Caption quality/model**: per-channel `caption_model` in
-  `syndicator.yaml`; prompts live in `prompts/caption_*.md`.
+`syndicator.yaml`; prompts live in `prompts/caption_*.md`.
 - **Watcher loops or never triggers**: check `journalctl -u syndicator-watch`.
-  It ignores `.syndicator/`, `.stversions/`, `logseq/bak/` and Syncthing
-  temp files by design.
+It ignores `.syndicator/`, `.stversions/`, `logseq/bak/` and Syncthing
+temp files by design.
 - **git push fails from systemd**: the service user needs non-interactive
-  auth for the sailingnomads remote (SSH key without passphrase or
-  credential helper).
+auth for the sailingnomads remote (SSH key without passphrase or
+credential helper).
+

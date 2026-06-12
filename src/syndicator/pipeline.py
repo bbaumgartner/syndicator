@@ -20,11 +20,8 @@ from .state import PipelineLock, StateStore
 log = logging.getLogger(__name__)
 
 
-def make_llm(cfg: Config, dry_run: bool = False) -> LLMClient:
-    return LLMClient(
-        dry_run=dry_run,
-        max_retries=cfg.shared.translate.max_retries,
-    )
+def make_llm(cfg: Config) -> LLMClient:
+    return LLMClient(max_retries=cfg.shared.translate.max_retries)
 
 
 def scan_posts(cfg: Config) -> list[BlogPost]:
@@ -59,7 +56,7 @@ def next_catchup_post(cfg: Config, store: StateStore) -> BlogPost | None:
 def run_social_for_post(
     cfg: Config,
     post: BlogPost,
-    dry_run: bool = False,
+    llm: LLMClient | None = None,
     force: bool = False,
     verify_links: bool = True,
     start: date | None = None,
@@ -71,7 +68,7 @@ def run_social_for_post(
         log.info("%s: no pending social channels (use --force to re-export)", post.slug)
         return None
 
-    llm = make_llm(cfg, dry_run=dry_run)
+    llm = llm or make_llm(cfg)
     export_dir = export_social(
         post, cfg, llm, channels=channels, verify_links=verify_links, start=start
     )
@@ -82,9 +79,8 @@ def run_social_for_post(
     state.date = post.meta.date
     state.source_hash = state.source_hash or h
     store.save(state)
-    if not dry_run:
-        for channel in channels:
-            store.mark(post.slug, channel, "exported", source_hash=h)
+    for channel in channels:
+        store.mark(post.slug, channel, "exported", source_hash=h)
 
     return export_dir
 
@@ -106,13 +102,17 @@ def run_site_for_post(
     post: BlogPost,
     llm: LLMClient,
     store: StateStore,
-    dry_run: bool = False,
+    try_run: bool = False,
     force: bool = False,
 ) -> bool:
     """Render the Hugo bundle and translations for one post.
 
-    Returns True when the post was (re)generated. In dry-run mode bundles go
-    to runs/dry-site/ instead of the real site repo.
+    Returns True when the post was (re)generated. A try run does the real
+    work (bundle + translations into the site repo working tree) but does
+    not record the hugo state, so the next real run picks the post up again
+    and commits. Translations are cached either way; the cache also checks
+    that the translated file still exists, so discarding the working tree
+    simply re-translates next time.
     """
     from .nodes.hugo import write_bundle
     from .nodes.translate import translate_bundle
@@ -122,20 +122,14 @@ def run_site_for_post(
     if not force and state.channel("hugo").source_hash == h:
         return False
 
-    if dry_run:
-        posts_dir = cfg.try_run_output_dir / "dry-site" / "content" / "posts"
-        posts_dir.mkdir(parents=True, exist_ok=True)
-    else:
-        posts_dir = cfg.hugo_posts_dir
-
-    bundle = write_bundle(post, posts_dir)
+    bundle = write_bundle(post, cfg.hugo_posts_dir)
     log.info("%s: hugo bundle written (%s)", post.slug, bundle)
 
     translated = translate_bundle(post, cfg, llm, store, bundle, force=force)
     if translated:
         log.info("%s: translated to %s", post.slug, ", ".join(translated))
 
-    if not dry_run:
+    if not try_run:
         # Record the processed hash here (not only after push): an identical
         # re-render produces no git diff, and the post must not be retried
         # forever. A failed push raises and leaves the state untouched.
@@ -151,19 +145,25 @@ def run_site_for_post(
 def run_all(
     cfg: Config,
     slugs: list[str] | None = None,
-    dry_run: bool = False,
+    try_run: bool = False,
     force: bool = False,
     site_only: bool = False,
     social_only: bool = False,
 ) -> None:
     """Full pipeline: site (hugo + translate + journeymap + git push) and the
-    social exports for newly published posts."""
+    social exports for newly published posts.
+
+    A try run does everything for real (LLM calls included) except the final
+    git commit/push, so nothing goes live. Social packages are exported too,
+    without link verification: the slug-based post URLs only resolve once a
+    real run pushes the site.
+    """
     from .nodes.journeymap import generate_journey_map
     from .nodes.publish_git import commit_and_push, wait_for_deploy
     from .siteurl import post_url
 
     store = StateStore(cfg.state_dir)
-    llm = make_llm(cfg, dry_run=dry_run)
+    llm = make_llm(cfg)
 
     with PipelineLock(cfg.data_dir):
         if slugs:
@@ -177,23 +177,31 @@ def run_all(
         if not social_only:
             for post in posts:
                 was_new = store.load(post.slug).channel("hugo").status == "pending"
-                if run_site_for_post(cfg, post, llm, store, dry_run=dry_run, force=force):
+                if run_site_for_post(cfg, post, llm, store, try_run=try_run, force=force):
                     site_changed = True
                     if was_new:
                         new_posts.append(post)
 
             if site_changed:
-                generate_journey_map(cfg, dry_run=dry_run)
-                pushed = commit_and_push(cfg, dry_run=dry_run)
-                if pushed:
-                    for post in new_posts:
-                        store.mark(post.slug, "hugo", "published", source_hash=source_hash(post))
-                        url = post_url(cfg, post.slug, cfg.shared.site.default_language)
-                        wait_for_deploy(cfg, url)
+                generate_journey_map(cfg)
+                if try_run:
+                    log.info(
+                        "try run: skipping commit/push — inspect with: git -C %s status",
+                        cfg.local.sailingnomads_dir,
+                    )
+                else:
+                    pushed = commit_and_push(cfg)
+                    if pushed:
+                        for post in new_posts:
+                            store.mark(post.slug, "hugo", "published", source_hash=source_hash(post))
+                            url = post_url(cfg, post.slug, cfg.shared.site.default_language)
+                            wait_for_deploy(cfg, url)
             else:
                 log.info("site: nothing changed")
 
         if not site_only:
             social_posts = new_posts if not slugs else [find_post(cfg, s) for s in slugs]
             for post in social_posts:
-                run_social_for_post(cfg, post, dry_run=dry_run, force=force)
+                # In a try run the post is not live yet, so skip link
+                # verification; the URLs resolve once a real run pushes.
+                run_social_for_post(cfg, post, llm=llm, force=force, verify_links=not try_run)

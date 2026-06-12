@@ -1,4 +1,4 @@
-"""End-to-end tests for the social pipeline (dry-run, no network)."""
+"""End-to-end tests for the social pipeline (fake LLM, no network)."""
 
 from pathlib import Path
 
@@ -9,7 +9,7 @@ from syndicator.nodes.extract import scan_blog_posts
 from syndicator.pipeline import next_catchup_post, run_social_for_post
 from syndicator.state import StateStore
 
-from conftest import make_cfg
+from conftest import FakeLLM, make_cfg
 
 
 def create_real_assets(posts) -> None:
@@ -29,13 +29,13 @@ def create_real_assets(posts) -> None:
                 media.source_path.write_bytes(b"not a real video")
 
 
-def test_run_social_dry_run_creates_packages_and_review(tmp_path: Path):
+def test_run_social_creates_packages_and_review(tmp_path: Path):
     cfg = make_cfg(tmp_path)
     posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
     post = posts["2026-06-10_Griechenland_❤️"]
     create_real_assets([post])
 
-    export_dir = run_social_for_post(cfg, post, dry_run=True, verify_links=False)
+    export_dir = run_social_for_post(cfg, post, llm=FakeLLM(), verify_links=False)
     assert export_dir == cfg.exports_dir / post.slug
 
     review = export_dir / "review.html"
@@ -58,7 +58,7 @@ def test_run_social_dry_run_creates_packages_and_review(tmp_path: Path):
     assert "https://" not in m.text or m.text.find("https://") > len(m.text)
 
     caption = (export_dir / "facebook" / "00-intro" / "caption.txt").read_text(encoding="utf-8")
-    assert "[dry-run caption facebook" in caption
+    assert "[fake caption_facebook]" in caption
     assert "https://example.org/posts/" in caption  # inline link appended
 
     # Adapted images: instagram packages contain 1080x1350 crops.
@@ -67,14 +67,16 @@ def test_run_social_dry_run_creates_packages_and_review(tmp_path: Path):
     with Image.open(ig_images[0]) as im:
         assert im.size == (1080, 1350)
 
-def test_dry_run_does_not_mark_state(tmp_path: Path):
+def test_run_social_marks_channels_exported(tmp_path: Path):
     cfg = make_cfg(tmp_path)
     posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
     post = posts["2026-05-19_Charly_Superstar"]
+    create_real_assets([post])
 
-    run_social_for_post(cfg, post, dry_run=True, verify_links=False)
+    run_social_for_post(cfg, post, llm=FakeLLM(), verify_links=False)
     store = StateStore(cfg.state_dir)
-    assert store.load(post.slug).channel("facebook").status == "pending"
+    assert store.load(post.slug).channel("facebook").status == "exported"
+    assert store.load(post.slug).channel("instagram").status == "exported"
 
 
 def test_real_run_marks_exported_and_catchup_order(tmp_path: Path):
@@ -91,9 +93,7 @@ def test_real_run_marks_exported_and_catchup_order(tmp_path: Path):
     second = next_catchup_post(cfg, store)
     assert second.slug == "2026-01-17_Frühlingspläne_2026"
 
-    # Run with a non-dry LLM in dry mode? No — use dry_run=False but with a
-    # dry LLM is not possible via run_social_for_post; instead mark manually:
-    # we only verify the state transition contract here.
+    # We only verify the state transition contract here; mark manually.
     store.mark(second.slug, "facebook", "exported", source_hash="sha256:x")
     assert store.load(second.slug).channel("facebook").status == "exported"
     # Still pending channels left -> same post remains next in the backlog.
