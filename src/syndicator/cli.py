@@ -103,6 +103,65 @@ def done(
 
 
 @app.command()
+def catchup(
+    post: str = typer.Option(None, "--post", help="Slug to process (default: oldest pending)."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="No LLM calls, no link checks."),
+    force: bool = typer.Option(False, "--force", help="Re-export even already exported/published channels."),
+    no_verify_links: bool = typer.Option(False, "--no-verify-links", help="Skip live URL verification."),
+) -> None:
+    """Generate social post packages for the oldest pending post (catch-up backlog)."""
+    from .config import load_config
+    from .pipeline import find_post, next_catchup_post, run_social_for_post
+    from .state import StateStore
+
+    cfg = load_config()
+    if post:
+        blog_post = find_post(cfg, post)
+    else:
+        blog_post = next_catchup_post(cfg, StateStore(cfg.state_dir))
+        if blog_post is None:
+            typer.echo("Catch-up backlog is empty — nothing to do.")
+            raise typer.Exit(0)
+
+    typer.echo(f"Processing {blog_post.slug} ...")
+    export_dir = run_social_for_post(
+        cfg, blog_post, dry_run=dry_run, force=force, verify_links=not no_verify_links
+    )
+    if export_dir is None:
+        raise typer.Exit(0)
+    typer.echo(f"\nExport: {export_dir}")
+    typer.echo(f"Review: {export_dir / 'review.html'}  (syndicator review)")
+
+
+@app.command()
+def review(
+    slug: str = typer.Argument(None, help="Post slug (default: most recent export)."),
+) -> None:
+    """Open the review page of an export in the browser."""
+    import subprocess
+    import sys
+
+    from .config import load_config
+
+    cfg = load_config()
+    if slug:
+        page = cfg.exports_dir / slug / "review.html"
+        if not page.exists():
+            typer.echo(f"No review page at {page}")
+            raise typer.Exit(1)
+    else:
+        pages = sorted(cfg.exports_dir.glob("*/review.html"), key=lambda p: p.stat().st_mtime)
+        if not pages:
+            typer.echo("No exports yet — run `syndicator catchup` first.")
+            raise typer.Exit(1)
+        page = pages[-1]
+
+    typer.echo(f"Opening {page}")
+    opener = "open" if sys.platform == "darwin" else "xdg-open"
+    subprocess.run([opener, str(page)], check=False)
+
+
+@app.command()
 def check() -> None:
     """Validate configuration and required tools."""
     import shutil
