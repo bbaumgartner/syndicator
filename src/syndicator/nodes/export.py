@@ -72,7 +72,6 @@ def export_package(
         suggested_date=intent.suggested_date,
         media_files=media_files,
         youtube_links=youtube,
-        alt_texts=draft.alt_texts,
         language=ch_cfg.language,
         generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         model=ch_cfg.caption_model if not llm.dry_run else "dry-run",
@@ -102,7 +101,6 @@ def write_review_html(
                 "text": m.text,
                 "media_files": m.media_files,
                 "youtube_links": m.youtube_links,
-                "alt_texts": m.alt_texts,
                 "dir": f"{channel}/{_package_dirname_from_manifest(m)}",
             }
             for m in packages

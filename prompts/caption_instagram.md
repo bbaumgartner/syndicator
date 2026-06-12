@@ -22,4 +22,3 @@ HARD RULES:
 - Do NOT include hashtags in the text; return 5-8 specific ones in the
   hashtags field (each starting with #; mix niche sailing/travel tags with
   location tags, avoid banned or spammy tags).
-- alt_texts: one short factual description per media item, same order as given.

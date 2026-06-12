@@ -26,18 +26,14 @@ def test_sanitize_strips_urls_and_normalizes_hashtags():
     draft = SocialDraft(
         text="Look at this https://spam.example/x amazing place",
         hashtags=["sailing", "#travel", " #dog life ", ""],
-        alt_texts=["one"],
     )
-    clean = _sanitize(draft, intent_with_media(n=2))
+    clean = _sanitize(draft)
     assert "https://" not in clean.text
     assert clean.hashtags == ["#sailing", "#travel", "#doglife"]
-    # alt_texts padded to media count.
-    assert len(clean.alt_texts) == 2
-    assert clean.alt_texts[1] == "img1"
 
 
 def test_compose_inline_vs_bio():
-    draft = SocialDraft(text="Hello sea", hashtags=["#sailing"], alt_texts=[])
+    draft = SocialDraft(text="Hello sea", hashtags=["#sailing"])
     url = "https://example.org/posts/x/"
 
     fb_cfg = make_cfg_channel("facebook")
@@ -66,7 +62,7 @@ def test_x_budget_truncation_in_dry_run():
     budget = x_text_budget(cfg_ch)
     assert budget == 280 - 25 - 25
 
-    long_draft = SocialDraft(text="a" * 400, hashtags=[], alt_texts=[])
+    long_draft = SocialDraft(text="a" * 400, hashtags=[])
     from syndicator.nodes.caption import _enforce_x_budget
 
     llm = LLMClient(dry_run=True)
@@ -87,7 +83,6 @@ def test_generate_caption_dry_run_full_flow(tmp_path: Path):
         for intent in intents:
             draft = generate_caption(post, intent, cfg, llm)
             assert draft.text
-            assert len(draft.alt_texts) == len(intent.media)
 
 
 def test_hugo_path_segment_and_post_url(tmp_path: Path):

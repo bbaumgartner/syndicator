@@ -67,7 +67,7 @@ def _youtube_links(post: BlogPost, intent: PostIntent) -> list[str]:
     return [m.url for m in section.media if m.kind == "youtube" and m.url]
 
 
-def _sanitize(draft: SocialDraft, intent: PostIntent) -> SocialDraft:
+def _sanitize(draft: SocialDraft) -> SocialDraft:
     text = URL_RE.sub("", draft.text).strip()
 
     hashtags = []
@@ -79,11 +79,7 @@ def _sanitize(draft: SocialDraft, intent: PostIntent) -> SocialDraft:
             tag = f"#{tag}"
         hashtags.append(tag)
 
-    alt_texts = list(draft.alt_texts)[: len(intent.media)]
-    while len(alt_texts) < len(intent.media):
-        alt_texts.append(intent.media[len(alt_texts)].alt or intent.media[len(alt_texts)].filename)
-
-    return SocialDraft(text=text, hashtags=hashtags, alt_texts=alt_texts)
+    return SocialDraft(text=text, hashtags=hashtags)
 
 
 def generate_caption(
@@ -117,7 +113,6 @@ def generate_caption(
     dry = SocialDraft(
         text=f"[dry-run caption {intent.channel} #{intent.index} {post.slug}]",
         hashtags=["#sailing"],
-        alt_texts=[m.alt or m.filename for m in intent.media],
     )
     draft = llm.complete_structured(
         node=f"caption_{intent.channel}",
@@ -127,7 +122,7 @@ def generate_caption(
         schema=SocialDraft,
         dry_run_result=dry,
     )
-    draft = _sanitize(draft, intent)
+    draft = _sanitize(draft)
 
     if intent.channel == "x":
         draft = _enforce_x_budget(draft, ch_cfg, system, user, llm)
@@ -155,15 +150,13 @@ def _enforce_x_budget(
             user_content=retry_user,
             schema=SocialDraft,
         )
-        shorter = _sanitize(shorter, PostIntent(channel="x", index=0, kind="intro", media=[]))
+        shorter = _sanitize(shorter)
         if shorter.text and len(shorter.text) <= budget:
-            return SocialDraft(text=shorter.text, hashtags=shorter.hashtags or draft.hashtags,
-                               alt_texts=draft.alt_texts)
+            return SocialDraft(text=shorter.text, hashtags=shorter.hashtags or draft.hashtags)
 
     return SocialDraft(
         text=draft.text[: budget - 1].rstrip() + "…",
         hashtags=draft.hashtags,
-        alt_texts=draft.alt_texts,
     )
 
 

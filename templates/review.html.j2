@@ -32,7 +32,6 @@
   button.copied { background: #42b72a; color: white; }
   .chars { color: #888; font-size: .8rem; }
   .yt { font-size: .85rem; margin: .3rem 0; }
-  .alt { color: #999; font-size: .75rem; margin-top: .4rem; }
   code { background: rgba(128,128,128,.15); padding: .1rem .3rem; border-radius: 4px; }
   .footer { color: #888; font-size: .8rem; white-space: pre-wrap; margin-top: 2rem; }
 </style>
@@ -68,7 +67,6 @@
         <button onclick="copyText('text-{{ channel }}-{{ pkg.index }}', this)">Copy caption</button>
         <span class="chars">{{ pkg.text | length }} chars</span>
       </div>
-      {% if pkg.alt_texts %}<div class="alt">alt: {{ pkg.alt_texts | join(' · ') }}</div>{% endif %}
     </div>
     {% endfor %}
   </div>

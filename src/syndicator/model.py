@@ -172,7 +172,6 @@ class SocialDraft(BaseModel):
 
     text: str
     hashtags: list[str] = []
-    alt_texts: list[str] = []  # one per media item, same order
 
 
 class PackageManifest(BaseModel):
@@ -189,7 +188,6 @@ class PackageManifest(BaseModel):
     suggested_date: str = ""
     media_files: list[str] = []  # relative filenames inside the package dir
     youtube_links: list[str] = []
-    alt_texts: list[str] = []
     language: str = ""
     generated_at: str = ""
     model: str = ""

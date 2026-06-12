@@ -18,4 +18,3 @@ HARD RULES:
 - Do NOT include any URL in the text.
 - Do NOT include hashtags in the text; return 0-2 short ones in the hashtags
   field (each starting with #).
-- alt_texts: one short factual description per media item, same order as given.
