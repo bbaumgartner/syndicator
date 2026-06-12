@@ -5,8 +5,9 @@ Behavior port of the old cmd/translate: identical prompts, temperatures
 per-language disclaimer, summary = first paragraph of the translated body,
 pirate speak keeps the original title.
 
-New: a per-language cache keyed on the post's source hash (stored in the
-synced state), so unchanged posts are never re-translated.
+New: a per-language cache keyed on the post's source hash (stored as
+``translation-<lang>::`` properties on the review page), so unchanged posts
+are never re-translated.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from jinja2 import Environment, FileSystemLoader
 from ..config import REPO_ROOT, Config
 from ..llm import LLMClient
 from ..model import LANGUAGE_NAMES, BlogPost
-from ..state import StateStore
+from ..state import ReviewStore, short_hash
 from .extract import source_hash
 from .hugo import build_content, escape_toml, transform_content
 
@@ -145,19 +146,19 @@ def translate_bundle(
     post: BlogPost,
     cfg: Config,
     llm: LLMClient,
-    store: StateStore,
+    store: ReviewStore,
     bundle_dir: Path,
     force: bool = False,
 ) -> list[str]:
     """Translate the post into all missing target languages.
 
     Writes index.<lang>.md next to the source-language index file and records
-    the source hash per language in the synced state (the cache).
+    the source hash per language on the review page (the cache).
     Returns the list of languages that were (re)translated.
     """
     source_lang = post.lang_code
     source_body = transform_content(build_content(post))
-    h = source_hash(post)
+    h = short_hash(source_hash(post))
     state = store.load(post.slug)
 
     translated_langs: list[str] = []

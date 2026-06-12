@@ -121,17 +121,14 @@ class Config(BaseModel):
     # --- derived paths -------------------------------------------------
 
     @property
-    def data_dir(self) -> Path:
-        """Synced data area inside the Logseq graph (mirrored by Syncthing)."""
-        return self.local.saillog_dir / ".syndicator"
+    def social_assets_dir(self) -> Path:
+        """Adapted social media files, visible to Logseq and synced."""
+        return self.local.saillog_dir / "assets" / "syndicator"
 
     @property
-    def state_dir(self) -> Path:
-        return self.data_dir / "state"
-
-    @property
-    def exports_dir(self) -> Path:
-        return self.data_dir / "exports"
+    def lock_path(self) -> Path:
+        """Cross-machine pipeline lock (dotfile: synced, ignored by the watcher)."""
+        return self.local.saillog_dir / ".syndicator-lock.json"
 
     @property
     def journals_dir(self) -> Path:

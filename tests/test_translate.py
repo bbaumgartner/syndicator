@@ -10,7 +10,7 @@ from syndicator.nodes.translate import (
     restore_asset_references,
     translate_bundle,
 )
-from syndicator.state import StateStore
+from syndicator.state import ReviewStore
 
 from conftest import FakeLLM, make_cfg
 
@@ -49,7 +49,7 @@ def test_translate_bundle_writes_files_and_caches(tmp_path: Path):
     posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
     post = posts["2026-05-19_Charly_Superstar"]  # German source
     bundle = write_bundle(post, cfg.hugo_posts_dir)
-    store = StateStore(cfg.state_dir)
+    store = ReviewStore(cfg.pages_dir)
 
     llm = FakeLLM()
     langs = translate_bundle(post, cfg, llm, store, bundle)
@@ -85,7 +85,7 @@ def test_translate_bundle_english_source_targets(tmp_path: Path):
     posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
     renan = posts["2024-06-14_Renan"]
     bundle = write_bundle(renan, cfg.hugo_posts_dir)
-    store = StateStore(cfg.state_dir)
+    store = ReviewStore(cfg.pages_dir)
 
     langs = translate_bundle(renan, cfg, FakeLLM(), store, bundle)
     assert sorted(langs) == ["arrr", "de", "es", "fr", "it"]

@@ -1,9 +1,11 @@
 """watch node: daemon mode — trigger the pipeline on Logseq changes.
 
 Watches journals/, pages/ and assets/ via watchdog. Syncthing-safe: ignores
-its own data dir (.syndicator/), Syncthing temp files and version stores,
-and Logseq backups — otherwise our own state/export writes would re-trigger
-the watcher in an endless loop.
+its own write targets (review pages ``syndicator___*.md``, adapted media in
+``assets/syndicator/``), Syncthing temp files and version stores, and Logseq
+backups — otherwise our own writes would re-trigger the watcher in an
+endless loop. Status edits on review pages need no pipeline run either;
+they are read on the next run.
 
 Debounce: the pipeline runs once no event has arrived for
 ``watch.debounce_seconds`` (edits often come in bursts, both locally and
@@ -22,10 +24,14 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from ..config import Config
+from ..state import PAGE_PREFIX
 
 log = logging.getLogger(__name__)
 
-IGNORE_PARTS = (".syndicator", ".stversions", "bak", ".trash", ".recycle")
+# ".syndicator" stays ignored so deleting the legacy data dir at cutover
+# does not trigger a pipeline run.
+IGNORE_PARTS = (PAGE_PREFIX, ".syndicator", ".stversions", "bak", ".trash", ".recycle")
+IGNORE_PREFIXES = (f"{PAGE_PREFIX}___",)  # review pages written by the pipeline
 IGNORE_SUBSTRINGS = (".syncthing.", "~syncthing~")
 IGNORE_SUFFIXES = (".tmp", ".swp", ".part")
 
@@ -37,6 +43,8 @@ def is_relevant_path(path_str: str) -> bool:
         return False
     name = path.name
     if name.startswith("."):
+        return False
+    if name.startswith(IGNORE_PREFIXES):
         return False
     if any(s in name for s in IGNORE_SUBSTRINGS):
         return False

@@ -1,133 +1,110 @@
-"""export node: write social post packages and the review page.
+"""export node: generate social post blocks on the Logseq review page.
 
-Output layout (inside the Syncthing-synced data dir):
+Output layout:
 
-    <saillog>/.syndicator/exports/<slug>/
-        review.html
-        <channel>/<nn>-<kind>/
-            caption.txt      copy-paste-ready final text
-            package.json     PackageManifest
-            <media files>    adapted for the channel
+    <saillog>/pages/syndicator___<slug>.md          review page (state + captions)
+    <saillog>/assets/syndicator/<slug>/<channel>/<nn>-<kind>/
+        <media files>                               adapted for the channel
+
+Each planned social post becomes one block on the review page: caption in a
+code fence, adapted media embedded via ``../assets/...`` paths, status and
+metadata as block properties. Published blocks are immutable: they are kept
+verbatim (including their media directories) when a channel is regenerated.
 """
 
 from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timezone
+import shutil
+from datetime import date
 from pathlib import Path
 
-from jinja2 import Environment, FileSystemLoader
-
-from ..config import REPO_ROOT, Config
+from ..config import Config
 from ..llm import LLMClient
-from ..model import BlogPost, PackageManifest, PostIntent, SocialDraft
+from ..model import BlogPost, PostIntent, SocialDraft
 from ..siteurl import resolve_post_url
+from ..state import (
+    PAGE_PREFIX,
+    ReviewStore,
+    SocialPostState,
+    blog_page_ref,
+    caption_children,
+    now_iso,
+    short_hash,
+)
 from .caption import _youtube_links, compose_post_text, generate_caption
+from .extract import source_hash
 from .media_adapt import adapt_media_for_channel
 from .social_plan import plan_social
 
 log = logging.getLogger(__name__)
 
+_ASSET_DIR_RE = re.compile(rf"\.\./assets/{PAGE_PREFIX}/[^/)]+/[^/)]+/([^/)]+)/")
+
 
 def _package_dirname(intent: PostIntent) -> str:
     if intent.kind == "intro":
         return f"{intent.index:02d}-intro"
-    title = (intent.section_title or f"section-{intent.section_index}").lower()
+    title = (intent.section_title or "section").lower()
     title = re.sub(r"[^\w]+", "-", title, flags=re.UNICODE).strip("-") or "section"
     return f"{intent.index:02d}-{title}"
 
 
-def export_package(
+def _referenced_dirs(posts: list[SocialPostState]) -> set[str]:
+    """Package dir names referenced by the media embeds of the given blocks."""
+    dirs: set[str] = set()
+    for post in posts:
+        for line in post.children:
+            dirs.update(_ASSET_DIR_RE.findall(line))
+    return dirs
+
+
+def _cleanup_channel_dir(channel_dir: Path, keep: set[str]) -> None:
+    if not channel_dir.exists():
+        return
+    for sub in channel_dir.iterdir():
+        if sub.is_dir() and sub.name not in keep:
+            shutil.rmtree(sub)
+
+
+def generate_post_block(
     post: BlogPost,
     intent: PostIntent,
     draft: SocialDraft,
     url: str,
     cfg: Config,
     llm: LLMClient,
-    export_dir: Path,
-) -> PackageManifest:
+) -> SocialPostState:
+    """Adapt media and assemble one social post block (status: draft)."""
     ch_cfg = cfg.shared.channels[intent.channel]
-    pkg_dir = export_dir / intent.channel / _package_dirname(intent)
-    pkg_dir.mkdir(parents=True, exist_ok=True)
+    dirname = _package_dirname(intent)
+    pkg_dir = cfg.social_assets_dir / post.slug / intent.channel / dirname
+    if pkg_dir.exists():
+        shutil.rmtree(pkg_dir)  # replace wholesale; media adaptation recreates it
 
-    media_files: list[str] = []
+    media_rel: list[str] = []
     for media in intent.media:
         out = adapt_media_for_channel(media, intent.channel, cfg, pkg_dir, llm)
         if out is not None:
-            media_files.append(out.name)
+            media_rel.append(
+                f"../assets/{PAGE_PREFIX}/{post.slug}/{intent.channel}/{dirname}/{out.name}"
+            )
 
     youtube = _youtube_links(post, intent)
     text = compose_post_text(draft, intent, ch_cfg, url, youtube)
 
-    manifest = PackageManifest(
-        slug=post.slug,
+    return SocialPostState(
         channel=intent.channel,
         index=intent.index,
         kind=intent.kind,
-        section_title=intent.section_title,
-        text=text,
-        hashtags=draft.hashtags,
-        link=url,
-        suggested_date=intent.suggested_date,
-        media_files=media_files,
-        youtube_links=youtube,
-        language=ch_cfg.language,
-        generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        model=ch_cfg.caption_model,
+        title=intent.section_title or ("Intro" if intent.kind == "intro" else ""),
+        status="draft",
+        publishing_date=intent.suggested_date,
+        source_hash=short_hash(source_hash(post)),
+        generated_at=now_iso(),
+        children=caption_children(text, media_rel, youtube),
     )
-
-    (pkg_dir / "caption.txt").write_text(text + "\n", encoding="utf-8")
-    (pkg_dir / "package.json").write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
-    return manifest
-
-
-def write_review_html(
-    post: BlogPost,
-    manifests: dict[str, list[PackageManifest]],
-    links: dict[str, str],
-    export_dir: Path,
-) -> Path:
-    env = Environment(loader=FileSystemLoader(REPO_ROOT / "templates"), autoescape=True)
-    template = env.get_template("review.html.j2")
-
-    channels = {
-        channel: [
-            {
-                "index": m.index,
-                "kind": m.kind,
-                "section_title": m.section_title,
-                "suggested_date": m.suggested_date,
-                "text": m.text,
-                "media_files": m.media_files,
-                "youtube_links": m.youtube_links,
-                "dir": f"{channel}/{_package_dirname_from_manifest(m)}",
-            }
-            for m in packages
-        ]
-        for channel, packages in manifests.items()
-    }
-
-    html = template.render(
-        post_title=post.meta.title,
-        post_date=post.meta.date,
-        slug=post.slug,
-        links=links,
-        channels=channels,
-        generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-    )
-    out = export_dir / "review.html"
-    out.write_text(html, encoding="utf-8")
-    return out
-
-
-def _package_dirname_from_manifest(m: PackageManifest) -> str:
-    intent = PostIntent(
-        channel=m.channel, index=m.index,
-        kind=m.kind if m.kind != "article" else "intro",
-        section_index=None, section_title=m.section_title, media=[],
-    )
-    return _package_dirname(intent)
 
 
 def export_social(
@@ -136,31 +113,48 @@ def export_social(
     llm: LLMClient,
     channels: list[str] | None = None,
     verify_links: bool = True,
-    start=None,
+    start: date | None = None,
 ) -> Path:
-    """Run the social pipeline for one post: plan, caption, adapt, package."""
-    export_dir = cfg.exports_dir / post.slug
-    export_dir.mkdir(parents=True, exist_ok=True)
+    """Run the social pipeline for one post: plan, caption, adapt, write page.
+
+    Returns the path of the review page. Existing published blocks are kept
+    untouched; everything else in the selected channels is regenerated.
+    """
+    store = ReviewStore(cfg.pages_dir)
+    state = store.load(post.slug)
+    state.blog_ref = blog_page_ref(post)
 
     plans = plan_social(post, cfg, start)
     if channels is not None:
         plans = {c: intents for c, intents in plans.items() if c in channels}
 
     links: dict[str, str] = {}
-    manifests: dict[str, list[PackageManifest]] = {}
     for channel, intents in plans.items():
         lang = cfg.shared.channels[channel].language
         if lang not in links:
             links[lang] = resolve_post_url(cfg, post.slug, lang, verify=verify_links)
         url = links[lang]
 
-        manifests[channel] = []
+        frozen = {
+            p.index: p for p in state.posts_for(channel) if p.status == "published"
+        }
+        new_posts: list[SocialPostState] = []
         for intent in intents:
+            if intent.index in frozen:
+                log.info("%s %s #%d: published — frozen", post.slug, channel, intent.index)
+                new_posts.append(frozen.pop(intent.index))
+                continue
             log.info("caption %s #%d (%s)", channel, intent.index, intent.kind)
             draft = generate_caption(post, intent, cfg, llm)
-            manifest = export_package(post, intent, draft, url, cfg, llm, export_dir)
-            manifests[channel].append(manifest)
+            new_posts.append(generate_post_block(post, intent, draft, url, cfg, llm))
+        # Published blocks whose index no longer exists in the plan stay listed.
+        new_posts.extend(frozen.values())
 
-    write_review_html(post, manifests, links, export_dir)
-    log.info("export written to %s", export_dir)
-    return export_dir
+        _cleanup_channel_dir(
+            cfg.social_assets_dir / post.slug / channel, _referenced_dirs(new_posts)
+        )
+        state.replace_channel_posts(channel, new_posts)
+
+    page = store.save(state)
+    log.info("review page written to %s", page)
+    return page

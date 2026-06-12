@@ -1,4 +1,4 @@
-"""Tests for the state store and bootstrap node."""
+"""Tests for the review page store (state on Logseq pages), bootstrap, lock."""
 
 from pathlib import Path
 
@@ -7,24 +7,174 @@ import pytest
 from syndicator.nodes.bootstrap import bootstrap
 from syndicator.nodes.extract import scan_blog_posts, source_hash
 from syndicator.nodes.hugo import write_bundle
-from syndicator.state import PipelineLock, StateStore
+from syndicator.state import (
+    PipelineLock,
+    ReviewState,
+    ReviewStore,
+    SocialPostState,
+    caption_children,
+    page_filename,
+    parse_review_page,
+    render_review_page,
+    short_hash,
+)
 
 from conftest import make_cfg
 
 
-def test_state_roundtrip_and_mark(tmp_path: Path):
-    store = StateStore(tmp_path / "state")
-    state = store.load("2026-01-01_Test")
-    assert state.channel("facebook").status == "pending"
+def make_post_block(channel: str = "facebook", index: int = 0, kind: str = "intro",
+                    status: str = "draft", h: str = "abc123") -> SocialPostState:
+    return SocialPostState(
+        channel=channel,
+        index=index,
+        kind=kind,
+        title="Intro" if kind == "intro" else f"Abschnitt {index}",
+        status=status,  # type: ignore[arg-type]
+        publishing_date="2026-06-15",
+        source_hash=h,
+        generated_at="2026-06-12T17:01:20Z",
+        children=caption_children(
+            f"Caption {channel} {index}\n\n#sailing",
+            [f"../assets/syndicator/slug/{channel}/{index:02d}-x/img.jpg"],
+            [],
+        ),
+    )
 
+
+def test_store_roundtrip_and_channel_state(tmp_path: Path):
+    store = ReviewStore(tmp_path / "pages")
+    state = ReviewState(slug="2026-01-01_Test Post", blog_ref="[[2026-01-01]]")
+    state.hugo_status = "published"
+    state.hugo_hash = "aaa"
+    state.translations = {"fr": "aaa", "en": "aaa"}
+    state.channel_status = {"substack": "pending"}
+    state.posts = [
+        make_post_block(index=0),
+        make_post_block(index=1, kind="section"),
+    ]
     store.save(state)
-    store.mark("2026-01-01_Test", "facebook", "draft", source_hash="sha256:abc")
-    reloaded = store.load("2026-01-01_Test")
-    assert reloaded.channel("facebook").status == "draft"
-    assert reloaded.channel("facebook").source_hash == "sha256:abc"
-    assert reloaded.channel("x").status == "pending"
-    # No stray temp files from atomic writes.
-    assert list((tmp_path / "state").glob("*.tmp")) == []
+
+    page = tmp_path / "pages" / page_filename("2026-01-01_Test Post")
+    assert page.exists()
+    text = page.read_text(encoding="utf-8")
+    assert text.startswith("- type:: syndicator\n")
+    assert "  slug:: 2026-01-01_Test Post\n" in text
+    assert "  translation-en:: aaa\n" in text
+    assert "\t- Intro\n" in text
+    assert "\t  status:: draft\n" in text
+    assert "\t  publishing-date:: 2026-06-15\n" in text
+
+    reloaded = store.load("2026-01-01_Test Post")
+    assert reloaded.blog_ref == "[[2026-01-01]]"
+    assert reloaded.hugo_status == "published"
+    assert reloaded.translations == {"en": "aaa", "fr": "aaa"}
+    assert reloaded.date == "2026-01-01"
+    assert reloaded.title == "Test Post"
+    assert len(reloaded.posts) == 2
+    assert reloaded.posts_for("facebook")[0].children == state.posts[0].children
+    assert reloaded.channel_state("facebook") == "draft"
+    assert reloaded.channel_state("x") == "pending"  # no blocks, no override
+    assert reloaded.channel_state("substack") == "pending"  # explicit override
+    # Atomic writes leave no temp files.
+    assert list((tmp_path / "pages").glob("*.tmp")) == []
+    # Saving again with identical content keeps the file byte-identical.
+    store.save(reloaded)
+    assert page.read_text(encoding="utf-8") == text
+    # all() finds the page again.
+    assert [s.slug for s in store.all()] == ["2026-01-01_Test Post"]
+
+
+def test_user_marks_posts_published_in_logseq(tmp_path: Path):
+    """The manual review workflow: flip status:: directly on the page."""
+    store = ReviewStore(tmp_path / "pages")
+    state = ReviewState(slug="2026-01-01_T")
+    state.posts = [make_post_block(index=0), make_post_block(index=1, kind="section")]
+    store.save(state)
+    page = store.path_for("2026-01-01_T")
+
+    text = page.read_text(encoding="utf-8")
+    page.write_text(text.replace("status:: draft", "status:: published", 1), encoding="utf-8")
+    partial = store.load("2026-01-01_T")
+    assert partial.posts_for("facebook")[0].status == "published"
+    assert partial.channel_state("facebook") == "draft"  # one post still open
+
+    page.write_text(
+        text.replace("status:: draft", "status:: published"), encoding="utf-8"
+    )
+    assert store.load("2026-01-01_T").channel_state("facebook") == "published"
+
+
+def test_parse_tolerates_logseq_mutations(tmp_path: Path):
+    """Logseq adds id::/collapsed:: and users add notes — nothing may break."""
+    text = (
+        "- type:: syndicator\n"
+        "  slug:: 2026-01-01_T\n"
+        "  date:: 2026-01-01\n"
+        "  hugo-status:: published\n"
+        "  hugo-hash:: aaa\n"
+        "  custom-note:: keep me\n"
+        "- Facebook\n"
+        "\t- Intro\n"
+        "\t  id:: 69d91349-8bad-453e-8fb5-7f0d865881df\n"
+        "\t  channel:: facebook\n"
+        "\t  kind:: intro\n"
+        "\t  index:: 0\n"
+        "\t  status:: Published\n"  # user typo: capital letter
+        "\t  source-hash:: aaa\n"
+        "\t  collapsed:: true\n"
+        "\t\t- ```\n"
+        "\t\t  Hello\n"
+        "\t\t  ```\n"
+        "\t\t- my own nested note\n"
+    )
+    state = parse_review_page("2026-01-01_T", text)
+    assert state.hugo_status == "published"
+    assert "custom-note:: keep me" in state.extra_props
+    post = state.posts_for("facebook")[0]
+    assert post.status == "published"
+    assert "id:: 69d91349-8bad-453e-8fb5-7f0d865881df" in post.extra_props
+    assert "\t\t- my own nested note" in post.children
+
+    # Round trip: unknown props and nested notes survive a rewrite.
+    rendered = render_review_page(state)
+    again = parse_review_page("2026-01-01_T", rendered)
+    assert "custom-note:: keep me" in again.extra_props
+    assert "id:: 69d91349-8bad-453e-8fb5-7f0d865881df" in again.posts[0].extra_props
+    assert "\t\t- my own nested note" in again.posts[0].children
+    assert render_review_page(again) == rendered
+
+
+def test_parse_legacy_bare_page_properties():
+    text = (
+        "type:: syndicator\n"
+        "slug:: 2026-01-01_T\n"
+        "hugo-status:: published\n"
+        "\n"
+        "- Facebook\n"
+        "\t- Intro\n"
+        "\t  channel:: facebook\n"
+        "\t  status:: draft\n"
+    )
+    state = parse_review_page("2026-01-01_T", text)
+    assert state.hugo_status == "published"
+    assert state.channel_state("facebook") == "draft"
+
+
+def test_stale_posts_and_replace_channel_posts():
+    state = ReviewState(slug="2026-01-01_T")
+    state.posts = [
+        make_post_block(index=0, status="published", h="old1"),
+        make_post_block(index=1, kind="section", status="draft", h="old1"),
+    ]
+    current = "sha256:" + "f" * 64
+    assert [p.index for p in state.stale_posts("facebook", current)] == [1]
+    # Published blocks are never reported stale.
+    state.posts[1].source_hash = short_hash(current)
+    assert state.stale_posts("facebook", current) == []
+
+    state.channel_status["facebook"] = "published"  # stray override
+    state.replace_channel_posts("facebook", [make_post_block(index=0)])
+    assert state.channel_state("facebook") == "draft"  # override cleared
 
 
 def test_bootstrap_marks_hugo_and_renan(tmp_path: Path):
@@ -47,24 +197,31 @@ def test_bootstrap_marks_hugo_and_renan(tmp_path: Path):
     assert "2026-06-03_Athen" in result.hugo_stale
     assert "2026-05-19_Charly_Superstar" in result.hugo_in_sync
 
-    store = StateStore(cfg.state_dir)
+    store = ReviewStore(cfg.pages_dir)
     renan = store.load("2024-06-14_Renan")
-    assert renan.channel("hugo").status == "published"
-    assert renan.channel("facebook").status == "published"
-    assert renan.channel("substack").status == "published"
+    assert renan.hugo_status == "published"
+    assert renan.channel_state("facebook") == "published"
+    assert renan.channel_state("substack") == "published"
 
     charly = store.load("2026-05-19_Charly_Superstar")
-    assert charly.channel("hugo").status == "published"
-    assert charly.channel("hugo").source_hash == source_hash(posts["2026-05-19_Charly_Superstar"])
-    assert charly.channel("facebook").status == "pending"
-    assert charly.translations.get("fr") == charly.channel("hugo").source_hash
+    assert charly.hugo_status == "published"
+    assert charly.hugo_hash == short_hash(source_hash(posts["2026-05-19_Charly_Superstar"]))
+    assert charly.channel_state("facebook") == "pending"
+    assert charly.channel_state("substack") == "pending"
+    assert charly.translations.get("fr") == charly.hugo_hash
     # No translation recorded for languages without live files.
     assert "es" not in charly.translations
 
     athen = store.load("2026-06-03_Athen")
-    assert athen.channel("hugo").status == "published"
-    assert athen.channel("hugo").source_hash == ""  # stale -> regenerate on first run
+    assert athen.hugo_status == "published"
+    assert athen.hugo_hash == ""  # stale -> regenerate on first run
     assert athen.translations == {}
+
+    # The blog posts got their syndication:: backlink — without hash changes.
+    rescanned = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
+    for slug, post in posts.items():
+        assert "syndication:: [[syndicator/" in post.source_path.read_text(encoding="utf-8")
+        assert source_hash(rescanned[slug]) == source_hash(post)
 
 
 def test_bootstrap_is_idempotent_and_keeps_progress(tmp_path: Path):
@@ -74,29 +231,37 @@ def test_bootstrap_is_idempotent_and_keeps_progress(tmp_path: Path):
         write_bundle(post, cfg.hugo_posts_dir)
 
     bootstrap(cfg)
-    store = StateStore(cfg.state_dir)
-    store.mark("2026-05-19_Charly_Superstar", "facebook", "published")
+    store = ReviewStore(cfg.pages_dir)
+    state = store.load("2026-05-19_Charly_Superstar")
+    state.channel_status["facebook"] = "published"  # manual progress, no blocks
+    state.posts = [make_post_block(channel="instagram", status="published")]
+    store.save(state)
+
     bootstrap(cfg)
-    assert store.load("2026-05-19_Charly_Superstar").channel("facebook").status == "published"
+    state = store.load("2026-05-19_Charly_Superstar")
+    assert state.channel_state("facebook") == "published"
+    assert state.channel_state("instagram") == "published"
 
 
 def test_pipeline_lock(tmp_path: Path):
-    lock = PipelineLock(tmp_path)
+    lock_path = tmp_path / ".syndicator-lock.json"
+    lock = PipelineLock(lock_path)
     with lock:
-        assert (tmp_path / "lock.json").exists()
+        assert lock_path.exists()
         # Same host can re-acquire (re-entrant for our purposes).
         assert lock.acquire()
-    assert not (tmp_path / "lock.json").exists()
+    assert not lock_path.exists()
 
 
 def test_pipeline_lock_blocks_other_host(tmp_path: Path, monkeypatch):
-    lock = PipelineLock(tmp_path)
+    lock_path = tmp_path / ".syndicator-lock.json"
+    lock = PipelineLock(lock_path)
     assert lock.acquire()
 
     import syndicator.state as state_mod
 
     monkeypatch.setattr(state_mod.socket, "gethostname", lambda: "other-host")
-    other = PipelineLock(tmp_path)
+    other = PipelineLock(lock_path)
     assert not other.acquire()
     with pytest.raises(RuntimeError):
         other.__enter__()

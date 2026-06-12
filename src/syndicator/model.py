@@ -172,22 +172,3 @@ class SocialDraft(BaseModel):
 
     text: str
     hashtags: list[str] = []
-
-
-class PackageManifest(BaseModel):
-    """package.json inside an exported post package directory."""
-
-    slug: str
-    channel: str
-    index: int
-    kind: Literal["intro", "section", "article"]
-    section_title: str | None = None
-    text: str
-    hashtags: list[str] = []
-    link: str = ""
-    suggested_date: str = ""
-    media_files: list[str] = []  # relative filenames inside the package dir
-    youtube_links: list[str] = []
-    language: str = ""
-    generated_at: str = ""
-    model: str = ""

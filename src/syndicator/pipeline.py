@@ -1,8 +1,9 @@
 """Pipeline orchestration: wire nodes together, update state.
 
-The social pipeline (plan -> caption -> media -> export) runs independently
-of the site pipeline (translate -> hugo -> journeymap -> git push), so the
-catch-up phase works while the old converter still owns the website.
+The social pipeline (plan -> caption -> media -> review page) runs
+independently of the site pipeline (translate -> hugo -> journeymap -> git
+push). All state lives on the per-post review pages inside the Logseq graph
+(see state.py); the review itself happens in Logseq.
 """
 
 from __future__ import annotations
@@ -13,15 +14,20 @@ from datetime import date
 from .config import Config
 from .llm import LLMClient
 from .model import BlogPost
+from .nodes.backlink import ensure_syndication_link
 from .nodes.export import export_social
 from .nodes.extract import scan_blog_posts, source_hash
-from .state import PipelineLock, StateStore
+from .state import PipelineLock, ReviewStore, blog_page_ref, now_iso, short_hash
 
 log = logging.getLogger(__name__)
 
 
 def make_llm(cfg: Config) -> LLMClient:
     return LLMClient(max_retries=cfg.shared.translate.max_retries)
+
+
+def make_store(cfg: Config) -> ReviewStore:
+    return ReviewStore(cfg.pages_dir)
 
 
 def scan_posts(cfg: Config) -> list[BlogPost]:
@@ -36,29 +42,31 @@ def find_post(cfg: Config, slug: str) -> BlogPost:
     return posts[slug]
 
 
-def stale_draft_channels(cfg: Config, store: StateStore, post: BlogPost) -> list[str]:
-    """Draft channels whose package was made from an older source version."""
+def stale_draft_channels(cfg: Config, store: ReviewStore, post: BlogPost) -> list[str]:
+    """Draft channels with blocks generated from an older source version."""
     state = store.load(post.slug)
     h = source_hash(post)
     return [
         name
         for name in cfg.social_channels()
-        if state.channel(name).status == "draft" and state.channel(name).source_hash != h
+        if state.channel_state(name) == "draft" and state.stale_posts(name, h)
     ]
 
 
-def social_channels_to_export(cfg: Config, store: StateStore, post: BlogPost) -> list[str]:
+def social_channels_to_export(cfg: Config, store: ReviewStore, post: BlogPost) -> list[str]:
     """Channels needing an export: pending ones plus stale drafts.
 
-    Published channels are immutable — the post is live on the platform and
-    cannot be changed, so they are never re-exported (not even with force).
+    Published channels (every block published) are immutable — the posts are
+    live on the platform and cannot be changed, so they are never re-exported
+    (not even with force). Individual published blocks inside a draft channel
+    are frozen by the export node.
     """
     state = store.load(post.slug)
-    pending = [name for name in cfg.social_channels() if state.channel(name).status == "pending"]
+    pending = [name for name in cfg.social_channels() if state.channel_state(name) == "pending"]
     return pending + stale_draft_channels(cfg, store, post)
 
 
-def next_catchup_post(cfg: Config, store: StateStore) -> BlogPost | None:
+def next_catchup_post(cfg: Config, store: ReviewStore) -> BlogPost | None:
     """Oldest post that still has social channels to export."""
     for post in scan_posts(cfg):  # sorted by date
         if social_channels_to_export(cfg, store, post):
@@ -75,18 +83,19 @@ def run_social_for_post(
     start: date | None = None,
     channels: list[str] | None = None,
 ):
-    """Generate social packages for one post and mark the channels as draft.
+    """Generate social post blocks for one post on its review page.
 
     Default channel selection: pending plus stale drafts. ``force`` re-exports
-    fresh drafts too. Published channels are immutable and never re-exported.
+    fresh drafts too. Published blocks are immutable and never regenerated.
+    Returns the review page path, or None when there was nothing to do.
     """
-    store = StateStore(cfg.state_dir)
+    store = make_store(cfg)
     if channels is None:
         if force:
             state = store.load(post.slug)
             channels = [
                 name for name in cfg.social_channels()
-                if state.channel(name).status != "published"
+                if state.channel_state(name) != "published"
             ]
         else:
             channels = social_channels_to_export(cfg, store, post)
@@ -95,30 +104,21 @@ def run_social_for_post(
         return None
 
     llm = llm or make_llm(cfg)
-    export_dir = export_social(
+    page = export_social(
         post, cfg, llm, channels=channels, verify_links=verify_links, start=start
     )
-
-    h = source_hash(post)
-    state = store.load(post.slug)
-    state.title = post.meta.title
-    state.date = post.meta.date
-    state.source_hash = state.source_hash or h
-    store.save(state)
-    for channel in channels:
-        store.mark(post.slug, channel, "draft", source_hash=h)
-
-    return export_dir
+    ensure_syndication_link(post)
+    return page
 
 
 # --- site pipeline ----------------------------------------------------------
 
 
-def site_changed_posts(cfg: Config, store: StateStore) -> list[BlogPost]:
+def site_changed_posts(cfg: Config, store: ReviewStore) -> list[BlogPost]:
     """Posts whose content differs from what the hugo channel last processed."""
     changed = []
     for post in scan_posts(cfg):
-        if store.load(post.slug).channel("hugo").source_hash != source_hash(post):
+        if store.load(post.slug).hugo_hash != short_hash(source_hash(post)):
             changed.append(post)
     return changed
 
@@ -127,7 +127,7 @@ def run_site_for_post(
     cfg: Config,
     post: BlogPost,
     llm: LLMClient,
-    store: StateStore,
+    store: ReviewStore,
     try_run: bool = False,
     force: bool = False,
 ) -> bool:
@@ -143,9 +143,9 @@ def run_site_for_post(
     from .nodes.hugo import write_bundle
     from .nodes.translate import translate_bundle
 
-    h = source_hash(post)
+    h = short_hash(source_hash(post))
     state = store.load(post.slug)
-    if not force and state.channel("hugo").source_hash == h:
+    if not force and state.hugo_hash == h:
         return False
 
     bundle = write_bundle(post, cfg.hugo_posts_dir)
@@ -160,11 +160,10 @@ def run_site_for_post(
         # re-render produces no git diff, and the post must not be retried
         # forever. A failed push raises and leaves the state untouched.
         state = store.load(post.slug)
-        state.title = post.meta.title
-        state.date = post.meta.date
-        state.source_hash = h
-        state.channel("hugo").source_hash = h
+        state.blog_ref = blog_page_ref(post)
+        state.hugo_hash = h
         store.save(state)
+        ensure_syndication_link(post)
     return True
 
 
@@ -180,7 +179,7 @@ def run_all(
     social exports for newly published posts.
 
     A try run does everything for real (LLM calls included) except the final
-    git commit/push, so nothing goes live. Social packages are exported too,
+    git commit/push, so nothing goes live. Social blocks are exported too,
     without link verification: the slug-based post URLs only resolve once a
     real run pushes the site.
     """
@@ -188,10 +187,10 @@ def run_all(
     from .nodes.publish_git import commit_and_push, wait_for_deploy
     from .siteurl import post_url
 
-    store = StateStore(cfg.state_dir)
+    store = make_store(cfg)
     llm = make_llm(cfg)
 
-    with PipelineLock(cfg.data_dir):
+    with PipelineLock(cfg.lock_path):
         if slugs:
             posts = [find_post(cfg, slug) for slug in slugs]
         else:
@@ -202,7 +201,7 @@ def run_all(
 
         if not social_only:
             for post in posts:
-                was_new = store.load(post.slug).channel("hugo").status == "pending"
+                was_new = store.load(post.slug).hugo_status == "pending"
                 if run_site_for_post(cfg, post, llm, store, try_run=try_run, force=force):
                     site_changed = True
                     if was_new:
@@ -219,7 +218,11 @@ def run_all(
                     pushed = commit_and_push(cfg)
                     if pushed:
                         for post in new_posts:
-                            store.mark(post.slug, "hugo", "published", source_hash=source_hash(post))
+                            state = store.load(post.slug)
+                            state.hugo_status = "published"
+                            state.hugo_at = now_iso()
+                            state.hugo_hash = short_hash(source_hash(post))
+                            store.save(state)
                             url = post_url(cfg, post.slug, cfg.shared.site.default_language)
                             wait_for_deploy(cfg, url)
             else:

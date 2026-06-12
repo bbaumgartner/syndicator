@@ -1,12 +1,15 @@
-"""bootstrap node: initialize per-channel state for existing posts.
+"""bootstrap node: create review pages with initial state for existing posts.
 
 - hugo: everything that is live on sailingnomads.ch counts as published.
   The recorded source hash is only set when a fresh render matches the live
   bundle byte for byte; otherwise the post is considered stale and the first
   pipeline run regenerates (and re-translates) it.
 - social/article channels: only explicitly listed slugs (default: Renan, the
-  only post ever cross-posted) count as published — everything else stays
-  pending and forms the catch-up backlog.
+  only post ever cross-posted) count as published. They are recorded as
+  explicit ``<channel>-status::`` page properties because no generated blocks
+  exist for them — everything else stays pending and forms the catch-up
+  backlog. Article channels (substack, medium) get an explicit pending marker
+  so they are visible on the page.
 """
 
 from __future__ import annotations
@@ -16,7 +19,8 @@ from dataclasses import dataclass, field
 
 from ..config import ALL_CHANNELS, Config
 from ..model import BlogPost
-from ..state import StateStore, now_iso
+from ..state import ReviewState, ReviewStore, blog_page_ref, now_iso, short_hash
+from .backlink import ensure_syndication_link
 from .extract import scan_blog_posts, source_hash
 from .hugo import index_filename, render_index
 
@@ -36,13 +40,13 @@ class BootstrapResult:
 
 def bootstrap(cfg: Config, social_published_slugs: list[str] | None = None) -> BootstrapResult:
     published_slugs = social_published_slugs or DEFAULT_SOCIAL_PUBLISHED_SLUGS
-    store = StateStore(cfg.state_dir)
+    store = ReviewStore(cfg.pages_dir)
     posts = scan_blog_posts(cfg.journals_dir, cfg.pages_dir)
     result = BootstrapResult(posts=len(posts))
 
     for post in posts:
-        result_state = _bootstrap_post(cfg, store, post, published_slugs)
-        if result_state.channel("hugo").source_hash:
+        state = _bootstrap_post(cfg, store, post, published_slugs)
+        if state.hugo_hash:
             result.hugo_in_sync.append(post.slug)
         else:
             result.hugo_stale.append(post.slug)
@@ -52,12 +56,16 @@ def bootstrap(cfg: Config, social_published_slugs: list[str] | None = None) -> B
     return result
 
 
-def _bootstrap_post(cfg: Config, store: StateStore, post: BlogPost, published_slugs: list[str]):
-    h = source_hash(post)
+def _article_channels(cfg: Config) -> list[str]:
+    return [name for name, ch in cfg.shared.channels.items() if ch.kind == "article"]
+
+
+def _bootstrap_post(
+    cfg: Config, store: ReviewStore, post: BlogPost, published_slugs: list[str]
+) -> ReviewState:
+    h = short_hash(source_hash(post))
     state = store.load(post.slug)
-    state.title = post.meta.title
-    state.date = post.meta.date
-    state.source_hash = h
+    state.blog_ref = blog_page_ref(post)
 
     bundle = cfg.hugo_posts_dir / post.slug
     live_index = bundle / index_filename(post.meta.language)
@@ -65,10 +73,9 @@ def _bootstrap_post(cfg: Config, store: StateStore, post: BlogPost, published_sl
     if live_index.exists():
         hugo_matches = live_index.read_text(encoding="utf-8") == render_index(post)
 
-    hugo = state.channel("hugo")
-    hugo.status = "published"
-    hugo.at = hugo.at or now_iso()
-    hugo.source_hash = h if hugo_matches else ""
+    state.hugo_status = "published"
+    state.hugo_at = state.hugo_at or now_iso()
+    state.hugo_hash = h if hugo_matches else ""
     if not hugo_matches:
         log.info("hugo bundle stale or missing for %s — will be regenerated on first run", post.slug)
 
@@ -80,14 +87,15 @@ def _bootstrap_post(cfg: Config, store: StateStore, post: BlogPost, published_sl
             if (bundle / f"index.{lang}.md").exists():
                 state.translations.setdefault(lang, h)
 
+    article = _article_channels(cfg)
     for name in ALL_CHANNELS:
-        if name == "hugo":
+        if name == "hugo" or state.posts_for(name):
             continue
-        ch = state.channel(name)
-        if ch.status == "pending" and post.slug in published_slugs:
-            ch.status = "published"
-            ch.at = now_iso()
-            ch.source_hash = h
+        if post.slug in published_slugs and state.channel_state(name) == "pending":
+            state.channel_status[name] = "published"
+        elif name in article:
+            state.channel_status.setdefault(name, "pending")
 
     store.save(state)
+    ensure_syndication_link(post)
     return state
