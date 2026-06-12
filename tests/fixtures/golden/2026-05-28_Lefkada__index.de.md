@@ -1,0 +1,69 @@
++++
+date = "2026-05-28"
+lastmod = "2026-05-28"
+draft = false
+title = "Lefkada"
+summary = "Die letzten 10 Tage haben wir auf der griechischen Insel Lefkada verbracht wo das Meer im schönsten türkis erstrahlt."
+[params]
+  author = "Benno"
++++
+
+Die letzten 10 Tage haben wir auf der griechischen Insel Lefkada verbracht wo das Meer im schönsten türkis erstrahlt.
+
+Mit der Fähre sind wir von Split nach Ancona und von dort mit einer weiteren Fähre nach Igoumenitsa gereist. Wir wollten die EU nicht verlassen, weil das etwas komplizierter mit dem Hund sein kann. Die Fähre ist ist zwar teuer dafür ist die Party aber legendär.
+
+{{< video src="party_1779727668989_0.mp4" >}}
+
+![charly-faehre.jpg](charly-faehre_1779725836433_0.jpg)
+
+Aus Lefkada gibt es nicht viel zu berichten. Wir sind eigentlich nur rumgehangen und haben ein bisschen Strände besucht.
+
+![IMG-20260525-WA0002](IMG-20260525-WA0002.jpg)
+
+![IMG-20260525-WA0003](IMG-20260525-WA0003.jpg)
+
+![IMG-20260525-WA0004](IMG-20260525-WA0004.jpg)
+
+Die Saison noch nicht begonnen und es ist mega friedlich. Das Meer hat hier eine ganz spezielle Farbe und ist atemberaubend schön.
+
+![beach2.jpg](beach2_1779726448031_0.jpg)
+
+![beach.jpg](beach_1779726406464_0.jpg)
+
+![beach3.jpg](beach3_1779727068717_0.jpg)
+
+Dazwischen haben wir auch noch unseren Hochzeitstag gefeiert und ich und Charly haben einen Haarschnitt erhalten.
+
+![hochzeitstag.jpg](hochzeitstag_1779726392374_0.jpg)
+
+![lefkada-fleisch.jpg](lefkada-fleisch_1779725702468_0.jpg)
+
+![haare.jpg](haare_1779726223187_0.jpg)
+
+![haare-charly.jpg](haare-charly_1779727111558_0.jpg)
+
+Die Zeit haben wir auch genutzt um unser Auto wieder auf Vordermann zu bringen, die Fahrertür war verzogen und ging nicht mehr richtig zu, es war ein Ölwechsel fällig und wir haben unserem Passat neue Bremsbeläge spendiert. Ausserdem gab es noch ein Spa Tag in der Autowäsche für unser tapferes Auto, das kurz vor seinem 200'000sten Geburtstag steht. All das kostet hier nur ein Bruchteil wie zuhause. Deswegen sieht man wohl auch richtig alte Schrottkarren noch auf der Strasse. Unglaublich was die hier noch reparieren, bei uns undenkbar. Ich habe auch noch nirgends zuvor so viele L300 gesehen.
+
+![werkstatt.jpg](werkstatt_1779726971659_0.jpg)
+
+![karroserist.jpg](karroserist_1779726601170_0.jpg)
+
+![kristos.jpg](kristos_1779726724531_0.jpg)
+
+![anzeige.jpg](anzeige_1779726800337_0.jpg)
+
+![punto.jpg](punto_1779727180312_0.jpg)
+
+![carwash.png](carwash_1779727278484_0.png)
+
+Es ist so wie sich ein schweizer Bünzli wie ich Griechenland vorstelle, alles sehr freundlich, lustig, und äusserst improvisiert und lösungsorientiert. Immer eine Zigi im Mundwinkel und ein Glas Ouzo in der Nähe.
+
+![mech.jpg](mech_1779788980007_0.jpg)
+
+![civic.jpg](civic_1779789104646_0.jpg)
+
+![werkstatt.jpg](werkstatt_1779789049494_0.jpg)
+
+![l300.jpg](l300_1779726874175_0.jpg)
+
+![karre.jpg](karre_1779726152884_0.jpg)

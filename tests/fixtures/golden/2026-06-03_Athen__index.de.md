@@ -1,0 +1,47 @@
++++
+date = "2026-06-03"
+lastmod = "2026-06-03"
+draft = false
+title = "Athen"
+summary = "Von Lefkada aus fahren wir quer durch Griechenland, welches sehr viel grösser ist, als ich mir das vorgestellt habe."
+[params]
+  author = "Benno"
++++
+
+Von Lefkada aus fahren wir quer durch Griechenland, welches sehr viel grösser ist, als ich mir das vorgestellt habe.
+
+### Autobahn
+
+![IMG_20260527_144815283_HDR](IMG_20260527_144815283_HDR.jpg)
+
+![IMG_20260527_162635300_HDR](IMG_20260527_162635300_HDR.jpg)
+
+Wir fahren an einem Tag bis Athen, was kein Problem ist, denn die griechischen Autobahnen sind unglaublich angenehm. Kaum Verkehr und in top Zustand. Unterwegs machen wir noch kurz Halt beim Korinth Kanal, der wirklich spektakulär ist. Irgendwann müssen wir hier mal durchsegeln.
+
+### Öffentlicher Verkehr
+
+{{< youtube FAIZtHHsbSM >}}
+
+![IMG_20260530_083835605_HDR](IMG_20260530_083835605_HDR.jpg)
+
+![IMG_20260529_100817658_HDR](IMG_20260529_100817658_HDR.jpg)
+
+Dem Auto scheint in Griechenland alles untergeordnet zu sein. Eine Tatsache, die mir in Athen echt auf die Nerven geht. Gerade mit dem Hund ist das super anstrengend, es wird null Rücksicht genommen und alles ist zugeparkt, sodass man teils auf die Strasse ausweichen muss. Die Athener selbst finden es auch zum Kotzen. Fairerweise muss man sagen, dass sie seit Jahren versuchen, die Fehler der Vergangenheit zu korrigieren. Ein Problem vieler Städte, wo aus reiner Ideologie auf das falsche Verkehrsmittel gesetzt wurde. Ich muss natürlich den neuen ÖV testen. Charly ist weniger begeistert als ich, denn es herrscht Maulkorbpflicht.
+
+### Alexandros
+
+![IMG_20260529_080135001](IMG_20260529_080135001.jpg)
+
+![IMG-20260529-WA0017](IMG-20260529-WA0017.jpg)
+
+![IMG-20260529-WA0014](IMG-20260529-WA0014.jpg)
+
+### Der Denker
+
+![IMG_20260529_114044078](IMG_20260529_114044078.jpg)
+
+![IMG_20260529_115656929](IMG_20260529_115656929.jpg)
+
+![IMG_20260529_111236563](IMG_20260529_111236563.jpg)
+
+Während Alex an ihrem Segelkurs teilnimmt, gehen Charly und ich alte Steine anschauen. Wir fahren mit dem Tram zur Akropolis, wo Charly natürlich nicht rein darf. Hundebisi und 3000 Jahre alter Sandstein sind keine gute Kombination. Wir besteigen den Hügel vis-à-vis, wo es alte Steine gratis und ohne Touristentrubel zu bestaunen gibt. Es ist schon beeindruckend auf Strassen zu wandeln, auf der vor 2500 Jahren wohl auch Sokrates, einer der grössten Denker der Menschheit, seine Abendspaziergänge absolviert hat.
