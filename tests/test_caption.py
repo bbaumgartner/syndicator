@@ -1,0 +1,101 @@
+"""Tests for caption sanitization/assembly and URL computation (no network)."""
+
+from pathlib import Path
+
+from syndicator.llm import CostLedger, LLMClient
+from syndicator.model import MediaRef, PostIntent, SocialDraft
+from syndicator.nodes.caption import (
+    _sanitize,
+    compose_post_text,
+    generate_caption,
+    x_text_budget,
+)
+from syndicator.nodes.extract import scan_blog_posts
+from syndicator.nodes.social_plan import plan_social
+from syndicator.siteurl import hugo_path_segment, post_url
+
+from conftest import create_dummy_assets, make_cfg
+
+
+def intent_with_media(channel="facebook", n=2):
+    media = [MediaRef(kind="image", alt=f"img{i}", filename=f"img{i}.jpg") for i in range(n)]
+    return PostIntent(channel=channel, index=1, kind="section", section_index=0, media=media)
+
+
+def test_sanitize_strips_urls_and_normalizes_hashtags():
+    draft = SocialDraft(
+        text="Look at this https://spam.example/x amazing place",
+        hashtags=["sailing", "#travel", " #dog life ", ""],
+        alt_texts=["one"],
+    )
+    clean = _sanitize(draft, intent_with_media(n=2))
+    assert "https://" not in clean.text
+    assert clean.hashtags == ["#sailing", "#travel", "#doglife"]
+    # alt_texts padded to media count.
+    assert len(clean.alt_texts) == 2
+    assert clean.alt_texts[1] == "img1"
+
+
+def test_compose_inline_vs_bio():
+    draft = SocialDraft(text="Hello sea", hashtags=["#sailing"], alt_texts=[])
+    url = "https://example.org/posts/x/"
+
+    fb_cfg = make_cfg_channel("facebook")
+    fb = compose_post_text(draft, intent_with_media("facebook"), fb_cfg, url, ["https://youtu.be/abc"])
+    assert fb == "Hello sea\n\nhttps://youtu.be/abc\n\nhttps://example.org/posts/x/\n\n#sailing"
+
+    ig_cfg = make_cfg_channel("instagram")
+    ig = compose_post_text(draft, intent_with_media("instagram"), ig_cfg, url, [])
+    assert url not in ig
+    assert ig == "Hello sea\n\n#sailing"
+
+    x_cfg = make_cfg_channel("x")
+    x = compose_post_text(draft, intent_with_media("x"), x_cfg, url, [])
+    assert x == "Hello sea\n\n#sailing https://example.org/posts/x/"
+
+
+def make_cfg_channel(name):
+    from syndicator.config import ChannelConfig
+
+    modes = {"facebook": "inline", "instagram": "bio", "x": "inline"}
+    return ChannelConfig(kind="social", link_mode=modes[name], max_chars=280 if name == "x" else None)
+
+
+def test_x_budget_truncation_in_dry_run():
+    cfg_ch = make_cfg_channel("x")
+    budget = x_text_budget(cfg_ch)
+    assert budget == 280 - 25 - 25
+
+    long_draft = SocialDraft(text="a" * 400, hashtags=[], alt_texts=[])
+    from syndicator.nodes.caption import _enforce_x_budget
+
+    llm = LLMClient(dry_run=True)
+    fixed = _enforce_x_budget(long_draft, cfg_ch, "sys", "user", llm)
+    assert len(fixed.text) <= budget
+    assert fixed.text.endswith("…")
+
+
+def test_generate_caption_dry_run_full_flow(tmp_path: Path):
+    cfg = make_cfg(tmp_path)
+    posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
+    post = posts["2026-06-10_Griechenland_❤️"]
+    create_dummy_assets([post])
+    plans = plan_social(post, cfg)
+
+    llm = LLMClient(ledger=CostLedger(), dry_run=True)
+    for channel, intents in plans.items():
+        for intent in intents:
+            draft = generate_caption(post, intent, cfg, llm)
+            assert draft.text
+            assert len(draft.alt_texts) == len(intent.media)
+
+
+def test_hugo_path_segment_and_post_url(tmp_path: Path):
+    cfg = make_cfg(tmp_path)
+    assert hugo_path_segment("2026-04-25_Törn") == "2026-04-25_törn"
+    assert hugo_path_segment("2026-06-10_Griechenland_❤️") == "2026-06-10_griechenland_\ufe0f"
+
+    url = post_url(cfg, "2026-06-10_Griechenland_❤️", "en")
+    assert url == "https://example.org/posts/2026-06-10_griechenland_%EF%B8%8F/"
+    url_de = post_url(cfg, "2026-04-25_Törn", "de")
+    assert url_de == "https://example.org/de/posts/2026-04-25_t%C3%B6rn/"

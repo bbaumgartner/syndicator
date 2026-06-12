@@ -26,6 +26,15 @@ LANGUAGE_WORD_TO_CODE = {
     "italian": "it",
 }
 
+LANGUAGE_NAMES = {
+    "en": "English",
+    "de": "German",
+    "es": "Spanish",
+    "fr": "French",
+    "it": "Italian",
+    "arrr": "Pirate Speak",
+}
+
 VIDEO_EXTENSIONS = {
     ".mp4", ".mov", ".avi", ".wmv", ".flv", ".webm", ".mkv", ".m4v", ".mpg", ".mpeg",
 }

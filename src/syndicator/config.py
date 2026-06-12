@@ -30,6 +30,7 @@ class DeployCheck(BaseModel):
 
 
 class SiteConfig(BaseModel):
+    title: str = "Sailing Nomads"
     base_url: str
     default_language: str = "en"
     deploy_check: DeployCheck = DeployCheck()
@@ -89,12 +90,18 @@ class LanguagesConfig(BaseModel):
     supported: list[str] = ["en", "de", "es", "fr", "it", "arrr"]
 
 
+class ModelPrice(BaseModel):
+    input: float  # USD per 1M input tokens
+    output: float  # USD per 1M output tokens
+
+
 class SharedConfig(BaseModel):
     site: SiteConfig
     languages: LanguagesConfig = LanguagesConfig()
     translate: TranslateConfig = TranslateConfig()
     social: SocialConfig = SocialConfig()
     media: MediaConfig = MediaConfig()
+    model_prices: dict[str, ModelPrice] = {}
     channels: dict[str, ChannelConfig]
 
 
