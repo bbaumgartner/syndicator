@@ -26,7 +26,12 @@ def make_cfg(tmp_path: Path) -> Config:
             "channels": {
                 "hugo": {"kind": "site"},
                 "facebook": {"kind": "social"},
-                "instagram": {"kind": "social", "link_mode": "bio"},
+                "instagram": {
+                    "kind": "social",
+                    "link_mode": "bio",
+                    "image": {"aspect": "4:5", "width": 1080, "height": 1350},
+                    "video": {"aspect": "9:16", "width": 540, "height": 960, "max_seconds": 90},
+                },
                 "x": {"kind": "social", "max_media_per_post": 4, "max_chars": 280},
                 "substack": {"kind": "article", "enabled": False},
                 "medium": {"kind": "article", "enabled": False},
