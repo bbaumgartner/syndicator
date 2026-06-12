@@ -4,42 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from syndicator.config import Config, LocalConfig, SharedConfig
 from syndicator.nodes.bootstrap import bootstrap
 from syndicator.nodes.extract import scan_blog_posts, source_hash
 from syndicator.nodes.hugo import write_bundle
 from syndicator.state import PipelineLock, StateStore
 
-FIXTURES = Path(__file__).parent / "fixtures"
-
-
-def make_cfg(tmp_path: Path) -> Config:
-    saillog = tmp_path / "saillog"
-    (saillog / "journals").mkdir(parents=True)
-    (saillog / "pages").mkdir(parents=True)
-    for f in (FIXTURES / "journals").glob("*.md"):
-        (saillog / "journals" / f.name).write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
-    for f in (FIXTURES / "pages").glob("*.md"):
-        (saillog / "pages" / f.name).write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
-
-    site = tmp_path / "site"
-    (site / "content" / "posts").mkdir(parents=True)
-
-    shared = SharedConfig.model_validate(
-        {
-            "site": {"base_url": "https://example.org"},
-            "channels": {
-                "hugo": {"kind": "site"},
-                "facebook": {"kind": "social"},
-                "instagram": {"kind": "social"},
-                "x": {"kind": "social"},
-                "substack": {"kind": "article", "enabled": False},
-                "medium": {"kind": "article", "enabled": False},
-            },
-        }
-    )
-    local = LocalConfig(saillog_dir=saillog, sailingnomads_dir=site)
-    return Config(shared=shared, local=local, repo_root=tmp_path)
+from conftest import make_cfg
 
 
 def test_state_roundtrip_and_mark(tmp_path: Path):
