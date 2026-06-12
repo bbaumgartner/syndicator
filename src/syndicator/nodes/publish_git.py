@@ -32,7 +32,13 @@ def has_changes(cfg: Config) -> bool:
 
 
 def commit_and_push(cfg: Config, message: str = COMMIT_MESSAGE) -> bool:
-    """Returns True when a commit was pushed."""
+    """Returns True when a commit was pushed.
+
+    The hash-based state decides what gets re-rendered; this git check is
+    only the final gate: a re-render can be byte-identical to what is live
+    (source edits that do not affect the rendered output), and committing a
+    clean tree would fail.
+    """
     if not has_changes(cfg):
         log.info("site repo clean — nothing to commit")
         return False

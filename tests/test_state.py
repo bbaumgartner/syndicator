@@ -18,9 +18,9 @@ def test_state_roundtrip_and_mark(tmp_path: Path):
     assert state.channel("facebook").status == "pending"
 
     store.save(state)
-    store.mark("2026-01-01_Test", "facebook", "exported", source_hash="sha256:abc")
+    store.mark("2026-01-01_Test", "facebook", "draft", source_hash="sha256:abc")
     reloaded = store.load("2026-01-01_Test")
-    assert reloaded.channel("facebook").status == "exported"
+    assert reloaded.channel("facebook").status == "draft"
     assert reloaded.channel("facebook").source_hash == "sha256:abc"
     assert reloaded.channel("x").status == "pending"
     # No stray temp files from atomic writes.

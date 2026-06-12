@@ -21,8 +21,9 @@ Syncthing: generate on the server, review on the Mac, automatic archive.
 - **One watcher**: the daemon runs on the server. The Mac is for manual
 commands (`catchup`, `review`, `done`, `run`). A lock file in
 `.syndicator/` prevents simultaneous pipeline runs.
-- **Channel status lifecycle**: `pending` → `exported` (package generated) →
-`published` (you posted it manually and ran `syndicator done`).
+- **Channel status lifecycle**: `pending` → `draft` (package generated;
+  regenerated automatically if the post source changes) → `published` (you
+  posted it manually and ran `syndicator done`; immutable from then on).
 
 ## One-time setup on a machine
 
@@ -101,7 +102,7 @@ deploy, then generates the social packages. On the Mac:
 ```bash
 uv run syndicator review            # opens the newest review.html
 # post manually on FB/IG/X (copy buttons, adapted media in the package dirs)
-uv run syndicator done <slug>       # marks all exported channels as published
+uv run syndicator done <slug>       # marks all draft channels as published
 ```
 
 Substack/Medium stay manual (Narrareach) for now; track them with
@@ -123,7 +124,7 @@ uv run syndicator done <slug>
 ```bash
 uv run syndicator run --post <slug> --force    # re-run one post end to end
 uv run syndicator run --site-only              # website only, no social
-uv run syndicator catchup --force --post <slug>  # re-export existing packages
+uv run syndicator catchup --force --post <slug>  # redo drafts (published stays untouched)
 uv run syndicator parity                       # fresh render vs live repo
 ```
 

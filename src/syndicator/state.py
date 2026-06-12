@@ -5,7 +5,8 @@ inside the Syncthing-synced Logseq folder, so both machines share it. One
 file per slug keeps Syncthing conflicts practically impossible; writes are
 atomic (temp file + rename).
 
-Channel status lifecycle: ``pending`` → ``exported`` → ``published``.
+Channel status lifecycle: ``pending`` → ``draft`` (package exported, can be
+regenerated when the source changes) → ``published`` (live, immutable).
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from pydantic import BaseModel
 
 from .config import ALL_CHANNELS
 
-ChannelStatus = Literal["pending", "exported", "published"]
+ChannelStatus = Literal["pending", "draft", "published"]
 
 
 def now_iso() -> str:

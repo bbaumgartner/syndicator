@@ -16,7 +16,7 @@ app = typer.Typer(
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
-STATUS_SYMBOLS = {"pending": ".", "exported": "o", "published": "x"}
+STATUS_SYMBOLS = {"pending": ".", "draft": "o", "published": "x"}
 
 
 @app.command()
@@ -71,14 +71,14 @@ def status() -> None:
     for c in channels:
         pending = [s.slug for s in states if s.channel(c).status == "pending"]
         typer.echo(f"  {c:10s} {len(pending):3d}")
-    typer.echo("\nlegend: x published, o exported, . pending")
+    typer.echo("\nlegend: x published, o draft, . pending")
 
 
 @app.command()
 def done(
     slug: str = typer.Argument(..., help="Post slug, e.g. 2026-05-19_Charly_Superstar"),
     channel: list[str] = typer.Option(
-        None, "--channel", "-c", help="Channels to mark (default: all currently exported)."
+        None, "--channel", "-c", help="Channels to mark (default: all current drafts)."
     ),
 ) -> None:
     """Mark channels of a post as published after manual posting."""
@@ -89,9 +89,9 @@ def done(
     store = StateStore(cfg.state_dir)
     state = store.load(slug)
 
-    targets = channel or [c for c in ALL_CHANNELS if state.channel(c).status == "exported"]
+    targets = channel or [c for c in ALL_CHANNELS if state.channel(c).status == "draft"]
     if not targets:
-        typer.echo("Nothing to mark: no exported channels and none given via --channel.")
+        typer.echo("Nothing to mark: no draft channels and none given via --channel.")
         raise typer.Exit(1)
 
     for c in targets:
@@ -105,7 +105,7 @@ def done(
 @app.command()
 def catchup(
     post: str = typer.Option(None, "--post", help="Slug to process (default: oldest pending)."),
-    force: bool = typer.Option(False, "--force", help="Re-export even already exported/published channels."),
+    force: bool = typer.Option(False, "--force", help="Re-export drafts even when the source is unchanged (published stays immutable)."),
     no_verify_links: bool = typer.Option(False, "--no-verify-links", help="Skip live URL verification."),
 ) -> None:
     """Generate social post packages for the oldest pending post (catch-up backlog)."""

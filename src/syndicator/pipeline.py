@@ -36,19 +36,32 @@ def find_post(cfg: Config, slug: str) -> BlogPost:
     return posts[slug]
 
 
-def pending_social_channels(cfg: Config, store: StateStore, post: BlogPost) -> list[str]:
+def stale_draft_channels(cfg: Config, store: StateStore, post: BlogPost) -> list[str]:
+    """Draft channels whose package was made from an older source version."""
     state = store.load(post.slug)
+    h = source_hash(post)
     return [
         name
         for name in cfg.social_channels()
-        if state.channel(name).status == "pending"
+        if state.channel(name).status == "draft" and state.channel(name).source_hash != h
     ]
 
 
+def social_channels_to_export(cfg: Config, store: StateStore, post: BlogPost) -> list[str]:
+    """Channels needing an export: pending ones plus stale drafts.
+
+    Published channels are immutable — the post is live on the platform and
+    cannot be changed, so they are never re-exported (not even with force).
+    """
+    state = store.load(post.slug)
+    pending = [name for name in cfg.social_channels() if state.channel(name).status == "pending"]
+    return pending + stale_draft_channels(cfg, store, post)
+
+
 def next_catchup_post(cfg: Config, store: StateStore) -> BlogPost | None:
-    """Oldest post that still has pending social channels."""
+    """Oldest post that still has social channels to export."""
     for post in scan_posts(cfg):  # sorted by date
-        if pending_social_channels(cfg, store, post):
+        if social_channels_to_export(cfg, store, post):
             return post
     return None
 
@@ -60,12 +73,25 @@ def run_social_for_post(
     force: bool = False,
     verify_links: bool = True,
     start: date | None = None,
+    channels: list[str] | None = None,
 ):
-    """Generate social packages for one post and mark channels as exported."""
+    """Generate social packages for one post and mark the channels as draft.
+
+    Default channel selection: pending plus stale drafts. ``force`` re-exports
+    fresh drafts too. Published channels are immutable and never re-exported.
+    """
     store = StateStore(cfg.state_dir)
-    channels = list(cfg.social_channels()) if force else pending_social_channels(cfg, store, post)
+    if channels is None:
+        if force:
+            state = store.load(post.slug)
+            channels = [
+                name for name in cfg.social_channels()
+                if state.channel(name).status != "published"
+            ]
+        else:
+            channels = social_channels_to_export(cfg, store, post)
     if not channels:
-        log.info("%s: no pending social channels (use --force to re-export)", post.slug)
+        log.info("%s: no social channels to export (published is immutable)", post.slug)
         return None
 
     llm = llm or make_llm(cfg)
@@ -80,7 +106,7 @@ def run_social_for_post(
     state.source_hash = state.source_hash or h
     store.save(state)
     for channel in channels:
-        store.mark(post.slug, channel, "exported", source_hash=h)
+        store.mark(post.slug, channel, "draft", source_hash=h)
 
     return export_dir
 
@@ -200,8 +226,23 @@ def run_all(
                 log.info("site: nothing changed")
 
         if not site_only:
-            social_posts = new_posts if not slugs else [find_post(cfg, s) for s in slugs]
-            for post in social_posts:
-                # In a try run the post is not live yet, so skip link
-                # verification; the URLs resolve once a real run pushes.
-                run_social_for_post(cfg, post, llm=llm, force=force, verify_links=not try_run)
+            # In a try run the post is not live yet, so skip link
+            # verification; the URLs resolve once a real run pushes.
+            verify = not try_run
+            if slugs:
+                for post in [find_post(cfg, s) for s in slugs]:
+                    run_social_for_post(cfg, post, llm=llm, force=force, verify_links=verify)
+            else:
+                new_slugs = {p.slug for p in new_posts}
+                for post in new_posts:
+                    run_social_for_post(cfg, post, llm=llm, force=force, verify_links=verify)
+                # Edited posts: re-export only stale drafts. Pending channels
+                # of older posts stay in the manual catch-up backlog.
+                for post in scan_posts(cfg):
+                    if post.slug in new_slugs:
+                        continue
+                    stale = stale_draft_channels(cfg, store, post)
+                    if stale:
+                        run_social_for_post(
+                            cfg, post, llm=llm, verify_links=verify, channels=stale
+                        )

@@ -67,7 +67,7 @@ def test_run_social_creates_packages_and_review(tmp_path: Path):
     with Image.open(ig_images[0]) as im:
         assert im.size == (1080, 1350)
 
-def test_run_social_marks_channels_exported(tmp_path: Path):
+def test_run_social_marks_channels_draft(tmp_path: Path):
     cfg = make_cfg(tmp_path)
     posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
     post = posts["2026-05-19_Charly_Superstar"]
@@ -75,11 +75,39 @@ def test_run_social_marks_channels_exported(tmp_path: Path):
 
     run_social_for_post(cfg, post, llm=FakeLLM(), verify_links=False)
     store = StateStore(cfg.state_dir)
-    assert store.load(post.slug).channel("facebook").status == "exported"
-    assert store.load(post.slug).channel("instagram").status == "exported"
+    assert store.load(post.slug).channel("facebook").status == "draft"
+    assert store.load(post.slug).channel("instagram").status == "draft"
 
 
-def test_real_run_marks_exported_and_catchup_order(tmp_path: Path):
+def test_stale_drafts_regenerate_published_is_immutable(tmp_path: Path):
+    cfg = make_cfg(tmp_path)
+    store = StateStore(cfg.state_dir)
+    posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
+    post = posts["2026-05-19_Charly_Superstar"]
+    create_real_assets([post])
+
+    run_social_for_post(cfg, post, llm=FakeLLM(), verify_links=False)
+    h_before = store.load(post.slug).channel("facebook").source_hash
+
+    # Fresh drafts: nothing to export.
+    assert run_social_for_post(cfg, post, llm=FakeLLM(), verify_links=False) is None
+
+    # X goes live, then the post source changes.
+    store.mark(post.slug, "x", "published")
+    post.blocks[0].raw += " edited"
+    assert run_social_for_post(cfg, post, llm=FakeLLM(), verify_links=False) is not None
+
+    fb = store.load(post.slug).channel("facebook")
+    assert fb.status == "draft"
+    assert fb.source_hash != h_before  # regenerated from the new source
+    assert store.load(post.slug).channel("x").status == "published"  # untouched
+
+    # force re-exports fresh drafts but still never touches published.
+    assert run_social_for_post(cfg, post, llm=FakeLLM(), verify_links=False, force=True) is not None
+    assert store.load(post.slug).channel("x").status == "published"
+
+
+def test_catchup_order_and_state_transitions(tmp_path: Path):
     cfg = make_cfg(tmp_path)
     store = StateStore(cfg.state_dir)
 
@@ -94,7 +122,7 @@ def test_real_run_marks_exported_and_catchup_order(tmp_path: Path):
     assert second.slug == "2026-01-17_Frühlingspläne_2026"
 
     # We only verify the state transition contract here; mark manually.
-    store.mark(second.slug, "facebook", "exported", source_hash="sha256:x")
-    assert store.load(second.slug).channel("facebook").status == "exported"
+    store.mark(second.slug, "facebook", "draft", source_hash="sha256:x")
+    assert store.load(second.slug).channel("facebook").status == "draft"
     # Still pending channels left -> same post remains next in the backlog.
     assert next_catchup_post(cfg, store).slug == second.slug
