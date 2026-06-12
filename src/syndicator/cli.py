@@ -134,6 +134,63 @@ def catchup(
 
 
 @app.command()
+def run(
+    post: list[str] = typer.Option(None, "--post", help="Limit to specific slugs."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="No LLM, no git, bundles to runs/dry-site/."),
+    force: bool = typer.Option(False, "--force", help="Re-process even unchanged posts."),
+    site_only: bool = typer.Option(False, "--site-only", help="Skip social exports."),
+    social_only: bool = typer.Option(False, "--social-only", help="Skip the website pipeline."),
+) -> None:
+    """Full pipeline for new/changed posts: hugo, translate, journey map, push, social."""
+    from .config import load_config
+    from .pipeline import run_all
+
+    cfg = load_config()
+    run_all(
+        cfg,
+        slugs=post or None,
+        dry_run=dry_run,
+        force=force,
+        site_only=site_only,
+        social_only=social_only,
+    )
+
+
+@app.command()
+def watch() -> None:
+    """Daemon mode: watch the Logseq graph and run the pipeline on changes."""
+    from .config import load_config
+    from .nodes.watch import watch as run_watch
+    from .pipeline import run_all
+
+    cfg = load_config()
+    run_watch(cfg, lambda: run_all(cfg))
+
+
+@app.command()
+def parity() -> None:
+    """Compare freshly rendered source-language bundles against the live site repo."""
+    from .config import load_config
+    from .nodes.extract import scan_blog_posts
+    from .nodes.hugo import index_filename, render_index
+
+    cfg = load_config()
+    posts = scan_blog_posts(cfg.journals_dir, cfg.pages_dir)
+    diffs = 0
+    for p in posts:
+        live = cfg.hugo_posts_dir / p.slug / index_filename(p.meta.language)
+        if not live.exists():
+            typer.echo(f"  MISSING {p.slug} ({live.name})")
+            diffs += 1
+        elif live.read_text(encoding="utf-8") != render_index(p):
+            typer.echo(f"  DIFF    {p.slug} (source changed since last conversion)")
+            diffs += 1
+        else:
+            typer.echo(f"  OK      {p.slug}")
+    typer.echo(f"\n{len(posts) - diffs}/{len(posts)} bundles identical to a fresh render.")
+
+
+@app.command()
 def review(
     slug: str = typer.Argument(None, help="Post slug (default: most recent export)."),
 ) -> None:

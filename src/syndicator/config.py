@@ -47,6 +47,10 @@ class SocialConfig(BaseModel):
     posts_per_week: int = 3
 
 
+class WatchConfig(BaseModel):
+    debounce_seconds: int = 900
+
+
 class CropFocusConfig(BaseModel):
     enabled: bool = True
     model: str = "gpt-5.4-mini"
@@ -101,6 +105,7 @@ class SharedConfig(BaseModel):
     translate: TranslateConfig = TranslateConfig()
     social: SocialConfig = SocialConfig()
     media: MediaConfig = MediaConfig()
+    watch: WatchConfig = WatchConfig()
     model_prices: dict[str, ModelPrice] = {}
     channels: dict[str, ChannelConfig]
 

@@ -23,6 +23,11 @@ social:
   # Suggested manual posting cadence; used to compute suggested dates in exports.
   posts_per_week: 3
 
+watch:
+  # Run the pipeline once no file event arrived for this long (edits and
+  # Syncthing transfers come in bursts).
+  debounce_seconds: 900
+
 media:
   crop_focus:
     enabled: true
