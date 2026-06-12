@@ -60,7 +60,7 @@ def test_run_site_dry_run_does_not_touch_site_repo(tmp_path: Path):
 
     assert run_site_for_post(cfg, post, FakeLLM(), store, dry_run=True) is True
     assert not (cfg.hugo_posts_dir / post.slug).exists()
-    assert (cfg.runs_dir / "dry-site" / "content" / "posts" / post.slug / "index.de.md").exists()
+    assert (cfg.try_run_output_dir / "dry-site" / "content" / "posts" / post.slug / "index.de.md").exists()
     # Dry run must not record state for hugo.
     assert store.load(post.slug).channel("hugo").source_hash == ""
 

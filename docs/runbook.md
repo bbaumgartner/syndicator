@@ -77,7 +77,7 @@ pipeline:
    ```
 
 4. **First real run**, watch the output (translations for the two stale
-   posts cost a few cents):
+   posts):
 
    ```bash
    uv run syndicator run
@@ -142,19 +142,10 @@ uv run syndicator parity                       # fresh render vs live repo
 - **Re-translate a post**: `uv run syndicator run --post <slug> --force`
   (re-renders the bundle and re-translates all languages).
 - **Caption quality/model**: per-channel `caption_model` in
-  `syndicator.yaml`; prompts live in `prompts/caption_*.md`. Costs are
-  logged per export in `exports/<slug>/costs.txt` (maintain prices in
-  `model_prices`).
+  `syndicator.yaml`; prompts live in `prompts/caption_*.md`.
 - **Watcher loops or never triggers**: check `journalctl -u syndicator-watch`.
   It ignores `.syndicator/`, `.stversions/`, `logseq/bak/` and Syncthing
   temp files by design.
 - **git push fails from systemd**: the service user needs non-interactive
   auth for the sailingnomads remote (SSH key without passphrase or
   credential helper).
-
-## Costs (reference, first real export 2026-06-12)
-
-One post (SKS, 5 sections → 18 captions + 9 vision crop calls): ~28k input /
-~5.6k output tokens. Translations are cached and only run when the source
-changes (5 languages, one body + title call each). Overall well below 1 USD
-per post with the default models.

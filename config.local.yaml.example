@@ -15,4 +15,4 @@ journeymap_bin: ""
 animatemap_bin: ""
 
 # Local scratch dir for intermediate artifacts (relative to repo root or absolute).
-runs_dir: runs
+try_run_output_dir: runs

@@ -11,7 +11,7 @@ import logging
 from datetime import date
 
 from .config import Config
-from .llm import CostLedger, LLMClient
+from .llm import LLMClient
 from .model import BlogPost
 from .nodes.export import export_social
 from .nodes.extract import scan_blog_posts, source_hash
@@ -22,7 +22,6 @@ log = logging.getLogger(__name__)
 
 def make_llm(cfg: Config, dry_run: bool = False) -> LLMClient:
     return LLMClient(
-        ledger=CostLedger(prices=cfg.shared.model_prices),
         dry_run=dry_run,
         max_retries=cfg.shared.translate.max_retries,
     )
@@ -87,7 +86,6 @@ def run_social_for_post(
         for channel in channels:
             store.mark(post.slug, channel, "exported", source_hash=h)
 
-    print(llm.ledger.summary())
     return export_dir
 
 
@@ -125,7 +123,7 @@ def run_site_for_post(
         return False
 
     if dry_run:
-        posts_dir = cfg.runs_dir / "dry-site" / "content" / "posts"
+        posts_dir = cfg.try_run_output_dir / "dry-site" / "content" / "posts"
         posts_dir.mkdir(parents=True, exist_ok=True)
     else:
         posts_dir = cfg.hugo_posts_dir
@@ -199,6 +197,3 @@ def run_all(
             social_posts = new_posts if not slugs else [find_post(cfg, s) for s in slugs]
             for post in social_posts:
                 run_social_for_post(cfg, post, dry_run=dry_run, force=force)
-
-    if llm.ledger.entries:
-        print(llm.ledger.summary())

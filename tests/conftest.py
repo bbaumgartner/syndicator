@@ -38,7 +38,7 @@ def make_cfg(tmp_path: Path) -> Config:
             },
         }
     )
-    local = LocalConfig(saillog_dir=saillog, sailingnomads_dir=site, runs_dir=str(tmp_path / "runs"))
+    local = LocalConfig(saillog_dir=saillog, sailingnomads_dir=site, try_run_output_dir=str(tmp_path / "runs"))
     return Config(shared=shared, local=local, repo_root=tmp_path)
 
 

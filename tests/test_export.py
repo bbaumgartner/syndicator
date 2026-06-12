@@ -67,10 +67,6 @@ def test_run_social_dry_run_creates_packages_and_review(tmp_path: Path):
     with Image.open(ig_images[0]) as im:
         assert im.size == (1080, 1350)
 
-    # costs.txt written.
-    assert (export_dir / "costs.txt").exists()
-
-
 def test_dry_run_does_not_mark_state(tmp_path: Path):
     cfg = make_cfg(tmp_path)
     posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}

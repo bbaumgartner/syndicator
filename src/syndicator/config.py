@@ -94,11 +94,6 @@ class LanguagesConfig(BaseModel):
     supported: list[str] = ["en", "de", "es", "fr", "it", "arrr"]
 
 
-class ModelPrice(BaseModel):
-    input: float  # USD per 1M input tokens
-    output: float  # USD per 1M output tokens
-
-
 class SharedConfig(BaseModel):
     site: SiteConfig
     languages: LanguagesConfig = LanguagesConfig()
@@ -106,7 +101,6 @@ class SharedConfig(BaseModel):
     social: SocialConfig = SocialConfig()
     media: MediaConfig = MediaConfig()
     watch: WatchConfig = WatchConfig()
-    model_prices: dict[str, ModelPrice] = {}
     channels: dict[str, ChannelConfig]
 
 
@@ -117,7 +111,7 @@ class LocalConfig(BaseModel):
     converter_repo_dir: Path | None = None
     journeymap_bin: str = ""
     animatemap_bin: str = ""
-    runs_dir: str = "runs"
+    try_run_output_dir: str = "runs"
 
 
 class Config(BaseModel):
@@ -141,8 +135,8 @@ class Config(BaseModel):
         return self.data_dir / "exports"
 
     @property
-    def runs_dir(self) -> Path:
-        p = Path(self.local.runs_dir)
+    def try_run_output_dir(self) -> Path:
+        p = Path(self.local.try_run_output_dir)
         return p if p.is_absolute() else self.repo_root / p
 
     @property

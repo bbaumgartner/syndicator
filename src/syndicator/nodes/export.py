@@ -4,7 +4,6 @@ Output layout (inside the Syncthing-synced data dir):
 
     <saillog>/.syndicator/exports/<slug>/
         review.html
-        costs.txt
         <channel>/<nn>-<kind>/
             caption.txt      copy-paste-ready final text
             package.json     PackageManifest
@@ -88,7 +87,6 @@ def write_review_html(
     post: BlogPost,
     manifests: dict[str, list[PackageManifest]],
     links: dict[str, str],
-    cost_summary: str,
     export_dir: Path,
 ) -> Path:
     env = Environment(loader=FileSystemLoader(REPO_ROOT / "templates"), autoescape=True)
@@ -118,7 +116,6 @@ def write_review_html(
         slug=post.slug,
         links=links,
         channels=channels,
-        cost_summary=cost_summary,
         generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
     )
     out = export_dir / "review.html"
@@ -166,8 +163,6 @@ def export_social(
             manifest = export_package(post, intent, draft, url, cfg, llm, export_dir)
             manifests[channel].append(manifest)
 
-    cost_summary = llm.ledger.summary()
-    (export_dir / "costs.txt").write_text(cost_summary + "\n", encoding="utf-8")
-    write_review_html(post, manifests, links, cost_summary, export_dir)
+    write_review_html(post, manifests, links, export_dir)
     log.info("export written to %s", export_dir)
     return export_dir

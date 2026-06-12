@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from syndicator.llm import CostLedger, LLMClient
+from syndicator.llm import LLMClient
 from syndicator.model import MediaRef, PostIntent, SocialDraft
 from syndicator.nodes.caption import (
     _sanitize,
@@ -82,7 +82,7 @@ def test_generate_caption_dry_run_full_flow(tmp_path: Path):
     create_dummy_assets([post])
     plans = plan_social(post, cfg)
 
-    llm = LLMClient(ledger=CostLedger(), dry_run=True)
+    llm = LLMClient(dry_run=True)
     for channel, intents in plans.items():
         for intent in intents:
             draft = generate_caption(post, intent, cfg, llm)
