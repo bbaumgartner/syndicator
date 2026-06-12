@@ -3,7 +3,7 @@
 from datetime import date
 from pathlib import Path
 
-from syndicator.model import Block, BlogPost, MediaRef, Meta
+from syndicator.model import Block, BlogPost, Meta
 from syndicator.nodes.extract import scan_blog_posts
 from syndicator.nodes.social_plan import plan_social
 

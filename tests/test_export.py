@@ -1,6 +1,5 @@
 """End-to-end tests for the social pipeline (dry-run, no network)."""
 
-import json
 from pathlib import Path
 
 from PIL import Image

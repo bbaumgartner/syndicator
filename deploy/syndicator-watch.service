@@ -1,0 +1,28 @@
+# Syndicator watch daemon — systemd unit for the Ubuntu server.
+#
+# Install:
+#   sudo cp deploy/syndicator-watch.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now syndicator-watch.service
+#
+# Adjust User, paths and the EnvironmentFile location to the server.
+# The environment file must contain: OPENAI_API_KEY=sk-...
+
+[Unit]
+Description=Syndicator watch daemon (Logseq publish pipeline)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=benno
+WorkingDirectory=/home/benno/git/syndicator
+EnvironmentFile=/home/benno/.config/syndicator.env
+# uv must be on this PATH (install: curl -LsSf https://astral.sh/uv/install.sh | sh)
+Environment=PATH=/home/benno/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/benno/.local/bin/uv run syndicator watch
+Restart=on-failure
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target

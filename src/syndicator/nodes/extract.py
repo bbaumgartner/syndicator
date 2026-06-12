@@ -148,8 +148,8 @@ def _parse_meta(lines: list[str]) -> Meta:
 
 def _extract_page_post(lines: list[str], source_path: Path) -> BlogPost | None:
     """Page format: column-0 properties at the top, content as top-level bullets."""
-    meta_lines = [l for l in lines if ROOT_PROP_RE.match(l)]
-    if not any("type:: blog" in l for l in meta_lines):
+    meta_lines = [line for line in lines if ROOT_PROP_RE.match(line)]
+    if not any("type:: blog" in line for line in meta_lines):
         return None
 
     blocks: list[Block] = []

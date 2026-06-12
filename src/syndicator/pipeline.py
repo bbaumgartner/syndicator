@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 from datetime import date
-from pathlib import Path
 
 from .config import Config
 from .llm import CostLedger, LLMClient
