@@ -1,0 +1,17 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+dist/
+
+# Machine-specific configuration and secrets
+config.local.yaml
+.env
+
+# Local scratch artifacts (final exports/state live in saillog/.syndicator/)
+runs/
+
+# Locally built Go binaries (journeymap/animatemap)
+bin/

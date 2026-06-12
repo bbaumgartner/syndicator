@@ -1,0 +1,18 @@
+# Machine-specific configuration. Copy to config.local.yaml (gitignored) and adjust paths.
+
+# Logseq graph, synced between machines via Syncthing.
+# State and exports live in <saillog_dir>/.syndicator/.
+saillog_dir: /Users/benno/Documents/saillog
+
+# Hugo site repo (clone with push rights).
+sailingnomads_dir: /Users/benno/git/sailingnomads
+hugo_posts_subdir: content/posts
+
+# Old converter repo: source for the journeymap/animatemap Go tools.
+converter_repo_dir: /Users/benno/git/logseq-to-hugo-converter
+# Optional prebuilt binaries; leave empty to use "go run" from converter_repo_dir.
+journeymap_bin: ""
+animatemap_bin: ""
+
+# Local scratch dir for intermediate artifacts (relative to repo root or absolute).
+runs_dir: runs

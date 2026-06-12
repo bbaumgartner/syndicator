@@ -1,0 +1,70 @@
+# Shared configuration, committed to git and identical on both machines.
+# Machine-specific paths live in config.local.yaml (see config.local.yaml.example).
+
+site:
+  base_url: "https://www.sailingnomads.ch"
+  # Language served at the site root; all others live under /<lang>/.
+  default_language: en
+  deploy_check:
+    timeout_seconds: 900
+    poll_seconds: 30
+
+languages:
+  supported: [en, de, es, fr, it, arrr]
+
+translate:
+  model: gpt-4.1
+  temperature: 0.3
+  pirate_temperature: 0.9
+  max_retries: 3
+
+social:
+  # Suggested manual posting cadence; used to compute suggested dates in exports.
+  posts_per_week: 3
+
+media:
+  crop_focus:
+    enabled: true
+    model: gpt-5.4-mini
+
+channels:
+  hugo:
+    kind: site
+    enabled: true
+  facebook:
+    kind: social
+    enabled: true
+    delivery: export
+    language: en
+    link_mode: inline
+    max_media_per_post: 10
+    caption_model: gpt-5.5
+    image: { max_edge: 2048, format: jpeg, quality: 90 }
+    video: { max_seconds: 240 }
+  instagram:
+    kind: social
+    enabled: true
+    delivery: export
+    language: en
+    link_mode: bio
+    max_media_per_post: 10
+    caption_model: gpt-5.5
+    image: { aspect: "4:5", width: 1080, height: 1350, format: jpeg, quality: 90 }
+    video: { aspect: "9:16", width: 1080, height: 1920, max_seconds: 90, pad_mode: blur }
+  x:
+    kind: social
+    enabled: true
+    delivery: export
+    language: en
+    link_mode: inline
+    max_media_per_post: 4
+    max_chars: 280
+    caption_model: gpt-5.5
+    image: { max_edge: 2048, format: jpeg, quality: 90 }
+    video: { max_seconds: 140 }
+  substack:
+    kind: article
+    enabled: false # tracked in state; publishing stays manual (Narrareach) for now
+  medium:
+    kind: article
+    enabled: false
