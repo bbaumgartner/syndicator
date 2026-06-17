@@ -17,7 +17,7 @@ from .model import BlogPost
 from .nodes.backlink import ensure_syndication_link, read_hugo_hash, set_hugo_hash
 from .nodes.export import export_social
 from .nodes.extract import scan_blog_posts, source_hash
-from .state import PipelineLock, ReviewStore, blog_page_ref, short_hash
+from .state import PipelineLock, ReviewStore, short_hash
 
 log = logging.getLogger(__name__)
 
@@ -157,7 +157,6 @@ def run_site_for_post(
         # re-render produces no git diff, and the post must not be retried
         # forever. A failed push raises and leaves the state untouched.
         state = store.load(post.slug)
-        state.blog_ref = blog_page_ref(post)
         store.save(state)
         set_hugo_hash(post, h)
         ensure_syndication_link(post)

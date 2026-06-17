@@ -28,7 +28,6 @@ from ..state import (
     PAGE_PREFIX,
     ReviewStore,
     SocialPostState,
-    blog_page_ref,
     caption_children,
     now_iso,
     short_hash,
@@ -122,7 +121,6 @@ def export_social(
     """
     store = ReviewStore(cfg.pages_dir)
     state = store.load(post.slug)
-    state.blog_ref = blog_page_ref(post)
 
     plans = plan_social(post, cfg, start)
     if channels is not None:

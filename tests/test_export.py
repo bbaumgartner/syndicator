@@ -37,8 +37,7 @@ def test_run_social_creates_review_page_and_media(tmp_path: Path):
     page = run_social_for_post(cfg, post, llm=FakeLLM(), verify_links=False)
     assert page == cfg.pages_dir / page_filename(post.slug)
     text = page.read_text(encoding="utf-8")
-    assert text.startswith("- type:: syndicator\n")
-    assert f"  slug:: {post.slug}\n" in text
+    assert text.startswith("- Facebook\n")
     assert "- Facebook\n" in text and "- Instagram\n" in text and "- X\n" in text
     assert "[fake caption_facebook]" in text
 

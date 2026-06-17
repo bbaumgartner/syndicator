@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 
 from ..config import Config
 from ..model import BlogPost
-from ..state import ReviewStore, blog_page_ref, short_hash
+from ..state import ReviewStore, short_hash
 from .backlink import ensure_syndication_link, set_hugo_hash
 from .extract import scan_blog_posts, source_hash
 from .hugo import index_filename, render_index
@@ -48,7 +48,6 @@ def bootstrap(cfg: Config) -> BootstrapResult:
 def _bootstrap_post(cfg: Config, store: ReviewStore, post: BlogPost) -> str:
     h = short_hash(source_hash(post))
     state = store.load(post.slug)
-    state.blog_ref = blog_page_ref(post)
 
     bundle = cfg.hugo_posts_dir / post.slug
     live_index = bundle / index_filename(post.meta.language)

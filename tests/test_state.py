@@ -44,7 +44,7 @@ def make_post_block(channel: str = "facebook", index: int = 0, kind: str = "intr
 
 def test_store_roundtrip_and_channel_state(tmp_path: Path):
     store = ReviewStore(tmp_path / "pages")
-    state = ReviewState(slug="2026-01-01_Test Post", blog_ref="[[2026-01-01]]")
+    state = ReviewState(slug="2026-01-01_Test Post")
     state.posts = [
         make_post_block(index=0),
         make_post_block(index=1, kind="section"),
@@ -54,14 +54,12 @@ def test_store_roundtrip_and_channel_state(tmp_path: Path):
     page = tmp_path / "pages" / page_filename("2026-01-01_Test Post")
     assert page.exists()
     text = page.read_text(encoding="utf-8")
-    assert text.startswith("- type:: syndicator\n")
-    assert "  slug:: 2026-01-01_Test Post\n" in text
+    assert text.startswith("- Facebook\n")
     assert "\t- Intro\n" in text
     assert "\t  status:: draft\n" in text
     assert "\t  publishing-date:: 2026-06-15\n" in text
 
     reloaded = store.load("2026-01-01_Test Post")
-    assert reloaded.blog_ref == "[[2026-01-01]]"
     assert reloaded.date == "2026-01-01"
     assert reloaded.title == "Test Post"
     assert len(reloaded.posts) == 2
@@ -100,10 +98,6 @@ def test_user_marks_posts_published_in_logseq(tmp_path: Path):
 def test_parse_tolerates_logseq_mutations(tmp_path: Path):
     """Logseq adds id::/collapsed:: and users add notes — nothing may break."""
     text = (
-        "- type:: syndicator\n"
-        "  slug:: 2026-01-01_T\n"
-        "  date:: 2026-01-01\n"
-        "  custom-note:: keep me\n"
         "- Facebook\n"
         "\t- Intro\n"
         "\t  id:: 69d91349-8bad-453e-8fb5-7f0d865881df\n"
@@ -119,7 +113,6 @@ def test_parse_tolerates_logseq_mutations(tmp_path: Path):
         "\t\t- my own nested note\n"
     )
     state = parse_review_page("2026-01-01_T", text)
-    assert "custom-note:: keep me" in state.extra_props
     post = state.posts_for("facebook")[0]
     assert post.status == "published"
     assert "id:: 69d91349-8bad-453e-8fb5-7f0d865881df" in post.extra_props
@@ -128,57 +121,14 @@ def test_parse_tolerates_logseq_mutations(tmp_path: Path):
     # Round trip: unknown props and nested notes survive a rewrite.
     rendered = render_review_page(state)
     again = parse_review_page("2026-01-01_T", rendered)
-    assert "custom-note:: keep me" in again.extra_props
     assert "id:: 69d91349-8bad-453e-8fb5-7f0d865881df" in again.posts[0].extra_props
     assert "\t\t- my own nested note" in again.posts[0].children
     assert render_review_page(again) == rendered
 
 
-def test_parse_legacy_bare_page_properties():
-    text = (
-        "type:: syndicator\n"
-        "slug:: 2026-01-01_T\n"
-        "\n"
-        "- Facebook\n"
-        "\t- Intro\n"
-        "\t  channel:: facebook\n"
-        "\t  status:: draft\n"
-    )
-    state = parse_review_page("2026-01-01_T", text)
-    assert state.channel_state("facebook") == "draft"
-
-
-def test_parse_ignores_legacy_page_level_channel_status():
-    text = (
-        "- type:: syndicator\n"
-        "  slug:: 2026-01-01_T\n"
-        "  hugo-status:: published\n"
-        "  hugo-at:: 2026-06-01T00:00:00Z\n"
-        "  substack-status:: pending\n"
-        "  medium-status:: pending\n"
-        "  facebook-status:: published\n"
-        "  instagram-status:: published\n"
-        "  x-status:: published\n"
-    )
-    state = parse_review_page("2026-01-01_T", text)
-    rendered = render_review_page(state)
-    for prop in (
-        "hugo-status",
-        "hugo-at",
-        "substack-status",
-        "medium-status",
-        "facebook-status",
-        "instagram-status",
-        "x-status",
-    ):
-        assert f"{prop}::" not in rendered
-
-
 def test_parse_approved_and_scheduled_statuses():
     for status in ("approved", "scheduled"):
         text = (
-            "- type:: syndicator\n"
-            "  slug:: 2026-01-01_T\n"
             "- Facebook\n"
             "\t- Intro\n"
             "\t  channel:: facebook\n"

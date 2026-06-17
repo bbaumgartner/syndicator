@@ -3,10 +3,9 @@
 One page per blog post: ``pages/syndicator___<slug>.md`` (Logseq page name
 ``syndicator/<slug>``, the graph uses the triple-lowbar filename format).
 The page lists every generated social media post with caption and media so
-the review happens inside Logseq, and it carries *all* pipeline state as
-Logseq properties:
+the review happens inside Logseq, and it carries pipeline state as block
+properties on each social post:
 
-- page properties (first bullet block): slug, date, blog ref
 - blog property block (``type:: blog``): ``hugo-hash::`` — short hash the hugo
   channel last processed (visible inline on the post)
 - block properties (one block per social post):
@@ -35,8 +34,6 @@ from typing import Literal
 from pydantic import BaseModel
 
 from .config import ALL_CHANNELS
-from .model import BlogPost
-
 log = logging.getLogger(__name__)
 
 ChannelStatus = Literal["pending", "draft", "published"]
@@ -73,17 +70,6 @@ def page_filename(slug: str) -> str:
     return f"{PAGE_PREFIX}___{encoded}.md"
 
 
-def blog_page_ref(post: BlogPost) -> str:
-    """Logseq reference to the page/journal that contains the blog post.
-
-    The graph uses ``:journal/page-title-format "yyyy-MM-dd"``, so a journal
-    page's name equals the post's ``date::`` property.
-    """
-    if post.source_path.parent.name == "journals":
-        return f"[[{post.meta.date}]]"
-    return f"[[{post.source_path.stem}]]"
-
-
 # --- model ------------------------------------------------------------------
 
 
@@ -106,8 +92,6 @@ class ReviewState(BaseModel):
     """Everything the pipeline knows about one blog post, page-backed."""
 
     slug: str
-    blog_ref: str = ""  # e.g. "[[2026-04-08]]" or "[[Renan]]"
-    extra_props: list[str] = []  # unknown page property lines, preserved
     posts: list[SocialPostState] = []
 
     @property
@@ -196,19 +180,7 @@ def _post_block_lines(post: SocialPostState) -> list[str]:
 
 
 def render_review_page(state: ReviewState) -> str:
-    props: list[tuple[str, str]] = [
-        ("type", PAGE_PREFIX),
-        ("slug", state.slug),
-        ("date", state.date),
-    ]
-    if state.blog_ref:
-        props.append(("blog", state.blog_ref))
-
-    first = props[0]
-    lines = [f"- {first[0]}:: {first[1]}"]
-    lines.extend(f"  {key}:: {value}" for key, value in props[1:])
-    lines.extend(f"  {extra}" for extra in state.extra_props)
-
+    lines: list[str] = []
     for channel in _channel_order(state.posts):
         lines.append(f"- {_channel_label(channel)}")
         for post in state.posts_for(channel):
@@ -254,7 +226,6 @@ def _tokenize(lines: list[str]) -> list[_RawBlock]:
     return blocks
 
 
-_PAGE_PROP_HANDLED = {"type", "slug", "date", "blog", "hugo-status", "hugo-at"}
 _POST_PROP_HANDLED = {"channel", "kind", "index", "status", "publishing-date", "source-hash", "generated-at"}
 
 
@@ -265,18 +236,6 @@ def _coerce_status(value: str, allowed: tuple[str, ...], default: str) -> str:
     if value:
         log.warning("unknown status %r on review page — treating as %r", value, default)
     return default
-
-
-def _parse_page_props(block: _RawBlock, state: ReviewState) -> None:
-    props = block.props()
-    state.blog_ref = props.get("blog", "")
-    for key, value in props.items():
-        if key in _PAGE_PROP_HANDLED:
-            continue
-        elif key.endswith("-status"):
-            continue  # legacy page-level channel status, ignored
-        else:
-            state.extra_props.append(f"{key}:: {value}")
 
 
 def _parse_post_block(block: _RawBlock, children: list[str]) -> SocialPostState:
@@ -309,32 +268,12 @@ def _parse_post_block(block: _RawBlock, children: list[str]) -> SocialPostState:
 def parse_review_page(slug: str, text: str) -> ReviewState:
     lines = text.splitlines()
     state = ReviewState(slug=slug)
-    page_props_seen = False
-
-    # Legacy page-property format: bare ``key:: value`` lines before any bullet.
-    leading = _RawBlock(0, "", 0)
-    for line in lines:
-        if BULLET_RE.match(line) is not None:
-            break
-        if line.strip():
-            leading.prop_lines.append(line.strip())
-    leading_props = leading.props()
-    if leading_props.get("type") == PAGE_PREFIX or "slug" in leading_props:
-        _parse_page_props(leading, state)
-        page_props_seen = True
-
     blocks = _tokenize(lines)
     i = 0
     while i < len(blocks):
         block = blocks[i]
         props = block.props()
-        if not page_props_seen and (props.get("type") == PAGE_PREFIX or "slug" in props):
-            _parse_page_props(block, state)
-            page_props_seen = True
-            i += 1
-        elif "channel" in props:
-            # The post block's subtree (caption, media, user notes) is kept
-            # verbatim so rewrites never mangle it.
+        if "channel" in props:
             j = i + 1
             while j < len(blocks) and blocks[j].level > block.level:
                 j += 1
@@ -343,9 +282,6 @@ def parse_review_page(slug: str, text: str) -> ReviewState:
             i = j
         else:
             i += 1
-
-    if not page_props_seen:
-        log.warning("review page for %s has no property block — treating as fresh", slug)
     return state
 
 
@@ -388,15 +324,12 @@ class ReviewStore:
         states = []
         for path in sorted(self.pages_dir.glob(f"{PAGE_PREFIX}___*.md")):
             text = path.read_text(encoding="utf-8")
-            slug = _slug_from_page(path, text)
+            slug = _slug_from_page(path)
             states.append(parse_review_page(slug, text))
         return states
 
 
-def _slug_from_page(path: Path, text: str) -> str:
-    m = re.search(r"^\s*(?:- )?slug::\s*(.+)$", text, flags=re.MULTILINE)
-    if m is not None:
-        return m.group(1).strip()
+def _slug_from_page(path: Path) -> str:
     name = path.stem.removeprefix(f"{PAGE_PREFIX}___")
     return re.sub(r"%([0-9A-Fa-f]{2})", lambda mm: chr(int(mm.group(1), 16)), name)
 
