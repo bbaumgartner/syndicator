@@ -27,13 +27,10 @@ def make_post_block(channel: str = "facebook", index: int = 0, kind: str = "intr
                     status: str = "draft", h: str = "abc123") -> SocialPostState:
     return SocialPostState(
         channel=channel,
-        index=index,
-        kind=kind,
         title="Intro" if kind == "intro" else f"Abschnitt {index}",
         status=status,  # type: ignore[arg-type]
         publishing_date="2026-06-15",
         source_hash=h,
-        generated_at="2026-06-12T17:01:20Z",
         children=caption_children(
             f"Caption {channel} {index}\n\n#sailing",
             [f"../assets/syndicator/slug/{channel}/{index:02d}-x/img.jpg"],
@@ -102,8 +99,6 @@ def test_parse_tolerates_logseq_mutations(tmp_path: Path):
         "\t- Intro\n"
         "\t  id:: 69d91349-8bad-453e-8fb5-7f0d865881df\n"
         "\t  channel:: facebook\n"
-        "\t  kind:: intro\n"
-        "\t  index:: 0\n"
         "\t  status:: Published\n"  # user typo: capital letter
         "\t  source-hash:: aaa\n"
         "\t  collapsed:: true\n"
@@ -146,7 +141,7 @@ def test_stale_posts_and_replace_channel_posts():
         make_post_block(index=1, kind="section", status="draft", h="old1"),
     ]
     current = "sha256:" + "f" * 64
-    assert [p.index for p in state.stale_posts("facebook", current)] == [1]
+    assert [p.title for p in state.stale_posts("facebook", current)] == ["Abschnitt 1"]
     # Approved and scheduled blocks are never reported stale.
     for status in ("approved", "scheduled"):
         state.posts[1].status = status  # type: ignore[assignment]

@@ -224,7 +224,7 @@ def review(
         if not states:
             typer.echo("No review pages with social posts yet — run `syndicator catchup` first.")
             raise typer.Exit(1)
-        states.sort(key=lambda s: max((p.generated_at for p in s.posts), default=""))
+        states.sort(key=lambda s: s.slug)
         slug = states[-1].slug
 
     graph = cfg.local.saillog_dir.name

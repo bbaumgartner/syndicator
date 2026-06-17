@@ -29,7 +29,6 @@ from ..state import (
     ReviewStore,
     SocialPostState,
     caption_children,
-    now_iso,
     short_hash,
 )
 from .caption import _youtube_links, compose_post_text, generate_caption
@@ -95,13 +94,10 @@ def generate_post_block(
 
     return SocialPostState(
         channel=intent.channel,
-        index=intent.index,
-        kind=intent.kind,
         title=intent.section_title or ("Intro" if intent.kind == "intro" else ""),
         status="draft",
         publishing_date=intent.suggested_date,
         source_hash=short_hash(source_hash(post)),
-        generated_at=now_iso(),
         children=caption_children(text, media_rel, youtube),
     )
 
@@ -134,20 +130,20 @@ def export_social(
         url = links[lang]
 
         frozen = {
-            p.index: p
-            for p in state.posts_for(channel)
+            i: p
+            for i, p in enumerate(state.posts_for(channel))
             if p.status in ("approved", "scheduled", "published")
         }
         new_posts: list[SocialPostState] = []
-        for intent in intents:
-            if intent.index in frozen:
-                log.info("%s %s #%d: %s — frozen", post.slug, channel, intent.index, frozen[intent.index].status)
-                new_posts.append(frozen.pop(intent.index))
+        for i, intent in enumerate(intents):
+            if i in frozen:
+                log.info("%s %s #%d: %s — frozen", post.slug, channel, i, frozen[i].status)
+                new_posts.append(frozen.pop(i))
                 continue
             log.info("caption %s #%d (%s)", channel, intent.index, intent.kind)
             draft = generate_caption(post, intent, cfg, llm)
             new_posts.append(generate_post_block(post, intent, draft, url, cfg, llm))
-        # Published blocks whose index no longer exists in the plan stay listed.
+        # Frozen blocks beyond the current plan length stay listed.
         new_posts.extend(frozen.values())
 
         _cleanup_channel_dir(

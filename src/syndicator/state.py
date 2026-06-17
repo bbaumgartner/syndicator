@@ -27,7 +27,6 @@ import os
 import re
 import socket
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -48,10 +47,6 @@ PROP_RE = re.compile(r"^([A-Za-z0-9_-]+)::\s*(.*)$")
 
 # Characters Logseq percent-encodes in page file names (triple-lowbar format).
 _INVALID_FILENAME_CHARS = '%/\\:*?"<>|'
-
-
-def now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def short_hash(h: str) -> str:
@@ -77,13 +72,10 @@ class SocialPostState(BaseModel):
     """One generated social media post == one block on the review page."""
 
     channel: str
-    index: int = 0
-    kind: str = "section"  # intro | section
     title: str = ""  # block text: section title or "Intro"
     status: SocialPostStatus = "draft"
     publishing_date: str = ""
     source_hash: str = ""  # short hash of the blog post at generation time
-    generated_at: str = ""
     extra_props: list[str] = []  # unknown property lines (e.g. Logseq's id::)
     children: list[str] = []  # verbatim file lines: caption fence, media embeds
 
@@ -104,7 +96,7 @@ class ReviewState(BaseModel):
         return parts[1].replace("_", " ") if len(parts) > 1 else self.slug
 
     def posts_for(self, channel: str) -> list[SocialPostState]:
-        return sorted((p for p in self.posts if p.channel == channel), key=lambda p: p.index)
+        return [p for p in self.posts if p.channel == channel]
 
     def channel_state(self, channel: str) -> ChannelStatus:
         posts = self.posts_for(channel)
@@ -159,20 +151,15 @@ def caption_children(caption: str, media_rel_paths: list[str], youtube_links: li
 
 
 def _post_block_lines(post: SocialPostState) -> list[str]:
-    title = post.title or ("Intro" if post.kind == "intro" else f"Post {post.index:02d}")
-    lines = [f"\t- {title}"]
+    lines = [f"\t- {post.title or 'Intro'}"]
     props: list[tuple[str, str]] = [
         ("channel", post.channel),
-        ("kind", post.kind),
-        ("index", str(post.index)),
         ("status", post.status),
     ]
     if post.publishing_date:
         props.append(("publishing-date", post.publishing_date))
     if post.source_hash:
         props.append(("source-hash", post.source_hash))
-    if post.generated_at:
-        props.append(("generated-at", post.generated_at))
     lines.extend(f"\t  {key}:: {value}" for key, value in props)
     lines.extend(f"\t  {extra}" for extra in post.extra_props)
     lines.extend(post.children)
@@ -226,7 +213,7 @@ def _tokenize(lines: list[str]) -> list[_RawBlock]:
     return blocks
 
 
-_POST_PROP_HANDLED = {"channel", "kind", "index", "status", "publishing-date", "source-hash", "generated-at"}
+_POST_PROP_HANDLED = {"channel", "status", "publishing-date", "source-hash"}
 
 
 def _coerce_status(value: str, allowed: tuple[str, ...], default: str) -> str:
@@ -240,10 +227,6 @@ def _coerce_status(value: str, allowed: tuple[str, ...], default: str) -> str:
 
 def _parse_post_block(block: _RawBlock, children: list[str]) -> SocialPostState:
     props = block.props()
-    try:
-        index = int(props.get("index", "0"))
-    except ValueError:
-        index = 0
     extra = []
     for line in block.prop_lines:
         m = PROP_RE.match(line)
@@ -253,13 +236,10 @@ def _parse_post_block(block: _RawBlock, children: list[str]) -> SocialPostState:
         children.pop()
     return SocialPostState(
         channel=props["channel"],
-        index=index,
-        kind=props.get("kind", "section"),
         title=block.text,
         status=_coerce_status(props.get("status", "draft"), _SOCIAL_POST_STATUSES, "draft"),  # type: ignore[arg-type]
         publishing_date=props.get("publishing-date", ""),
         source_hash=props.get("source-hash", ""),
-        generated_at=props.get("generated-at", ""),
         extra_props=extra,
         children=children,
     )

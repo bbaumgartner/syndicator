@@ -50,7 +50,6 @@ def test_run_social_creates_review_page_and_media(tmp_path: Path):
     assert all(p.status == "draft" and p.source_hash == h for p in state.posts)
 
     intro = state.posts_for("facebook")[0]
-    assert intro.kind == "intro"
     assert intro.title == "Intro"
     assert intro.publishing_date
 
@@ -153,8 +152,6 @@ def test_catchup_order_and_state_transitions(tmp_path: Path):
         state.posts.append(
             SocialPostState(
                 channel=channel,
-                index=0,
-                kind="intro",
                 title="Intro",
                 status="published",
             )
