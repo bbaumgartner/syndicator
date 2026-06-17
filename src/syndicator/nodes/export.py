@@ -136,12 +136,14 @@ def export_social(
         url = links[lang]
 
         frozen = {
-            p.index: p for p in state.posts_for(channel) if p.status == "published"
+            p.index: p
+            for p in state.posts_for(channel)
+            if p.status in ("approved", "scheduled", "published")
         }
         new_posts: list[SocialPostState] = []
         for intent in intents:
             if intent.index in frozen:
-                log.info("%s %s #%d: published — frozen", post.slug, channel, intent.index)
+                log.info("%s %s #%d: %s — frozen", post.slug, channel, intent.index, frozen[intent.index].status)
                 new_posts.append(frozen.pop(intent.index))
                 continue
             log.info("caption %s #%d (%s)", channel, intent.index, intent.kind)

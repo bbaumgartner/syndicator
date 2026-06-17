@@ -9,12 +9,13 @@ Logseq properties:
 - page properties (first bullet block): hugo status/hash, translation cache,
   explicit status for channels without generated blocks (substack, medium,
   bootstrap-published socials)
-- block properties (one block per social post): ``status:: draft|published``,
-  ``publishing-date::``, ``source-hash::``, ...
+- block properties (one block per social post):
+  ``status:: draft|approved|scheduled|published``, ``publishing-date::``,
+  ``source-hash::``, ...
 
-The user flips ``status:: draft`` to ``published`` directly in Logseq after
-posting manually. Channels with blocks derive their status from the blocks:
-all published -> published, otherwise draft.
+The user advances ``status::`` on each block in Logseq (draft → approved →
+scheduled → published). Channels with blocks derive their status from the
+blocks: all published -> published, otherwise draft.
 
 Hashes on pages are shortened to 16 hex chars (pure equality tokens).
 """
@@ -39,7 +40,9 @@ from .model import BlogPost
 log = logging.getLogger(__name__)
 
 ChannelStatus = Literal["pending", "draft", "published"]
-SocialPostStatus = Literal["draft", "published"]
+SocialPostStatus = Literal["draft", "approved", "scheduled", "published"]
+
+_SOCIAL_POST_STATUSES = ("draft", "approved", "scheduled", "published")
 
 PAGE_PREFIX = "syndicator"
 
@@ -138,11 +141,11 @@ class ReviewState(BaseModel):
         return "pending"
 
     def stale_posts(self, channel: str, current_hash: str) -> list[SocialPostState]:
-        """Non-published posts generated from an older source version."""
+        """Draft posts generated from an older source version."""
         return [
             p
             for p in self.posts_for(channel)
-            if p.status != "published" and p.source_hash != short_hash(current_hash)
+            if p.status == "draft" and p.source_hash != short_hash(current_hash)
         ]
 
     def replace_channel_posts(self, channel: str, posts: list[SocialPostState]) -> None:
@@ -323,7 +326,7 @@ def _parse_post_block(block: _RawBlock, children: list[str]) -> SocialPostState:
         index=index,
         kind=props.get("kind", "section"),
         title=block.text,
-        status=_coerce_status(props.get("status", "draft"), ("draft", "published"), "draft"),  # type: ignore[arg-type]
+        status=_coerce_status(props.get("status", "draft"), _SOCIAL_POST_STATUSES, "draft"),  # type: ignore[arg-type]
         publishing_date=props.get("publishing-date", ""),
         source_hash=props.get("source-hash", ""),
         generated_at=props.get("generated-at", ""),

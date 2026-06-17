@@ -160,6 +160,21 @@ def test_parse_legacy_bare_page_properties():
     assert state.channel_state("facebook") == "draft"
 
 
+def test_parse_approved_and_scheduled_statuses():
+    for status in ("approved", "scheduled"):
+        text = (
+            "- type:: syndicator\n"
+            "  slug:: 2026-01-01_T\n"
+            "- Facebook\n"
+            "\t- Intro\n"
+            "\t  channel:: facebook\n"
+            f"\t  status:: {status}\n"
+        )
+        state = parse_review_page("2026-01-01_T", text)
+        assert state.posts_for("facebook")[0].status == status
+        assert state.channel_state("facebook") == "draft"
+
+
 def test_stale_posts_and_replace_channel_posts():
     state = ReviewState(slug="2026-01-01_T")
     state.posts = [
@@ -168,7 +183,12 @@ def test_stale_posts_and_replace_channel_posts():
     ]
     current = "sha256:" + "f" * 64
     assert [p.index for p in state.stale_posts("facebook", current)] == [1]
-    # Published blocks are never reported stale.
+    # Approved and scheduled blocks are never reported stale.
+    for status in ("approved", "scheduled"):
+        state.posts[1].status = status  # type: ignore[assignment]
+        assert state.stale_posts("facebook", current) == []
+    state.posts[1].status = "draft"
+    # Fresh source hash clears staleness for draft posts.
     state.posts[1].source_hash = short_hash(current)
     assert state.stale_posts("facebook", current) == []
 
