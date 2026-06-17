@@ -6,9 +6,11 @@ The page lists every generated social media post with caption and media so
 the review happens inside Logseq, and it carries *all* pipeline state as
 Logseq properties:
 
-- page properties (first bullet block): hugo status/hash,
+- page properties (first bullet block): hugo status,
   explicit status for channels without generated blocks (substack, medium,
   bootstrap-published socials)
+- blog property block (``type:: blog``): ``hugo-hash::`` — short hash the hugo
+  channel last processed (visible inline on the post)
 - block properties (one block per social post):
   ``status:: draft|approved|scheduled|published``, ``publishing-date::``,
   ``source-hash::``, ...
@@ -109,7 +111,6 @@ class ReviewState(BaseModel):
     blog_ref: str = ""  # e.g. "[[2026-04-08]]" or "[[Renan]]"
     hugo_status: ChannelStatus = "pending"
     hugo_at: str = ""
-    hugo_hash: str = ""  # short hash the hugo channel last processed
     channel_status: dict[str, str] = {}  # explicit status for blockless channels
     extra_props: list[str] = []  # unknown page property lines, preserved
     posts: list[SocialPostState] = []
@@ -216,8 +217,6 @@ def render_review_page(state: ReviewState) -> str:
     props.append(("hugo-status", state.hugo_status))
     if state.hugo_at:
         props.append(("hugo-at", state.hugo_at))
-    if state.hugo_hash:
-        props.append(("hugo-hash", state.hugo_hash))
     for channel in sorted(state.channel_status):
         props.append((f"{channel}-status", state.channel_status[channel]))
 
@@ -271,7 +270,7 @@ def _tokenize(lines: list[str]) -> list[_RawBlock]:
     return blocks
 
 
-_PAGE_PROP_HANDLED = {"type", "slug", "date", "blog", "hugo-status", "hugo-at", "hugo-hash"}
+_PAGE_PROP_HANDLED = {"type", "slug", "date", "blog", "hugo-status", "hugo-at"}
 _POST_PROP_HANDLED = {"channel", "kind", "index", "status", "publishing-date", "source-hash", "generated-at"}
 
 
@@ -291,7 +290,6 @@ def _parse_page_props(block: _RawBlock, state: ReviewState) -> None:
         props.get("hugo-status", "pending"), ("pending", "draft", "published"), "pending"
     )
     state.hugo_at = props.get("hugo-at", "")
-    state.hugo_hash = props.get("hugo-hash", "")
     for key, value in props.items():
         if key in _PAGE_PROP_HANDLED:
             continue

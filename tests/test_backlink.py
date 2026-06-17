@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from syndicator.nodes.backlink import ensure_syndication_link
+from syndicator.nodes.backlink import ensure_syndication_link, read_hugo_hash, set_hugo_hash
 from syndicator.nodes.extract import extract_posts, source_hash
 
 from conftest import make_cfg
@@ -72,3 +72,35 @@ def test_existing_link_is_updated_not_duplicated(tmp_path: Path):
     updated = journal.read_text(encoding="utf-8")
     assert updated.count("syndication::") == 1
     assert "syndication:: [[syndicator/2026-04-08_Segeln]]" in updated
+
+
+def test_hugo_hash_on_journal_block_is_idempotent_and_hash_stable(tmp_path: Path):
+    cfg = make_cfg(tmp_path)
+    journal = cfg.journals_dir / "2026_04_08.md"
+    post = _online_post(journal)
+    h = source_hash(post)
+
+    assert set_hugo_hash(post, "abc123") is True
+    text = journal.read_text(encoding="utf-8")
+    assert "\t  hugo-hash:: abc123" in text
+    assert read_hugo_hash(post) == "abc123"
+
+    reparsed = _online_post(journal)
+    assert source_hash(reparsed) == h
+    assert set_hugo_hash(reparsed, "abc123") is False
+    assert journal.read_text(encoding="utf-8") == text
+
+    assert set_hugo_hash(reparsed, "") is True
+    assert "hugo-hash::" not in journal.read_text(encoding="utf-8")
+    assert read_hugo_hash(_online_post(journal)) == ""
+
+
+def test_hugo_hash_on_page_block(tmp_path: Path):
+    cfg = make_cfg(tmp_path)
+    page = cfg.pages_dir / "Renan.md"
+    post = extract_posts(page)[0]
+
+    assert set_hugo_hash(post, "deadbeef") is True
+    text = page.read_text(encoding="utf-8")
+    assert "hugo-hash:: deadbeef" in text
+    assert read_hugo_hash(extract_posts(page)[0]) == "deadbeef"

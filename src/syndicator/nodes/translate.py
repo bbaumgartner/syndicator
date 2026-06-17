@@ -5,8 +5,8 @@ Behavior port of the old cmd/translate: identical prompts, temperatures
 per-language disclaimer, summary = first paragraph of the translated body,
 pirate speak keeps the original title.
 
-Called only when ``hugo-hash`` on the review page differs from the current
-source hash (see ``run_site_for_post``); there is no separate translation
+Called only when ``hugo-hash`` on the blog property block differs from the
+current source hash (see ``run_site_for_post``); there is no separate translation
 cache.
 """
 

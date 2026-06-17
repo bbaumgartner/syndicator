@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from syndicator.nodes.backlink import read_hugo_hash
 from syndicator.nodes.bootstrap import bootstrap
 from syndicator.nodes.extract import scan_blog_posts, source_hash
 from syndicator.nodes.hugo import write_bundle
@@ -45,7 +46,6 @@ def test_store_roundtrip_and_channel_state(tmp_path: Path):
     store = ReviewStore(tmp_path / "pages")
     state = ReviewState(slug="2026-01-01_Test Post", blog_ref="[[2026-01-01]]")
     state.hugo_status = "published"
-    state.hugo_hash = "aaa"
     state.channel_status = {"substack": "pending"}
     state.posts = [
         make_post_block(index=0),
@@ -108,7 +108,6 @@ def test_parse_tolerates_logseq_mutations(tmp_path: Path):
         "  slug:: 2026-01-01_T\n"
         "  date:: 2026-01-01\n"
         "  hugo-status:: published\n"
-        "  hugo-hash:: aaa\n"
         "  custom-note:: keep me\n"
         "- Facebook\n"
         "\t- Intro\n"
@@ -224,13 +223,15 @@ def test_bootstrap_marks_hugo_and_renan(tmp_path: Path):
 
     charly = store.load("2026-05-19_Charly_Superstar")
     assert charly.hugo_status == "published"
-    assert charly.hugo_hash == short_hash(source_hash(posts["2026-05-19_Charly_Superstar"]))
+    assert read_hugo_hash(posts["2026-05-19_Charly_Superstar"]) == short_hash(
+        source_hash(posts["2026-05-19_Charly_Superstar"])
+    )
     assert charly.channel_state("facebook") == "pending"
     assert charly.channel_state("substack") == "pending"
 
     athen = store.load("2026-06-03_Athen")
     assert athen.hugo_status == "published"
-    assert athen.hugo_hash == ""  # stale -> regenerate on first run
+    assert read_hugo_hash(posts["2026-06-03_Athen"]) == ""  # stale -> regenerate on first run
 
     # The blog posts got their syndication:: backlink — without hash changes.
     rescanned = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}

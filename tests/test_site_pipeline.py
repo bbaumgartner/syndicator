@@ -10,6 +10,7 @@ from syndicator.nodes.extract import scan_blog_posts, source_hash
 from syndicator.nodes.journeymap import generate_journey_map
 from syndicator.nodes.publish_git import commit_and_push, has_changes
 from syndicator.nodes.watch import is_relevant_path
+from syndicator.nodes.backlink import read_hugo_hash, set_hugo_hash
 from syndicator.pipeline import run_site_for_post, site_changed_posts
 from syndicator.state import ReviewStore, short_hash
 
@@ -25,9 +26,7 @@ def test_site_changed_posts_detection(tmp_path: Path):
     assert len(changed) == len(posts)  # nothing processed yet
 
     post = posts[0]
-    state = store.load(post.slug)
-    state.hugo_hash = short_hash(source_hash(post))
-    store.save(state)
+    set_hugo_hash(post, short_hash(source_hash(post)))
     assert len(site_changed_posts(cfg, store)) == len(posts) - 1
 
 
@@ -68,12 +67,12 @@ def test_run_site_try_run_does_real_work_but_records_no_hugo_state(tmp_path: Pat
     assert (bundle / "index.en.md").exists()
     assert llm.calls > 0
     # Hugo state stays unrecorded so the next real run picks the post up again...
-    assert store.load(post.slug).hugo_hash == ""
+    assert read_hugo_hash(post) == ""
     # ...and re-translates before recording hugo-hash.
     llm2 = FakeLLM()
     assert run_site_for_post(cfg, post, llm2, store) is True
     assert llm2.calls > 0
-    assert store.load(post.slug).hugo_hash != ""
+    assert read_hugo_hash(post) != ""
 
     # Third run: hugo-hash matches — skipped entirely.
     llm3 = FakeLLM()

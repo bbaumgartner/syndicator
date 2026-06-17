@@ -14,7 +14,7 @@ from datetime import date
 from .config import Config
 from .llm import LLMClient
 from .model import BlogPost
-from .nodes.backlink import ensure_syndication_link
+from .nodes.backlink import ensure_syndication_link, read_hugo_hash, set_hugo_hash
 from .nodes.export import export_social
 from .nodes.extract import scan_blog_posts, source_hash
 from .state import PipelineLock, ReviewStore, blog_page_ref, now_iso, short_hash
@@ -118,7 +118,7 @@ def site_changed_posts(cfg: Config, store: ReviewStore) -> list[BlogPost]:
     """Posts whose content differs from what the hugo channel last processed."""
     changed = []
     for post in scan_posts(cfg):
-        if store.load(post.slug).hugo_hash != short_hash(source_hash(post)):
+        if read_hugo_hash(post) != short_hash(source_hash(post)):
             changed.append(post)
     return changed
 
@@ -142,8 +142,7 @@ def run_site_for_post(
     from .nodes.translate import translate_bundle
 
     h = short_hash(source_hash(post))
-    state = store.load(post.slug)
-    if not force and state.hugo_hash == h:
+    if not force and read_hugo_hash(post) == h:
         return False
 
     bundle = write_bundle(post, cfg.hugo_posts_dir)
@@ -159,8 +158,8 @@ def run_site_for_post(
         # forever. A failed push raises and leaves the state untouched.
         state = store.load(post.slug)
         state.blog_ref = blog_page_ref(post)
-        state.hugo_hash = h
         store.save(state)
+        set_hugo_hash(post, h)
         ensure_syndication_link(post)
     return True
 
@@ -219,8 +218,8 @@ def run_all(
                             state = store.load(post.slug)
                             state.hugo_status = "published"
                             state.hugo_at = now_iso()
-                            state.hugo_hash = short_hash(source_hash(post))
                             store.save(state)
+                            set_hugo_hash(post, short_hash(source_hash(post)))
                             url = post_url(cfg, post.slug, cfg.shared.site.default_language)
                             wait_for_deploy(cfg, url)
             else:

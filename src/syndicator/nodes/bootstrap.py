@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from ..config import ALL_CHANNELS, Config
 from ..model import BlogPost
 from ..state import ReviewState, ReviewStore, blog_page_ref, now_iso, short_hash
-from .backlink import ensure_syndication_link
+from .backlink import ensure_syndication_link, read_hugo_hash, set_hugo_hash
 from .extract import scan_blog_posts, source_hash
 from .hugo import index_filename, render_index
 
@@ -45,8 +45,8 @@ def bootstrap(cfg: Config, social_published_slugs: list[str] | None = None) -> B
     result = BootstrapResult(posts=len(posts))
 
     for post in posts:
-        state = _bootstrap_post(cfg, store, post, published_slugs)
-        if state.hugo_hash:
+        hugo_hash = _bootstrap_post(cfg, store, post, published_slugs)
+        if hugo_hash:
             result.hugo_in_sync.append(post.slug)
         else:
             result.hugo_stale.append(post.slug)
@@ -62,7 +62,7 @@ def _article_channels(cfg: Config) -> list[str]:
 
 def _bootstrap_post(
     cfg: Config, store: ReviewStore, post: BlogPost, published_slugs: list[str]
-) -> ReviewState:
+) -> str:
     h = short_hash(source_hash(post))
     state = store.load(post.slug)
     state.blog_ref = blog_page_ref(post)
@@ -80,7 +80,7 @@ def _bootstrap_post(
         for lang in cfg.shared.languages.supported
         if lang != post.lang_code
     )
-    state.hugo_hash = h if hugo_matches and translations_complete else ""
+    hugo_hash = h if hugo_matches and translations_complete else ""
     if not hugo_matches:
         log.info("hugo bundle stale or missing for %s — will be regenerated on first run", post.slug)
     elif not translations_complete:
@@ -96,5 +96,6 @@ def _bootstrap_post(
             state.channel_status.setdefault(name, "pending")
 
     store.save(state)
+    set_hugo_hash(post, hugo_hash)
     ensure_syndication_link(post)
-    return state
+    return hugo_hash
