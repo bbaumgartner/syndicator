@@ -21,7 +21,7 @@ translate:
 
 social:
   # Suggested manual posting cadence; used to compute suggested dates in exports.
-  posts_per_week: 3
+  posts_per_week: 7
 
 watch:
   # Run the pipeline once no file event arrived for this long (edits and
