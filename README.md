@@ -25,9 +25,9 @@ the generated review pages (`<saillog>/pages/syndicator___<slug>.md`); adapted
 media land in `<saillog>/assets/syndicator/`. Both are part of the graph, which
 Syncthing mirrors between the Mac and the Ubuntu server. The blog post itself
 gets a `syndication:: [[syndicator/<slug>]]` property linking to its review
-page. State is tracked per post *and* per channel (hugo, facebook, instagram,
-x, substack, medium) — with per-post-block status for the social channels —
-which drives the catch-up backlog for old posts.
+page. State is tracked per social channel (facebook, instagram, x) via
+per-post-block status on the review page, which drives the catch-up backlog
+for old posts. Hugo progress is tracked on the blog post via ``hugo-hash::``.
 
 ## Setup
 

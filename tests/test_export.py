@@ -6,7 +6,7 @@ from PIL import Image
 
 from syndicator.nodes.extract import scan_blog_posts, source_hash
 from syndicator.pipeline import next_catchup_post, run_social_for_post
-from syndicator.state import ReviewStore, page_filename, short_hash
+from syndicator.state import ReviewStore, SocialPostState, page_filename, short_hash
 
 from conftest import FakeLLM, make_cfg
 
@@ -148,10 +148,18 @@ def test_catchup_order_and_state_transitions(tmp_path: Path):
     assert first is not None
     assert first.slug == "2024-06-14_Renan"  # oldest post first
 
-    # Simulate Renan already published (bootstrap behavior: explicit override).
+    # Simulate Renan already published on all social channels.
     state = store.load(first.slug)
     for channel in ("facebook", "instagram", "x"):
-        state.channel_status[channel] = "published"
+        state.posts.append(
+            SocialPostState(
+                channel=channel,
+                index=0,
+                kind="intro",
+                title="Intro",
+                status="published",
+            )
+        )
     store.save(state)
     second = next_catchup_post(cfg, store)
     assert second.slug == "2026-01-17_Frühlingspläne_2026"

@@ -6,9 +6,7 @@ The page lists every generated social media post with caption and media so
 the review happens inside Logseq, and it carries *all* pipeline state as
 Logseq properties:
 
-- page properties (first bullet block): hugo status,
-  explicit status for channels without generated blocks (substack, medium,
-  bootstrap-published socials)
+- page properties (first bullet block): slug, date, blog ref
 - blog property block (``type:: blog``): ``hugo-hash::`` — short hash the hugo
   channel last processed (visible inline on the post)
 - block properties (one block per social post):
@@ -109,9 +107,6 @@ class ReviewState(BaseModel):
 
     slug: str
     blog_ref: str = ""  # e.g. "[[2026-04-08]]" or "[[Renan]]"
-    hugo_status: ChannelStatus = "pending"
-    hugo_at: str = ""
-    channel_status: dict[str, str] = {}  # explicit status for blockless channels
     extra_props: list[str] = []  # unknown page property lines, preserved
     posts: list[SocialPostState] = []
 
@@ -128,16 +123,11 @@ class ReviewState(BaseModel):
         return sorted((p for p in self.posts if p.channel == channel), key=lambda p: p.index)
 
     def channel_state(self, channel: str) -> ChannelStatus:
-        if channel == "hugo":
-            return self.hugo_status
         posts = self.posts_for(channel)
         if posts:
             if all(p.status == "published" for p in posts):
                 return "published"
             return "draft"
-        explicit = self.channel_status.get(channel, "")
-        if explicit in ("pending", "draft", "published"):
-            return explicit  # type: ignore[return-value]
         return "pending"
 
     def stale_posts(self, channel: str, current_hash: str) -> list[SocialPostState]:
@@ -150,7 +140,6 @@ class ReviewState(BaseModel):
 
     def replace_channel_posts(self, channel: str, posts: list[SocialPostState]) -> None:
         self.posts = [p for p in self.posts if p.channel != channel] + posts
-        self.channel_status.pop(channel, None)  # derived from blocks again
 
 
 # --- page rendering ---------------------------------------------------------
@@ -214,11 +203,6 @@ def render_review_page(state: ReviewState) -> str:
     ]
     if state.blog_ref:
         props.append(("blog", state.blog_ref))
-    props.append(("hugo-status", state.hugo_status))
-    if state.hugo_at:
-        props.append(("hugo-at", state.hugo_at))
-    for channel in sorted(state.channel_status):
-        props.append((f"{channel}-status", state.channel_status[channel]))
 
     first = props[0]
     lines = [f"- {first[0]}:: {first[1]}"]
@@ -286,17 +270,11 @@ def _coerce_status(value: str, allowed: tuple[str, ...], default: str) -> str:
 def _parse_page_props(block: _RawBlock, state: ReviewState) -> None:
     props = block.props()
     state.blog_ref = props.get("blog", "")
-    state.hugo_status = _coerce_status(  # type: ignore[assignment]
-        props.get("hugo-status", "pending"), ("pending", "draft", "published"), "pending"
-    )
-    state.hugo_at = props.get("hugo-at", "")
     for key, value in props.items():
         if key in _PAGE_PROP_HANDLED:
             continue
         elif key.endswith("-status"):
-            state.channel_status[key.removesuffix("-status")] = _coerce_status(
-                value, ("pending", "draft", "published"), "pending"
-            )
+            continue  # legacy page-level channel status, ignored
         else:
             state.extra_props.append(f"{key}:: {value}")
 

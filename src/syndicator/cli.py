@@ -26,30 +26,23 @@ def version() -> None:
 
 
 @app.command()
-def bootstrap(
-    social_published: list[str] = typer.Option(
-        None,
-        "--social-published",
-        help="Slugs already published on social/article channels (default: Renan).",
-    ),
-) -> None:
+def bootstrap() -> None:
     """Create review pages with initial state for all existing posts."""
     from .config import load_config
     from .nodes.bootstrap import bootstrap as run_bootstrap
 
     cfg = load_config()
-    result = run_bootstrap(cfg, social_published or None)
+    result = run_bootstrap(cfg)
     typer.echo(f"Bootstrapped {result.posts} posts -> review pages in {cfg.pages_dir}")
     typer.echo(f"  hugo in sync: {len(result.hugo_in_sync)}")
     if result.hugo_stale:
         typer.echo(f"  hugo stale (will regenerate on first run): {', '.join(result.hugo_stale)}")
-    typer.echo(f"  social already published: {', '.join(result.social_published) or '-'}")
 
 
 @app.command()
 def status() -> None:
     """Show per-channel status and the catch-up backlog."""
-    from .config import ALL_CHANNELS, load_config
+    from .config import load_config
     from .state import ReviewStore
 
     cfg = load_config()
@@ -58,7 +51,7 @@ def status() -> None:
         typer.echo("No review pages yet — run `syndicator bootstrap` first.")
         raise typer.Exit(1)
 
-    channels = ALL_CHANNELS
+    channels = list(cfg.social_channels())
     header = f"{'slug':44s} " + " ".join(f"{c[:4]:>4s}" for c in channels)
     typer.echo(header)
     typer.echo("-" * len(header))
@@ -86,7 +79,7 @@ def done(
     Convenience wrapper: the same effect as flipping ``status:: draft`` to
     ``published`` on the review page blocks directly in Logseq.
     """
-    from .config import ALL_CHANNELS, load_config
+    from .config import load_config
     from .state import ReviewStore
 
     cfg = load_config()
@@ -95,22 +88,23 @@ def done(
         typer.echo(f"No review page for {slug} — run `syndicator catchup --post {slug}` first.")
         raise typer.Exit(1)
     state = store.load(slug)
+    social = list(cfg.social_channels())
 
-    targets = channel or [c for c in ALL_CHANNELS if state.channel_state(c) == "draft"]
+    targets = channel or [c for c in social if state.channel_state(c) == "draft"]
     if not targets:
         typer.echo("Nothing to mark: no draft channels and none given via --channel.")
         raise typer.Exit(1)
 
     for c in targets:
-        if c not in ALL_CHANNELS:
+        if c not in social:
             typer.echo(f"Unknown channel: {c}")
             raise typer.Exit(1)
         posts = state.posts_for(c)
-        if posts:
-            for p in posts:
-                p.status = "published"
-        else:
-            state.channel_status[c] = "published"
+        if not posts:
+            typer.echo(f"  {slug} {c}: no blocks on review page — flip status:: in Logseq")
+            raise typer.Exit(1)
+        for p in posts:
+            p.status = "published"
         typer.echo(f"  {slug} {c} -> published")
     store.save(state)
 

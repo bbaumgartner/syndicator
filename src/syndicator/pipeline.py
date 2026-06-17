@@ -17,7 +17,7 @@ from .model import BlogPost
 from .nodes.backlink import ensure_syndication_link, read_hugo_hash, set_hugo_hash
 from .nodes.export import export_social
 from .nodes.extract import scan_blog_posts, source_hash
-from .state import PipelineLock, ReviewStore, blog_page_ref, now_iso, short_hash
+from .state import PipelineLock, ReviewStore, blog_page_ref, short_hash
 
 log = logging.getLogger(__name__)
 
@@ -198,7 +198,7 @@ def run_all(
 
         if not social_only:
             for post in posts:
-                was_new = store.load(post.slug).hugo_status == "pending"
+                was_new = read_hugo_hash(post) == ""
                 if run_site_for_post(cfg, post, llm, store, try_run=try_run, force=force):
                     site_changed = True
                     if was_new:
@@ -215,10 +215,6 @@ def run_all(
                     pushed = commit_and_push(cfg)
                     if pushed:
                         for post in new_posts:
-                            state = store.load(post.slug)
-                            state.hugo_status = "published"
-                            state.hugo_at = now_iso()
-                            store.save(state)
                             set_hugo_hash(post, short_hash(source_hash(post)))
                             url = post_url(cfg, post.slug, cfg.shared.site.default_language)
                             wait_for_deploy(cfg, url)

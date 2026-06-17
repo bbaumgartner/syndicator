@@ -17,9 +17,9 @@ detect changed/new posts (state on review pages: saillog/pages/syndicator___<slu
 ```
 
 - **State and review** live on one generated Logseq page per blog post
-  (`syndicator/<slug>`): page properties carry the hugo/translation state,
-  one block per social post carries caption, media and `status::`. The blog
-  post links to its review page via a `syndication::` property. Adapted media
+  (`syndicator/<slug>`): one block per social post carries caption, media and
+  `status::`; the blog post links to its review page via a `syndication::`
+  property and carries ``hugo-hash::`` for site pipeline state. Adapted media
   live in `assets/syndicator/<slug>/` — everything is part of the graph and
   mirrored by Syncthing.
 - **One watcher**: the daemon runs on the server. It ignores its own write
@@ -115,9 +115,7 @@ deploy, then generates the social post blocks. Review on the Mac in Logseq:
    immutable.
 
 `uv run syndicator done <slug>` still exists as a shortcut to mark all draft
-blocks at once. Substack/Medium stay manual (Narrareach) for now; track them
-with `syndicator done <slug> -c substack -c medium` or by editing the
-`substack-status::` / `medium-status::` page properties.
+social blocks at once.
 
 ### Catch-up (old posts, over the next weeks/months)
 
