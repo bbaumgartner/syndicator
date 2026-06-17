@@ -3,7 +3,8 @@
 Behavior port of the old cmd/translate: identical prompts, temperatures
 (0.3 / 0.9 for pirate speak), positional asset-reference restoration,
 per-language disclaimer, summary = first paragraph of the translated body,
-pirate speak keeps the original title.
+pirate speak keeps the original title and is always derived from the English
+body (translated first when the post is not already in English).
 
 Called only when ``hugo-hash`` on the blog property block differs from the
 current source hash (see ``run_site_for_post``); there is no separate translation
@@ -144,6 +145,30 @@ def translation_target_langs(cfg: Config, post: BlogPost) -> list[str]:
     return [lang for lang in cfg.shared.languages.supported if lang != post.lang_code]
 
 
+def _translate_body(
+    llm: LLMClient,
+    cfg: Config,
+    text: str,
+    source_lang: str,
+    target_lang: str,
+    asset_source: str,
+) -> str:
+    body = translate_text(llm, cfg, text, source_lang, target_lang)
+    return restore_asset_references(asset_source, body)
+
+
+def _english_body_for_pirate(
+    llm: LLMClient,
+    cfg: Config,
+    source_lang: str,
+    source_body: str,
+    english_body: str | None,
+) -> str:
+    if english_body is not None:
+        return english_body
+    return _translate_body(llm, cfg, source_body, source_lang, "en", source_body)
+
+
 def translate_bundle(
     post: BlogPost,
     cfg: Config,
@@ -157,13 +182,23 @@ def translate_bundle(
     """
     source_lang = post.lang_code
     source_body = transform_content(build_content(post))
+    english_body: str | None = source_body if source_lang == "en" else None
 
     translated_langs: list[str] = []
     for lang in translation_target_langs(cfg, post):
         out_file = bundle_dir / f"index.{lang}.md"
         log.info("%s: translating to %s ...", post.slug, lang)
-        body = translate_text(llm, cfg, source_body, source_lang, lang)
-        body = restore_asset_references(source_body, body)
+        if lang == "arrr":
+            english_body = _english_body_for_pirate(
+                llm, cfg, source_lang, source_body, english_body
+            )
+            body = _translate_body(llm, cfg, english_body, "en", "arrr", source_body)
+        elif lang == "en" and english_body is not None:
+            body = english_body
+        else:
+            body = _translate_body(llm, cfg, source_body, source_lang, lang, source_body)
+            if lang == "en":
+                english_body = body
         body = body + "\n\n" + disclaimer_for(lang)
 
         # Pirate speak keeps the original title (avoids comically long results).

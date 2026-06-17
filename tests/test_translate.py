@@ -62,6 +62,8 @@ def test_translate_bundle_writes_files(tmp_path: Path):
     # Pirate speak keeps the original title.
     arrr = (bundle / "index.arrr.md").read_text(encoding="utf-8")
     assert 'title = "Charly Superstar"' in arrr
+    # Pirate is derived from the English translation, not the German source.
+    assert "[translate_arrr] [translate_en]" in arrr
 
     # 5 body translations + 4 title translations (no pirate title).
     assert llm.calls == 9
