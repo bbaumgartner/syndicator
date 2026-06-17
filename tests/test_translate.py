@@ -10,8 +10,6 @@ from syndicator.nodes.translate import (
     restore_asset_references,
     translate_bundle,
 )
-from syndicator.state import ReviewStore
-
 from conftest import FakeLLM, make_cfg
 
 
@@ -44,15 +42,14 @@ def test_disclaimers_exist_for_all_languages():
         assert disclaimer_for(lang).startswith("---")
 
 
-def test_translate_bundle_writes_files_and_caches(tmp_path: Path):
+def test_translate_bundle_writes_files(tmp_path: Path):
     cfg = make_cfg(tmp_path)
     posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
     post = posts["2026-05-19_Charly_Superstar"]  # German source
     bundle = write_bundle(post, cfg.hugo_posts_dir)
-    store = ReviewStore(cfg.pages_dir)
 
     llm = FakeLLM()
-    langs = translate_bundle(post, cfg, llm, store, bundle)
+    langs = translate_bundle(post, cfg, llm, bundle)
     assert sorted(langs) == ["arrr", "en", "es", "fr", "it"]
 
     en = (bundle / "index.en.md").read_text(encoding="utf-8")
@@ -69,15 +66,10 @@ def test_translate_bundle_writes_files_and_caches(tmp_path: Path):
     # 5 body translations + 4 title translations (no pirate title).
     assert llm.calls == 9
 
-    # Second run: everything cached, no LLM calls.
-    llm2 = FakeLLM()
-    assert translate_bundle(post, cfg, llm2, store, bundle) == []
-    assert llm2.calls == 0
-
-    # Source change invalidates the cache.
+    # Source change: translate_bundle always retranslates when called.
     post.blocks[0].raw += " neu"
     llm3 = FakeLLM()
-    assert len(translate_bundle(post, cfg, llm3, store, bundle)) == 5
+    assert len(translate_bundle(post, cfg, llm3, bundle)) == 5
 
 
 def test_translate_bundle_english_source_targets(tmp_path: Path):
@@ -85,9 +77,8 @@ def test_translate_bundle_english_source_targets(tmp_path: Path):
     posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
     renan = posts["2024-06-14_Renan"]
     bundle = write_bundle(renan, cfg.hugo_posts_dir)
-    store = ReviewStore(cfg.pages_dir)
 
-    langs = translate_bundle(renan, cfg, FakeLLM(), store, bundle)
+    langs = translate_bundle(renan, cfg, FakeLLM(), bundle)
     assert sorted(langs) == ["arrr", "de", "es", "fr", "it"]
     assert (bundle / "index.de.md").exists()
     assert not (bundle / "index.en.md").read_text(encoding="utf-8").startswith("[translate")

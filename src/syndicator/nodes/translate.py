@@ -5,9 +5,9 @@ Behavior port of the old cmd/translate: identical prompts, temperatures
 per-language disclaimer, summary = first paragraph of the translated body,
 pirate speak keeps the original title.
 
-New: a per-language cache keyed on the post's source hash (stored as
-``translation-<lang>::`` properties on the review page), so unchanged posts
-are never re-translated.
+Called only when ``hugo-hash`` on the review page differs from the current
+source hash (see ``run_site_for_post``); there is no separate translation
+cache.
 """
 
 from __future__ import annotations
@@ -21,8 +21,6 @@ from jinja2 import Environment, FileSystemLoader
 from ..config import REPO_ROOT, Config
 from ..llm import LLMClient
 from ..model import LANGUAGE_NAMES, BlogPost
-from ..state import ReviewStore, short_hash
-from .extract import source_hash
 from .hugo import build_content, escape_toml, transform_content
 
 log = logging.getLogger(__name__)
@@ -142,34 +140,27 @@ def translated_index_content(
     )
 
 
+def translation_target_langs(cfg: Config, post: BlogPost) -> list[str]:
+    return [lang for lang in cfg.shared.languages.supported if lang != post.lang_code]
+
+
 def translate_bundle(
     post: BlogPost,
     cfg: Config,
     llm: LLMClient,
-    store: ReviewStore,
     bundle_dir: Path,
-    force: bool = False,
 ) -> list[str]:
-    """Translate the post into all missing target languages.
+    """Translate the post into all target languages.
 
-    Writes index.<lang>.md next to the source-language index file and records
-    the source hash per language on the review page (the cache).
-    Returns the list of languages that were (re)translated.
+    Writes index.<lang>.md next to the source-language index file.
+    Returns the list of languages translated.
     """
     source_lang = post.lang_code
     source_body = transform_content(build_content(post))
-    h = short_hash(source_hash(post))
-    state = store.load(post.slug)
 
     translated_langs: list[str] = []
-    for lang in cfg.shared.languages.supported:
-        if lang == source_lang:
-            continue
+    for lang in translation_target_langs(cfg, post):
         out_file = bundle_dir / f"index.{lang}.md"
-        if not force and state.translations.get(lang) == h and out_file.exists():
-            log.info("%s: translation %s is up to date", post.slug, lang)
-            continue
-
         log.info("%s: translating to %s ...", post.slug, lang)
         body = translate_text(llm, cfg, source_body, source_lang, lang)
         body = restore_asset_references(source_body, body)
@@ -183,8 +174,6 @@ def translate_bundle(
         summary = extract_first_paragraph(body)
 
         out_file.write_text(translated_index_content(post, body, title, summary), encoding="utf-8")
-        state.translations[lang] = h
-        store.save(state)
         translated_langs.append(lang)
 
     return translated_langs

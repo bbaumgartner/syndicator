@@ -6,7 +6,7 @@ The page lists every generated social media post with caption and media so
 the review happens inside Logseq, and it carries *all* pipeline state as
 Logseq properties:
 
-- page properties (first bullet block): hugo status/hash, translation cache,
+- page properties (first bullet block): hugo status/hash,
   explicit status for channels without generated blocks (substack, medium,
   bootstrap-published socials)
 - block properties (one block per social post):
@@ -110,7 +110,6 @@ class ReviewState(BaseModel):
     hugo_status: ChannelStatus = "pending"
     hugo_at: str = ""
     hugo_hash: str = ""  # short hash the hugo channel last processed
-    translations: dict[str, str] = {}  # lang -> short hash of the source
     channel_status: dict[str, str] = {}  # explicit status for blockless channels
     extra_props: list[str] = []  # unknown page property lines, preserved
     posts: list[SocialPostState] = []
@@ -219,8 +218,6 @@ def render_review_page(state: ReviewState) -> str:
         props.append(("hugo-at", state.hugo_at))
     if state.hugo_hash:
         props.append(("hugo-hash", state.hugo_hash))
-    for lang in sorted(state.translations):
-        props.append((f"translation-{lang}", state.translations[lang]))
     for channel in sorted(state.channel_status):
         props.append((f"{channel}-status", state.channel_status[channel]))
 
@@ -298,8 +295,6 @@ def _parse_page_props(block: _RawBlock, state: ReviewState) -> None:
     for key, value in props.items():
         if key in _PAGE_PROP_HANDLED:
             continue
-        if key.startswith("translation-"):
-            state.translations[key.removeprefix("translation-")] = value
         elif key.endswith("-status"):
             state.channel_status[key.removesuffix("-status")] = _coerce_status(
                 value, ("pending", "draft", "published"), "pending"

@@ -67,13 +67,18 @@ def test_run_site_try_run_does_real_work_but_records_no_hugo_state(tmp_path: Pat
     assert (bundle / "index.de.md").exists()
     assert (bundle / "index.en.md").exists()
     assert llm.calls > 0
-    # Hugo state stays unrecorded so the next real run picks the post up...
+    # Hugo state stays unrecorded so the next real run picks the post up again...
     assert store.load(post.slug).hugo_hash == ""
-    # ...but translations are cached: the follow-up real run costs no LLM calls.
+    # ...and re-translates before recording hugo-hash.
     llm2 = FakeLLM()
     assert run_site_for_post(cfg, post, llm2, store) is True
-    assert llm2.calls == 0
+    assert llm2.calls > 0
     assert store.load(post.slug).hugo_hash != ""
+
+    # Third run: hugo-hash matches — skipped entirely.
+    llm3 = FakeLLM()
+    assert run_site_for_post(cfg, post, llm3, store) is False
+    assert llm3.calls == 0
 
 
 def _git(cwd: Path, *args: str):

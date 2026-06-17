@@ -75,17 +75,16 @@ def _bootstrap_post(
 
     state.hugo_status = "published"
     state.hugo_at = state.hugo_at or now_iso()
-    state.hugo_hash = h if hugo_matches else ""
+    translations_complete = all(
+        (bundle / f"index.{lang}.md").exists()
+        for lang in cfg.shared.languages.supported
+        if lang != post.lang_code
+    )
+    state.hugo_hash = h if hugo_matches and translations_complete else ""
     if not hugo_matches:
         log.info("hugo bundle stale or missing for %s — will be regenerated on first run", post.slug)
-
-    # Existing translations only count when the source-language render is in sync.
-    if hugo_matches:
-        for lang in cfg.shared.languages.supported:
-            if lang == post.lang_code:
-                continue
-            if (bundle / f"index.{lang}.md").exists():
-                state.translations.setdefault(lang, h)
+    elif not translations_complete:
+        log.info("translations incomplete for %s — will be regenerated on first run", post.slug)
 
     article = _article_channels(cfg)
     for name in ALL_CHANNELS:

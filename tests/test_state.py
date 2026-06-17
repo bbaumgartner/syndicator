@@ -46,7 +46,6 @@ def test_store_roundtrip_and_channel_state(tmp_path: Path):
     state = ReviewState(slug="2026-01-01_Test Post", blog_ref="[[2026-01-01]]")
     state.hugo_status = "published"
     state.hugo_hash = "aaa"
-    state.translations = {"fr": "aaa", "en": "aaa"}
     state.channel_status = {"substack": "pending"}
     state.posts = [
         make_post_block(index=0),
@@ -59,7 +58,6 @@ def test_store_roundtrip_and_channel_state(tmp_path: Path):
     text = page.read_text(encoding="utf-8")
     assert text.startswith("- type:: syndicator\n")
     assert "  slug:: 2026-01-01_Test Post\n" in text
-    assert "  translation-en:: aaa\n" in text
     assert "\t- Intro\n" in text
     assert "\t  status:: draft\n" in text
     assert "\t  publishing-date:: 2026-06-15\n" in text
@@ -67,7 +65,6 @@ def test_store_roundtrip_and_channel_state(tmp_path: Path):
     reloaded = store.load("2026-01-01_Test Post")
     assert reloaded.blog_ref == "[[2026-01-01]]"
     assert reloaded.hugo_status == "published"
-    assert reloaded.translations == {"en": "aaa", "fr": "aaa"}
     assert reloaded.date == "2026-01-01"
     assert reloaded.title == "Test Post"
     assert len(reloaded.posts) == 2
@@ -209,8 +206,10 @@ def test_bootstrap_marks_hugo_and_renan(tmp_path: Path):
             idx = out / "index.de.md"
             idx.write_text(idx.read_text(encoding="utf-8") + "\nmanual drift\n", encoding="utf-8")
         else:
-            # Simulate existing translations.
-            (out / "index.fr.md").write_text("dummy", encoding="utf-8")
+            # Simulate existing translations (all target languages).
+            for lang in ("en", "de", "es", "fr", "it", "arrr"):
+                if lang != post.lang_code:
+                    (out / f"index.{lang}.md").write_text("dummy", encoding="utf-8")
 
     result = bootstrap(cfg)
     assert result.posts == len(posts)
@@ -228,14 +227,10 @@ def test_bootstrap_marks_hugo_and_renan(tmp_path: Path):
     assert charly.hugo_hash == short_hash(source_hash(posts["2026-05-19_Charly_Superstar"]))
     assert charly.channel_state("facebook") == "pending"
     assert charly.channel_state("substack") == "pending"
-    assert charly.translations.get("fr") == charly.hugo_hash
-    # No translation recorded for languages without live files.
-    assert "es" not in charly.translations
 
     athen = store.load("2026-06-03_Athen")
     assert athen.hugo_status == "published"
     assert athen.hugo_hash == ""  # stale -> regenerate on first run
-    assert athen.translations == {}
 
     # The blog posts got their syndication:: backlink — without hash changes.
     rescanned = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}

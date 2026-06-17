@@ -136,9 +136,7 @@ def run_site_for_post(
     Returns True when the post was (re)generated. A try run does the real
     work (bundle + translations into the site repo working tree) but does
     not record the hugo state, so the next real run picks the post up again
-    and commits. Translations are cached either way; the cache also checks
-    that the translated file still exists, so discarding the working tree
-    simply re-translates next time.
+    and commits (including re-translating).
     """
     from .nodes.hugo import write_bundle
     from .nodes.translate import translate_bundle
@@ -151,7 +149,7 @@ def run_site_for_post(
     bundle = write_bundle(post, cfg.hugo_posts_dir)
     log.info("%s: hugo bundle written (%s)", post.slug, bundle)
 
-    translated = translate_bundle(post, cfg, llm, store, bundle, force=force)
+    translated = translate_bundle(post, cfg, llm, bundle)
     if translated:
         log.info("%s: translated to %s", post.slug, ", ".join(translated))
 
