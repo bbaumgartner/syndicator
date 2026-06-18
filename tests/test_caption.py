@@ -4,6 +4,7 @@ from pathlib import Path
 
 from syndicator.model import MediaRef, PostIntent, SocialDraft
 from syndicator.nodes.caption import (
+    _caption_context,
     _sanitize,
     compose_post_text,
     generate_caption,
@@ -76,6 +77,23 @@ def test_x_budget_enforcement():
     fixed = _enforce_x_budget(long_draft, cfg_ch, "sys", "user", StillTooLongLLM())
     assert len(fixed.text) <= budget
     assert fixed.text.endswith("…")
+
+
+def test_caption_context_omits_other_section_text(tmp_path: Path):
+    cfg = make_cfg(tmp_path)
+    posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
+    post = posts["2026-06-10_Griechenland_❤️"]
+    plans = plan_social(post, cfg)
+    section_intent = plans["facebook"][2]  # Wirtschaftskrise
+    ctx = _caption_context(post, section_intent)
+
+    assert "outline" not in ctx
+    assert "intro" not in ctx
+    assert ctx["section_titles"] == ["Gastfreundschaft", "Wirtschaftskrise", "Herbstpläne"]
+    assert ctx["write_about_this_part"]["title"] == "Wirtschaftskrise"
+    assert "Wirtschaftskrise" in ctx["write_about_this_part"]["text"]
+    assert "Gastfreundschaft" not in ctx["write_about_this_part"]["text"]
+    assert "Herbstpläne" not in ctx["write_about_this_part"]["text"]
 
 
 def test_generate_caption_full_flow(tmp_path: Path):

@@ -120,8 +120,12 @@ class BlogPost(BaseModel):
 
     @property
     def sections(self) -> list[Section]:
-        """Derive sections: optional title, media before texts; media after
-        texts starts a new section, a title always starts a new section."""
+        """Derive sections: optional title, optional media, texts.
+
+        A ``###`` title always starts a new section. Within a titled section,
+        further media/text blocks stay together. For untitled stretches, media
+        after text starts a new section (photo-group boundaries).
+        """
         sections: list[Section] = []
         current = Section()
 
@@ -137,7 +141,7 @@ class BlogPost(BaseModel):
                 flush()
                 current.title = block.raw.lstrip("#").strip()
             elif block.kind in ("media", "youtube"):
-                if current.texts:
+                if current.texts and current.title is None:
                     flush()
                 if block.media is not None:
                     current.media.append(block.media)

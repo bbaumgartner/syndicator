@@ -31,18 +31,20 @@ def x_text_budget(ch_cfg: ChannelConfig) -> int:
     return max_chars - (TCO_LINK_LEN + 2) - X_HASHTAG_RESERVE
 
 
-def _post_outline(post: BlogPost) -> list[dict]:
-    outline = []
-    for i, section in enumerate(post.sections):
-        outline.append(
-            {
-                "index": i,
-                "title": section.title,
-                "text": "\n\n".join(section.texts),
-                "media_count": len(section.media),
-            }
-        )
-    return outline
+def _caption_context(post: BlogPost, intent: PostIntent) -> dict:
+    """Minimal LLM context: full text only for the target part, titles elsewhere."""
+    sections = post.sections
+    ctx: dict = {
+        "blog_post_title": post.meta.title,
+        "section_titles": [s.title for s in sections if s.title],
+        "write_about_this_part": _intent_part(post, intent),
+        "attached_media": _media_descriptions(intent),
+        "youtube_links": _youtube_links(post, intent),
+    }
+    if intent.kind == "section":
+        ctx["section_index"] = intent.section_index
+        ctx["section_count"] = len(sections)
+    return ctx
 
 
 def _intent_part(post: BlogPost, intent: PostIntent) -> dict:
@@ -99,16 +101,7 @@ def generate_caption(
         text_budget=x_text_budget(ch_cfg),
     )
 
-    context = {
-        "blog_post_title": post.meta.title,
-        "blog_post_date": post.meta.date,
-        "intro": post.intro,
-        "outline": _post_outline(post),
-        "write_about_this_part": _intent_part(post, intent),
-        "attached_media": _media_descriptions(intent),
-        "youtube_links": _youtube_links(post, intent),
-    }
-    user = json.dumps(context, ensure_ascii=False, indent=1)
+    user = json.dumps(_caption_context(post, intent), ensure_ascii=False, indent=1)
 
     draft = llm.complete_structured(
         node=f"caption_{intent.channel}",

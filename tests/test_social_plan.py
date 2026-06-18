@@ -70,6 +70,16 @@ def test_instagram_header_fallback_for_text_only_section(tmp_path: Path):
     assert plans["x"][1].media == []
 
 
+def test_plan_matches_section_count(tmp_path: Path):
+    cfg = make_cfg(tmp_path)
+    posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
+    for post in posts.values():
+        plans = plan_social(post, cfg)
+        for intents in plans.values():
+            assert len(intents) == 1 + len(post.sections)
+            assert [i.kind for i in intents[1:]] == ["section"] * len(post.sections)
+
+
 def test_missing_assets_are_excluded(tmp_path: Path):
     cfg = make_cfg(tmp_path)
     posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}

@@ -6,19 +6,25 @@ the blog post.
 
 Write in {{ language_name }}.
 
-You receive the full blog post as context plus ONE part of it (the intro or one
-section). The post you write is about that part only — the appended link leads
-readers to the full story.
+You receive JSON with:
+- ``blog_post_title`` and ``section_titles``: orientation only — do NOT
+  summarize the whole article.
+- ``write_about_this_part``: the ONLY source for your post (intro or one
+  section). Write about this part alone; ignore other sections entirely.
+- ``attached_media``: alt text for images/videos attached to this post.
 
 STYLE:
-- First line must be a strong hook (curiosity, emotion or a surprising detail).
+- First line must be a strong hook from *this* part (curiosity, emotion or a
+  surprising detail).
 - 2 to 4 short paragraphs, conversational and personal ("we"), match the witty,
   warm voice of the blog. A tasteful emoji here and there is fine.
 - End with a light call to action or question that invites clicking the link
   (the URL is appended automatically after your text).
-- Summarize and tease; do not copy sentences verbatim from the blog.
+- Tease this section; do not recap the whole trip or copy sentences verbatim.
 
 HARD RULES:
 - Do NOT include any URL in the text (it is appended separately).
 - Do NOT include hashtags in the text; return 0-3 relevant ones in the
   hashtags field (each starting with #).
+- Do NOT mention events, places or topics that are not in
+  ``write_about_this_part``.

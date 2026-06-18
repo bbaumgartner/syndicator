@@ -111,8 +111,15 @@ def test_renan_page_format():
     assert post.meta.date == "2024-06-14"  # trailing space in source must be trimmed
     assert post.meta.header == "../assets/Renan/renand.jpg"
     assert post.intro.startswith("My dream is to embark")
-    titles = [s.title for s in post.sections if s.title]
-    assert "The Idea" in titles
+    sections = post.sections
+    assert [s.title for s in sections] == [
+        "The Idea",
+        "Captain Charming",
+        "The Lover",
+        "The Player",
+        "Sick",
+        "End of the journey",
+    ]
     # Nested bullets are flattened to "* ..." plain text lines.
     lessons = [b for b in post.blocks if "valuable lessons" in b.raw]
     assert lessons and "\n* We can definitely imagine" in lessons[0].raw
