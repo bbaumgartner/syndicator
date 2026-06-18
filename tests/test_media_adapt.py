@@ -11,8 +11,10 @@ from syndicator.config import ImageSpec, VideoSpec
 from syndicator.model import MediaRef
 from syndicator.nodes.media_adapt import (
     CropFocus,
+    _fit_without_upscale,
     adapt_image,
     adapt_media_for_channel,
+    adapt_path_for_channel,
     adapt_video,
     crop_box,
     probe_video,
@@ -47,8 +49,20 @@ def test_adapt_image_portrait_crop(tmp_path: Path):
     src = make_image(tmp_path / "wide.jpg", (1600, 900))
     out = adapt_image(src, IG_SPEC, tmp_path / "out" / "wide.jpg")
     with Image.open(out) as im:
-        assert im.size == (1080, 1350)
+        assert im.size == (720, 900)
         assert im.mode == "RGB"
+
+
+def test_adapt_image_downscales_when_crop_exceeds_target(tmp_path: Path):
+    src = make_image(tmp_path / "huge.jpg", (4000, 3000))
+    out = adapt_image(src, IG_SPEC, tmp_path / "ig.jpg")
+    with Image.open(out) as im:
+        assert im.size == (1080, 1350)
+
+
+def test_fit_without_upscale():
+    assert _fit_without_upscale(700, 394, 1920, 1080) == (700, 394)
+    assert _fit_without_upscale(3000, 1688, 1920, 1080) == (1918, 1080)
 
 
 def test_adapt_image_max_edge_downscale(tmp_path: Path):
@@ -84,12 +98,21 @@ def make_video(path: Path, seconds=2, size="320x240"):
 
 
 @pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
-def test_adapt_video_reel_blur_pad(tmp_path: Path):
-    src = make_video(tmp_path / "clip.mp4")
-    spec = VideoSpec(aspect="9:16", width=540, height=960, max_seconds=90, pad_mode="blur")
+def test_adapt_video_reel_crop(tmp_path: Path):
+    src = make_video(tmp_path / "clip.mp4", size="640x320")
+    spec = VideoSpec(aspect="9:16", width=540, height=960, max_seconds=90, pad_mode="crop")
     out = adapt_video(src, spec, tmp_path / "reel.mp4")
     info = probe_video(out)
-    assert (info["width"], info["height"]) == (540, 960)
+    assert (info["width"], info["height"]) == (180, 320)
+
+
+@pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
+def test_adapt_video_focal_crop(tmp_path: Path):
+    src = make_video(tmp_path / "tall.mp4", size="320x640")
+    spec = VideoSpec(aspect="16:9", width=640, height=360, pad_mode="crop")
+    out = adapt_video(src, spec, tmp_path / "landscape.mp4", CropFocus(x=0.5, y=0.25))
+    info = probe_video(out)
+    assert (info["width"], info["height"]) == (320, 180)
 
 
 @pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
@@ -117,7 +140,12 @@ def test_adapt_media_for_channel_dispatch(tmp_path: Path):
     media = MediaRef(kind="image", source_path=img, filename="photo.jpg")
     out = adapt_media_for_channel(media, "instagram", cfg, out_dir, llm)
     with Image.open(out) as im:
-        assert im.size == (1080, 1350)
+        assert im.size == (720, 900)
+
+    landscape = make_image(tmp_path / "portrait.jpg", (900, 1600))
+    out_hugo = adapt_path_for_channel(landscape, "hugo", cfg, tmp_path / "hugo", llm)
+    with Image.open(out_hugo) as im:
+        assert im.size == (900, 506)
 
     yt = MediaRef(kind="youtube", url="https://youtu.be/abc")
     assert adapt_media_for_channel(yt, "facebook", cfg, out_dir, llm) is None

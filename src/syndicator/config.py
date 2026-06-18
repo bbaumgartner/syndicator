@@ -74,7 +74,7 @@ class VideoSpec(BaseModel):
     width: int | None = None
     height: int | None = None
     max_seconds: int | None = None
-    pad_mode: Literal["blur", "black"] = "blur"
+    pad_mode: Literal["blur", "black", "crop"] = "crop"
 
 
 class ChannelConfig(BaseModel):

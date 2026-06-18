@@ -13,7 +13,10 @@ import re
 import shutil
 from pathlib import Path
 
+from ..config import Config
+from ..llm import LLMClient
 from ..model import BlogPost, Meta
+from .media_adapt import adapt_image, adapt_video, get_crop_focus
 
 log = logging.getLogger(__name__)
 
@@ -85,7 +88,21 @@ def collect_asset_copies(content: str, source_dir: Path) -> list[tuple[Path, str
     return copies
 
 
-def transform_content(content: str) -> str:
+def hugo_adapts_media(cfg: Config) -> bool:
+    """True when the hugo channel has image/video adaptation configured."""
+    ch = cfg.shared.channels["hugo"]
+    return bool(ch.image.width and ch.image.height) or bool(ch.video.width and ch.video.height)
+
+
+def bundle_filename(original: str) -> str:
+    """Output basename after hugo media adaptation (JPEG images, MP4 videos)."""
+    stem = Path(original).stem
+    if Path(original).suffix.lower() in VIDEO_EXTENSIONS:
+        return f"{stem}.mp4"
+    return f"{stem}.jpg"
+
+
+def transform_content(content: str, *, adapt_filenames: bool = False) -> str:
     """Rewrite media references for the Hugo bundle (ProcessContent)."""
 
     def replace_video_embed(m: re.Match[str]) -> str:
@@ -100,6 +117,8 @@ def transform_content(content: str) -> str:
     def replace_asset(m: re.Match[str]) -> str:
         alt = m.group(1)
         filename = Path(m.group(3)).name
+        if adapt_filenames:
+            filename = bundle_filename(filename)
         if Path(filename).suffix.lower() in VIDEO_EXTENSIONS:
             return f'{{{{< video src="{filename}" >}}}}'
         return f"![{alt}]({filename})"
@@ -107,9 +126,9 @@ def transform_content(content: str) -> str:
     return ASSET_RE.sub(replace_asset, content)
 
 
-def render_index(post: BlogPost) -> str:
+def render_index(post: BlogPost, *, adapt_filenames: bool = False) -> str:
     """Full index.<lang>.md content for the post's source language."""
-    content = transform_content(build_content(post))
+    content = transform_content(build_content(post), adapt_filenames=adapt_filenames)
     return front_matter(post.meta, summary_for(post)) + content + "\n"
 
 
@@ -117,27 +136,61 @@ def bundle_dir_name(post: BlogPost) -> str:
     return post.slug
 
 
-def write_bundle(post: BlogPost, posts_dir: Path) -> Path:
+def _write_adapted_asset(
+    src: Path,
+    dest: Path,
+    cfg: Config,
+    llm: LLMClient,
+) -> None:
+    """Adapt src for hugo into dest, falling back to a raw copy on failure."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    ch_cfg = cfg.shared.channels["hugo"]
+    try:
+        if src.suffix.lower() in VIDEO_EXTENSIONS:
+            focus = None
+            if ch_cfg.video.width and ch_cfg.video.height and ch_cfg.video.pad_mode == "crop":
+                focus = get_crop_focus(src, cfg, llm)
+            adapt_video(src, ch_cfg.video, dest, focus)
+        else:
+            focus = None
+            if ch_cfg.image.width and ch_cfg.image.height:
+                focus = get_crop_focus(src, cfg, llm)
+            adapt_image(src, ch_cfg.image, dest, focus)
+    except Exception as err:  # noqa: BLE001 - fall back to a raw copy
+        log.warning("adapt failed for %s (%s) — copying original", src.name, err)
+        shutil.copyfile(src, dest)
+
+
+def write_bundle(post: BlogPost, posts_dir: Path, cfg: Config, llm: LLMClient) -> Path:
     """Write the source-language bundle: index file, media, featured image."""
     out_dir = posts_dir / bundle_dir_name(post)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     source_dir = post.source_path.parent
     raw_content = build_content(post)
+    adapt = hugo_adapts_media(cfg)
 
     for src, name in collect_asset_copies(raw_content, source_dir):
         if not src.exists():
             log.warning("missing asset %s", src)
             continue
-        shutil.copyfile(src, out_dir / name)
+        dest = out_dir / (bundle_filename(name) if adapt else name)
+        if adapt:
+            _write_adapted_asset(src, dest, cfg, llm)
+        else:
+            shutil.copyfile(src, dest)
 
     if post.meta.header:
         header_src = (source_dir / post.meta.header).resolve()
         if header_src.exists():
-            shutil.copyfile(header_src, out_dir / f"featured{header_src.suffix}")
+            featured = out_dir / ("featured.jpg" if adapt else f"featured{header_src.suffix}")
+            if adapt:
+                _write_adapted_asset(header_src, featured, cfg, llm)
+            else:
+                shutil.copyfile(header_src, featured)
         else:
             log.warning("missing header image %s", header_src)
 
     index_path = out_dir / index_filename(post.meta.language)
-    index_path.write_text(render_index(post), encoding="utf-8")
+    index_path.write_text(render_index(post, adapt_filenames=adapt), encoding="utf-8")
     return out_dir

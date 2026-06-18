@@ -65,7 +65,7 @@ def test_run_social_creates_review_page_and_media(tmp_path: Path):
     ig_images = list(ig_dir.glob("*.jpg"))
     assert ig_images
     with Image.open(ig_images[0]) as im:
-        assert im.size == (1080, 1350)
+        assert im.size == (720, 900)
 
     # The blog post got its backlink, without a source hash change.
     assert f"syndication:: [[syndicator/{post.slug}]]" in post.source_path.read_text(encoding="utf-8")

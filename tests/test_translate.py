@@ -46,7 +46,7 @@ def test_translate_bundle_writes_files(tmp_path: Path):
     cfg = make_cfg(tmp_path)
     posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
     post = posts["2026-05-19_Charly_Superstar"]  # German source
-    bundle = write_bundle(post, cfg.hugo_posts_dir)
+    bundle = write_bundle(post, cfg.hugo_posts_dir, cfg, FakeLLM())
 
     llm = FakeLLM()
     langs = translate_bundle(post, cfg, llm, bundle)
@@ -78,7 +78,7 @@ def test_translate_bundle_english_source_targets(tmp_path: Path):
     cfg = make_cfg(tmp_path)
     posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
     renan = posts["2024-06-14_Renan"]
-    bundle = write_bundle(renan, cfg.hugo_posts_dir)
+    bundle = write_bundle(renan, cfg.hugo_posts_dir, cfg, FakeLLM())
 
     langs = translate_bundle(renan, cfg, FakeLLM(), bundle)
     assert sorted(langs) == ["arrr", "de", "es", "fr", "it"]

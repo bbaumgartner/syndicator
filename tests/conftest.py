@@ -44,7 +44,11 @@ def make_cfg(tmp_path: Path) -> Config:
         {
             "site": {"base_url": "https://example.org"},
             "channels": {
-                "hugo": {"kind": "site"},
+                "hugo": {
+                    "kind": "site",
+                    "image": {"aspect": "16:9", "width": 1920, "height": 1080},
+                    "video": {"aspect": "16:9", "width": 1920, "height": 1080, "pad_mode": "crop"},
+                },
                 "facebook": {"kind": "social"},
                 "instagram": {
                     "kind": "social",

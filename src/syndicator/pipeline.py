@@ -145,7 +145,7 @@ def run_site_for_post(
     if not force and read_hugo_hash(post) == h:
         return False
 
-    bundle = write_bundle(post, cfg.hugo_posts_dir)
+    bundle = write_bundle(post, cfg.hugo_posts_dir, cfg, llm)
     log.info("%s: hugo bundle written (%s)", post.slug, bundle)
 
     translated = translate_bundle(post, cfg, llm, bundle)

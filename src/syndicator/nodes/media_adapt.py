@@ -2,8 +2,9 @@
 
 Images via Pillow: EXIF-orientation fix, metadata strip, aspect crop (e.g.
 Instagram 4:5 portrait) with an optional vision-LLM focal point, resize,
-JPEG output. Videos via ffmpeg: aspect conversion with blurred padding
-(e.g. 9:16 reels), duration caps, H.264/AAC transcode.
+JPEG output. Videos via ffmpeg: aspect conversion with focal-point crop
+by default (no upscale; downscale only when the crop exceeds the target cap),
+optional blurred/black padding, duration caps, H.264/AAC transcode.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from pydantic import BaseModel
 from .. import config as config_mod
 from ..config import Config, ImageSpec, VideoSpec
 from ..llm import LLMClient, image_data_url
-from ..model import MediaRef
+from ..model import VIDEO_EXTENSIONS, MediaRef
 
 log = logging.getLogger(__name__)
 
@@ -28,35 +29,6 @@ log = logging.getLogger(__name__)
 class CropFocus(BaseModel):
     x: float = 0.5
     y: float = 0.5
-
-
-def get_crop_focus(path: Path, cfg: Config, llm: LLMClient) -> CropFocus:
-    """Ask a vision model for the focal point; center on failure."""
-    if not cfg.shared.media.crop_focus.enabled:
-        return CropFocus()
-    try:
-        with Image.open(path) as im:
-            im = ImageOps.exif_transpose(im)
-            im.thumbnail((512, 512))
-            preview = path.parent / f".crop_preview_{path.stem}.jpg"
-            im.convert("RGB").save(preview, "JPEG", quality=70)
-        system = (config_mod.REPO_ROOT / "prompts" / "crop_focus.md").read_text(encoding="utf-8")
-        user_content = [
-            {"type": "text", "text": "Photo to analyze:"},
-            {"type": "image_url", "image_url": {"url": image_data_url(preview)}},
-        ]
-        preview.unlink(missing_ok=True)
-        focus = llm.complete_structured(
-            node="crop_focus",
-            model=cfg.shared.media.crop_focus.model,
-            system=system,
-            user_content=user_content,
-            schema=CropFocus,
-        )
-        return CropFocus(x=min(max(focus.x, 0.0), 1.0), y=min(max(focus.y, 0.0), 1.0))
-    except Exception as err:  # noqa: BLE001 - crop focus is best-effort
-        log.warning("crop focus failed for %s (%s) — using center", path.name, err)
-        return CropFocus()
 
 
 def crop_box(width: int, height: int, target_ratio: float, focus: CropFocus) -> tuple[int, int, int, int]:
@@ -76,6 +48,74 @@ def crop_box(width: int, height: int, target_ratio: float, focus: CropFocus) -> 
     return (left, top, left + crop_w, top + crop_h)
 
 
+def _even(n: int) -> int:
+    """Round down to an even integer (required by yuv420p)."""
+    return n if n % 2 == 0 else n - 1
+
+
+def _fit_without_upscale(crop_w: int, crop_h: int, max_w: int, max_h: int) -> tuple[int, int]:
+    """Output size for a crop: native pixels, or scaled down to fit the cap."""
+    if crop_w <= max_w and crop_h <= max_h:
+        return crop_w, crop_h
+    scale = min(max_w / crop_w, max_h / crop_h)
+    return _even(int(crop_w * scale)), _even(int(crop_h * scale))
+
+
+def _extract_video_frame(src: Path) -> Path:
+    """Grab one frame from the middle of a video for focal-point analysis."""
+    preview = src.parent / f".crop_preview_{src.stem}.jpg"
+    info = probe_video(src)
+    seek = info["duration"] / 2 if info["duration"] > 0 else 0
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-v", "error",
+            "-ss", str(seek), "-i", str(src),
+            "-frames:v", "1", "-q:v", "2",
+            str(preview),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return preview
+
+
+def get_crop_focus(path: Path, cfg: Config, llm: LLMClient) -> CropFocus:
+    """Ask a vision model for the focal point; center on failure."""
+    if not cfg.shared.media.crop_focus.enabled:
+        return CropFocus()
+    preview: Path | None = None
+    try:
+        image_path = path
+        if path.suffix.lower() in VIDEO_EXTENSIONS:
+            preview = _extract_video_frame(path)
+            image_path = preview
+        with Image.open(image_path) as im:
+            im = ImageOps.exif_transpose(im)
+            im.thumbnail((512, 512))
+            thumb = image_path.parent / f".crop_thumb_{image_path.stem}.jpg"
+            im.convert("RGB").save(thumb, "JPEG", quality=70)
+        system = (config_mod.REPO_ROOT / "prompts" / "crop_focus.md").read_text(encoding="utf-8")
+        user_content = [
+            {"type": "text", "text": "Photo to analyze:"},
+            {"type": "image_url", "image_url": {"url": image_data_url(thumb)}},
+        ]
+        thumb.unlink(missing_ok=True)
+        focus = llm.complete_structured(
+            node="crop_focus",
+            model=cfg.shared.media.crop_focus.model,
+            system=system,
+            user_content=user_content,
+            schema=CropFocus,
+        )
+        return CropFocus(x=min(max(focus.x, 0.0), 1.0), y=min(max(focus.y, 0.0), 1.0))
+    except Exception as err:  # noqa: BLE001 - crop focus is best-effort
+        log.warning("crop focus failed for %s (%s) — using center", path.name, err)
+        return CropFocus()
+    finally:
+        if preview is not None:
+            preview.unlink(missing_ok=True)
+
+
 def adapt_image(src: Path, spec: ImageSpec, out_path: Path, focus: CropFocus | None = None) -> Path:
     with Image.open(src) as im:
         im = ImageOps.exif_transpose(im)
@@ -83,7 +123,9 @@ def adapt_image(src: Path, spec: ImageSpec, out_path: Path, focus: CropFocus | N
         if spec.width and spec.height:
             target_ratio = spec.width / spec.height
             box = crop_box(im.width, im.height, target_ratio, focus or CropFocus())
-            im = im.crop(box).resize((spec.width, spec.height), Image.LANCZOS)
+            im = im.crop(box)
+            if im.width > spec.width or im.height > spec.height:
+                im = im.resize((spec.width, spec.height), Image.LANCZOS)
         elif spec.max_edge and max(im.size) > spec.max_edge:
             im.thumbnail((spec.max_edge, spec.max_edge), Image.LANCZOS)
 
@@ -117,7 +159,12 @@ def probe_video(path: Path) -> dict:
     }
 
 
-def adapt_video(src: Path, spec: VideoSpec, out_path: Path) -> Path:
+def adapt_video(
+    src: Path,
+    spec: VideoSpec,
+    out_path: Path,
+    focus: CropFocus | None = None,
+) -> Path:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     info = probe_video(src)
 
@@ -134,7 +181,20 @@ def adapt_video(src: Path, spec: VideoSpec, out_path: Path) -> Path:
 
     if needs_aspect:
         w, h = spec.width, spec.height
-        if spec.pad_mode == "blur":
+        if spec.pad_mode == "crop":
+            target_ratio = w / h
+            left, top, right, bottom = crop_box(
+                info["width"], info["height"], target_ratio, focus or CropFocus()
+            )
+            crop_w = _even(right - left)
+            crop_h = _even(bottom - top)
+            left = _even(min(left, info["width"] - crop_w))
+            top = _even(min(top, info["height"] - crop_h))
+            out_w, out_h = _fit_without_upscale(crop_w, crop_h, w, h)
+            vf = f"crop={crop_w}:{crop_h}:{left}:{top}"
+            if (out_w, out_h) != (crop_w, crop_h):
+                vf += f",scale={out_w}:{out_h}"
+        elif spec.pad_mode == "blur":
             vf = (
                 f"split[a][b];"
                 f"[a]scale={w}:{h}:force_original_aspect_ratio=increase,"
@@ -157,6 +217,24 @@ def adapt_video(src: Path, spec: VideoSpec, out_path: Path) -> Path:
     ]
     subprocess.run(cmd, check=True, capture_output=True)
     return out_path
+
+
+def adapt_path_for_channel(
+    src: Path,
+    channel: str,
+    cfg: Config,
+    out_dir: Path,
+    llm: LLMClient,
+) -> Path | None:
+    """Adapt a file on disk for a channel (images/videos only)."""
+    kind = "video" if src.suffix.lower() in VIDEO_EXTENSIONS else "image"
+    return adapt_media_for_channel(
+        MediaRef(kind=kind, source_path=src, filename=src.name),
+        channel,
+        cfg,
+        out_dir,
+        llm,
+    )
 
 
 def adapt_media_for_channel(
@@ -187,8 +265,11 @@ def adapt_media_for_channel(
 
     spec = ch_cfg.video
     out_path = out_dir / f"{src.stem}.mp4"
+    focus = None
+    if spec.width and spec.height and spec.pad_mode == "crop":
+        focus = get_crop_focus(src, cfg, llm)
     try:
-        return adapt_video(src, spec, out_path)
+        return adapt_video(src, spec, out_path, focus)
     except subprocess.CalledProcessError as err:
         stderr = err.stderr.decode() if isinstance(err.stderr, bytes) else err.stderr
         log.error("ffmpeg failed for %s: %s", src.name, stderr)
