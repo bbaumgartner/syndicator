@@ -176,3 +176,4 @@ class SocialDraft(BaseModel):
 
     text: str
     hashtags: list[str] = []
+    location: str = ""  # Facebook location tag suggestion; empty when unknown

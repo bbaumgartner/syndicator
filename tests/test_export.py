@@ -40,6 +40,7 @@ def test_run_social_creates_review_page_and_media(tmp_path: Path):
     assert text.startswith("- Facebook\n")
     assert "- Facebook\n" in text and "- Instagram\n" in text and "- X\n" in text
     assert "[fake caption_facebook]" in text
+    assert "location:: Corfu, Greece" in text
 
     store = ReviewStore(cfg.pages_dir)
     state = store.load(post.slug)
@@ -52,6 +53,9 @@ def test_run_social_creates_review_page_and_media(tmp_path: Path):
     intro = state.posts_for("facebook")[0]
     assert intro.title == "Intro"
     assert intro.publishing_date
+    assert intro.location == "Corfu, Greece"
+    assert state.posts_for("instagram")[0].location == ""
+    assert state.posts_for("x")[0].location == ""
 
     # Facebook captions carry the inline blog link; Instagram (bio mode) not.
     fb_text = "\n".join(intro.children)

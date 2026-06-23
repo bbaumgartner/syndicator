@@ -26,10 +26,13 @@ def test_sanitize_strips_urls_and_normalizes_hashtags():
     draft = SocialDraft(
         text="Look at this https://spam.example/x amazing place",
         hashtags=["sailing", "#travel", " #dog life ", ""],
+        location="Corfu https://spam.example/x, Greece",
     )
     clean = _sanitize(draft)
     assert "https://" not in clean.text
     assert clean.hashtags == ["#sailing", "#travel", "#doglife"]
+    assert "https://" not in clean.location
+    assert clean.location == "Corfu  Greece"
 
 
 def test_compose_inline_vs_bio():
@@ -94,6 +97,7 @@ def test_caption_context_omits_other_section_text(tmp_path: Path):
     assert "Wirtschaftskrise" in ctx["write_about_this_part"]["text"]
     assert "Gastfreundschaft" not in ctx["write_about_this_part"]["text"]
     assert "Herbstpläne" not in ctx["write_about_this_part"]["text"]
+    assert ctx["position_hint"] == "40.13048,22.21514"
 
 
 def test_generate_caption_full_flow(tmp_path: Path):

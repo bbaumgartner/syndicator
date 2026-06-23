@@ -12,6 +12,8 @@ You receive JSON with:
 - ``write_about_this_part``: the ONLY source for your post (intro or one
   section). Write about this part alone; ignore other sections entirely.
 - ``attached_media``: alt text for images/videos attached to this post.
+- ``position_hint`` (optional): GPS coordinates or a coarse place name from the
+  blog metadata — supplementary geographic context only.
 
 STYLE:
 - First line must be a strong hook from *this* part (curiosity, emotion or a
@@ -28,3 +30,12 @@ HARD RULES:
   hashtags field (each starting with #).
 - Do NOT mention events, places or topics that are not in
   ``write_about_this_part``.
+
+LOCATION (``location`` field, separate from the caption):
+- Return a short, Facebook-searchable place name (e.g. ``Corfu, Greece``,
+  ``Lefkada, Greece``) derived primarily from ``write_about_this_part``.
+- Use ``position_hint`` only as supplementary context; do NOT echo raw GPS
+  coordinates in ``location``.
+- Return an empty string when no specific place is mentioned or reasonably
+  inferable from this part.
+- Do NOT put the location in ``text`` — it is metadata for manual tagging only.

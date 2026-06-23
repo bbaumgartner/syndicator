@@ -72,6 +72,24 @@ def test_store_roundtrip_and_channel_state(tmp_path: Path):
     assert [s.slug for s in store.all()] == ["2026-01-01_Test Post"]
 
 
+def test_location_roundtrip(tmp_path: Path):
+    store = ReviewStore(tmp_path / "pages")
+    state = ReviewState(slug="2026-01-01_Test Post")
+    state.posts = [
+        SocialPostState(
+            channel="facebook",
+            title="Gastfreundschaft",
+            location="Corfu, Greece",
+            children=caption_children("Caption", [], []),
+        ),
+    ]
+    store.save(state)
+    text = store.path_for("2026-01-01_Test Post").read_text(encoding="utf-8")
+    assert "\t  location:: Corfu, Greece\n" in text
+    reloaded = store.load("2026-01-01_Test Post")
+    assert reloaded.posts_for("facebook")[0].location == "Corfu, Greece"
+
+
 def test_user_marks_posts_published_in_logseq(tmp_path: Path):
     """The manual review workflow: flip status:: directly on the page."""
     store = ReviewStore(tmp_path / "pages")

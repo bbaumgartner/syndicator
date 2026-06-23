@@ -23,7 +23,8 @@ class FakeLLM(LLMClient):
     def complete_structured(self, node, model, system, user_content, schema, temperature=None):
         self.calls += 1
         if schema is SocialDraft:
-            return SocialDraft(text=f"[fake {node}]", hashtags=["#sailing"])
+            location = "Corfu, Greece" if node == "caption_facebook" else ""
+            return SocialDraft(text=f"[fake {node}]", hashtags=["#sailing"], location=location)
         return schema()
 
 

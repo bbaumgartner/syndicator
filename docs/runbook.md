@@ -110,6 +110,8 @@ deploy, then generates the social post blocks. Review on the Mac in Logseq:
 2. Per social post block: copy the caption from the code fence (hover →
    copy), post manually with the embedded media files
    (`assets/syndicator/<slug>/...`), ideally around the `publishing-date::`.
+   For Facebook, also tag the location shown in `location::` on the block (if
+   present).
 3. Flip `status:: draft` to `published` on the block — that's it. The
    pipeline reads it on its next run; fully published channels become
    immutable.

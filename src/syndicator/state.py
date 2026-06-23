@@ -75,6 +75,7 @@ class SocialPostState(BaseModel):
     title: str = ""  # block text: section title or "Intro"
     status: SocialPostStatus = "draft"
     publishing_date: str = ""
+    location: str = ""  # Facebook location tag suggestion for manual posting
     source_hash: str = ""  # short hash of the blog post at generation time
     extra_props: list[str] = []  # unknown property lines (e.g. Logseq's id::)
     children: list[str] = []  # verbatim file lines: caption fence, media embeds
@@ -158,6 +159,8 @@ def _post_block_lines(post: SocialPostState) -> list[str]:
     ]
     if post.publishing_date:
         props.append(("publishing-date", post.publishing_date))
+    if post.location:
+        props.append(("location", post.location))
     if post.source_hash:
         props.append(("source-hash", post.source_hash))
     lines.extend(f"\t  {key}:: {value}" for key, value in props)
@@ -213,7 +216,7 @@ def _tokenize(lines: list[str]) -> list[_RawBlock]:
     return blocks
 
 
-_POST_PROP_HANDLED = {"channel", "status", "publishing-date", "source-hash"}
+_POST_PROP_HANDLED = {"channel", "status", "publishing-date", "location", "source-hash"}
 
 
 def _coerce_status(value: str, allowed: tuple[str, ...], default: str) -> str:
@@ -239,6 +242,7 @@ def _parse_post_block(block: _RawBlock, children: list[str]) -> SocialPostState:
         title=block.text,
         status=_coerce_status(props.get("status", "draft"), _SOCIAL_POST_STATUSES, "draft"),  # type: ignore[arg-type]
         publishing_date=props.get("publishing-date", ""),
+        location=props.get("location", ""),
         source_hash=props.get("source-hash", ""),
         extra_props=extra,
         children=children,

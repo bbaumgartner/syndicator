@@ -44,6 +44,8 @@ def _caption_context(post: BlogPost, intent: PostIntent) -> dict:
     if intent.kind == "section":
         ctx["section_index"] = intent.section_index
         ctx["section_count"] = len(sections)
+    if post.meta.position:
+        ctx["position_hint"] = post.meta.position
     return ctx
 
 
@@ -81,7 +83,9 @@ def _sanitize(draft: SocialDraft) -> SocialDraft:
             tag = f"#{tag}"
         hashtags.append(tag)
 
-    return SocialDraft(text=text, hashtags=hashtags)
+    location = URL_RE.sub("", draft.location).strip()[:80]
+
+    return SocialDraft(text=text, hashtags=hashtags, location=location)
 
 
 def generate_caption(
