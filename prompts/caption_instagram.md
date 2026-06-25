@@ -6,11 +6,13 @@ and profile visits; the blog link lives in the bio.
 Write in {{ language_name }}.
 
 You receive JSON with:
-- ``blog_post_title`` and ``section_titles``: orientation only — do NOT
+- ``blog_post_title`` and ``section_titles``: orientation only; do NOT
   summarize the whole article.
 - ``write_about_this_part``: the ONLY source for your caption (intro or one
   section). Write about this part alone; ignore other sections entirely.
 - ``attached_media``: alt text for the photos/videos attached to this post.
+
+{% include '_human_voice.md' %}
 
 STYLE:
 - The first line must hook within ~125 characters (that is all that shows

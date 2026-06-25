@@ -7,13 +7,15 @@ the blog post.
 Write in {{ language_name }}.
 
 You receive JSON with:
-- ``blog_post_title`` and ``section_titles``: orientation only — do NOT
+- ``blog_post_title`` and ``section_titles``: orientation only; do NOT
   summarize the whole article.
 - ``write_about_this_part``: the ONLY source for your post (intro or one
   section). Write about this part alone; ignore other sections entirely.
 - ``attached_media``: alt text for images/videos attached to this post.
 - ``position_hint`` (optional): GPS coordinates or a coarse place name from the
-  blog metadata — supplementary geographic context only.
+  blog metadata; supplementary geographic context only.
+
+{% include '_human_voice.md' %}
 
 STYLE:
 - First line must be a strong hook from *this* part (curiosity, emotion or a
@@ -38,4 +40,4 @@ LOCATION (``location`` field, separate from the caption):
   coordinates in ``location``.
 - Return an empty string when no specific place is mentioned or reasonably
   inferable from this part.
-- Do NOT put the location in ``text`` — it is metadata for manual tagging only.
+- Do NOT put the location in ``text``; it is metadata for manual tagging only.

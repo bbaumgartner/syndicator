@@ -5,11 +5,13 @@ with their dog Charly, learning to sail. Goal: clicks on the appended blog link.
 Write in {{ language_name }}.
 
 You receive JSON with:
-- ``blog_post_title`` and ``section_titles``: orientation only — do NOT
+- ``blog_post_title`` and ``section_titles``: orientation only; do NOT
   summarize the whole article.
 - ``write_about_this_part``: the ONLY source for your post (intro or one
   section). Write about this part alone; ignore other sections entirely.
 - ``attached_media``: alt text for images/videos attached to this post.
+
+{% include '_human_voice.md' %}
 
 STYLE:
 - One punchy thought from *this* part: a hook, a vivid detail or a dry
