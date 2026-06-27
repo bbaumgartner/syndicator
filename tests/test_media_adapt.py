@@ -16,15 +16,19 @@ from syndicator.nodes.media_adapt import (
     adapt_media_for_channel,
     adapt_path_for_channel,
     adapt_video,
+    channel_rewrites_filenames,
     crop_box,
+    image_output_name,
+    output_basename,
     probe_video,
+    video_output_name,
 )
 
 from conftest import FakeLLM, make_cfg
 
 FFMPEG = shutil.which("ffmpeg") is not None
 
-IG_SPEC = ImageSpec(aspect="4:5", width=1080, height=1350, quality=90)
+IG_SPEC = ImageSpec(mode="convert", aspect="4:5", width=1080, height=1350, quality=90)
 
 
 def make_image(path: Path, size=(1600, 900), mode="RGB", color=(10, 120, 200)):
@@ -131,6 +135,31 @@ def test_adapt_video_passthrough_copy(tmp_path: Path):
     assert out.read_bytes() == src.read_bytes()
 
 
+def test_image_output_name_copy_mode():
+    spec = ImageSpec(mode="copy")
+    assert image_output_name("photo.png", spec) == "photo.png"
+    assert image_output_name("clip.jpg", spec) == "clip.jpg"
+
+
+def test_image_output_name_convert_mode():
+    spec = ImageSpec(mode="convert", format="jpeg")
+    assert image_output_name("photo.png", spec) == "photo.jpg"
+
+
+def test_video_output_name():
+    assert video_output_name("clip.mov", VideoSpec(aspect="16:9", width=1920, height=1080)) == "clip.mp4"
+    assert video_output_name("clip.mp4", VideoSpec(max_seconds=140)) == "clip.mp4"
+    assert video_output_name("clip.mov", VideoSpec()) == "clip.mov"
+
+
+def test_channel_rewrites_filenames(tmp_path):
+    cfg = make_cfg(tmp_path)
+    hugo = cfg.shared.channels["hugo"]
+    assert channel_rewrites_filenames(hugo) is True  # videos crop to .mp4
+    instagram = cfg.shared.channels["instagram"]
+    assert channel_rewrites_filenames(instagram) is True  # images convert to .jpg
+
+
 def test_adapt_media_for_channel_dispatch(tmp_path: Path):
     cfg = make_cfg(tmp_path)
     llm = FakeLLM()
@@ -145,7 +174,8 @@ def test_adapt_media_for_channel_dispatch(tmp_path: Path):
     landscape = make_image(tmp_path / "portrait.jpg", (900, 1600))
     out_hugo = adapt_path_for_channel(landscape, "hugo", cfg, tmp_path / "hugo", llm)
     with Image.open(out_hugo) as im:
-        assert im.size == (900, 506)
+        assert im.size == (900, 1600)
+    assert out_hugo.name == "portrait.jpg"
 
     yt = MediaRef(kind="youtube", url="https://youtu.be/abc")
     assert adapt_media_for_channel(yt, "facebook", cfg, out_dir, llm) is None

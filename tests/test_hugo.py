@@ -12,13 +12,13 @@ import pytest
 from syndicator.nodes.extract import scan_blog_posts
 from syndicator.nodes.hugo import (
     bundle_dir_name,
-    bundle_filename,
     collect_asset_copies,
     build_content,
     render_index,
     transform_content,
     write_bundle,
 )
+from syndicator.nodes.media_adapt import output_basename
 
 from conftest import FakeLLM, make_cfg
 
@@ -61,26 +61,30 @@ def test_asset_copies_are_flattened():
         assert "assets" in str(src)
 
 
-def test_bundle_filename_maps_to_jpeg_and_mp4():
-    assert bundle_filename("photo.png") == "photo.jpg"
-    assert bundle_filename("clip.mov") == "clip.mp4"
-    assert bundle_filename("already.jpg") == "already.jpg"
+def test_output_basename_for_hugo_channel(tmp_path):
+    cfg = make_cfg(tmp_path)
+    ch = cfg.shared.channels["hugo"]
+    assert output_basename("photo.png", ch) == "photo.png"
+    assert output_basename("clip.mov", ch) == "clip.mp4"
+    assert output_basename("already.jpg", ch) == "already.jpg"
 
 
-def test_transform_content_adapts_filenames():
+def test_transform_content_adapts_filenames(tmp_path):
+    cfg = make_cfg(tmp_path)
+    ch = cfg.shared.channels["hugo"]
     content = (
         '![a](../assets/Renan/foo.png) '
         '![b](../assets/Renan/bar.MOV)'
     )
-    raw = transform_content(content, adapt_filenames=False)
+    raw = transform_content(content)
     assert "foo.png" in raw
     assert '{{< video src="bar.MOV" >}}' in raw
-    adapted = transform_content(content, adapt_filenames=True)
-    assert "foo.jpg" in adapted
+    adapted = transform_content(content, ch)
+    assert "foo.png" in adapted
     assert '{{< video src="bar.mp4" >}}' in adapted
 
 
-def test_write_bundle_adapts_portrait_images_to_landscape(tmp_path):
+def test_write_bundle_keeps_images_unchanged(tmp_path):
     from PIL import Image
 
     cfg = make_cfg(tmp_path)
@@ -95,9 +99,9 @@ def test_write_bundle_adapts_portrait_images_to_landscape(tmp_path):
 
     bundle = write_bundle(post, cfg.hugo_posts_dir, cfg, FakeLLM())
     with Image.open(bundle / "renand.jpg") as im:
-        assert im.size == (900, 506)
+        assert im.size == (900, 1600)
     with Image.open(bundle / "featured.jpg") as im:
-        assert im.size == (900, 506)
+        assert im.size == (900, 1600)
     index = (bundle / "index.en.md").read_text(encoding="utf-8")
     assert "renand.jpg" in index
     assert "quitschi.jpg" in index

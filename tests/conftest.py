@@ -47,14 +47,14 @@ def make_cfg(tmp_path: Path) -> Config:
             "channels": {
                 "hugo": {
                     "kind": "site",
-                    "image": {"aspect": "16:9", "width": 1920, "height": 1080},
+                    "image": {"mode": "copy"},
                     "video": {"aspect": "16:9", "width": 1920, "height": 1080, "pad_mode": "crop"},
                 },
                 "facebook": {"kind": "social"},
                 "instagram": {
                     "kind": "social",
                     "link_mode": "bio",
-                    "image": {"aspect": "4:5", "width": 1080, "height": 1350},
+                    "image": {"mode": "convert", "aspect": "4:5", "width": 1080, "height": 1350},
                     "video": {"aspect": "9:16", "width": 540, "height": 960, "max_seconds": 90},
                 },
                 "x": {"kind": "social", "max_media_per_post": 4, "max_chars": 280},

@@ -19,7 +19,7 @@ from PIL import Image, ImageOps
 from pydantic import BaseModel
 
 from .. import config as config_mod
-from ..config import Config, ImageSpec, VideoSpec
+from ..config import ChannelConfig, Config, ImageSpec, VideoSpec
 from ..llm import LLMClient, image_data_url
 from ..model import VIDEO_EXTENSIONS, MediaRef
 
@@ -29,6 +29,40 @@ log = logging.getLogger(__name__)
 class CropFocus(BaseModel):
     x: float = 0.5
     y: float = 0.5
+
+
+def image_output_name(original: str, spec: ImageSpec) -> str:
+    """Predicted bundle/export basename for an image under spec."""
+    path = Path(original)
+    if spec.mode == "copy":
+        return path.name
+    ext = ".jpg" if spec.format == "jpeg" else f".{spec.format}"
+    return f"{path.stem}{ext}"
+
+
+def video_output_name(original: str, spec: VideoSpec) -> str:
+    """Predicted bundle/export basename for a video under spec."""
+    path = Path(original)
+    if spec.width and spec.height:
+        return f"{path.stem}.mp4"
+    if spec.max_seconds:
+        return f"{path.stem}.mp4"
+    return path.name
+
+
+def output_basename(original: str, ch: ChannelConfig) -> str:
+    """Predicted output basename for a media file on a channel."""
+    if Path(original).suffix.lower() in VIDEO_EXTENSIONS:
+        return video_output_name(original, ch.video)
+    return image_output_name(original, ch.image)
+
+
+def channel_rewrites_filenames(ch: ChannelConfig) -> bool:
+    """True when adapted media may use a different basename than the source."""
+    if ch.image.mode == "convert":
+        return True
+    v = ch.video
+    return bool(v.width and v.height)
 
 
 def crop_box(width: int, height: int, target_ratio: float, focus: CropFocus) -> tuple[int, int, int, int]:
@@ -225,6 +259,7 @@ def adapt_path_for_channel(
     cfg: Config,
     out_dir: Path,
     llm: LLMClient,
+    dest_name: str | None = None,
 ) -> Path | None:
     """Adapt a file on disk for a channel (images/videos only)."""
     kind = "video" if src.suffix.lower() in VIDEO_EXTENSIONS else "image"
@@ -234,6 +269,7 @@ def adapt_path_for_channel(
         cfg,
         out_dir,
         llm,
+        dest_name=dest_name,
     )
 
 
@@ -243,6 +279,7 @@ def adapt_media_for_channel(
     cfg: Config,
     out_dir: Path,
     llm: LLMClient,
+    dest_name: str | None = None,
 ) -> Path | None:
     """Adapt one media file for a channel; returns the output path.
 
@@ -257,14 +294,18 @@ def adapt_media_for_channel(
 
     if media.kind == "image":
         spec = ch_cfg.image
-        out_path = out_dir / f"{src.stem}.jpg"
+        out_path = out_dir / (dest_name or image_output_name(src.name, spec))
+        if spec.mode == "copy":
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, out_path)
+            return out_path
         focus = None
         if spec.width and spec.height:
             focus = get_crop_focus(src, cfg, llm)
         return adapt_image(src, spec, out_path, focus)
 
     spec = ch_cfg.video
-    out_path = out_dir / f"{src.stem}.mp4"
+    out_path = out_dir / (dest_name or video_output_name(src.name, spec))
     focus = None
     if spec.width and spec.height and spec.pad_mode == "crop":
         focus = get_crop_focus(src, cfg, llm)

@@ -18,7 +18,7 @@ from ..model import BlogPost
 from ..state import ReviewStore, short_hash
 from .backlink import ensure_syndication_link, set_hugo_hash
 from .extract import scan_blog_posts, source_hash
-from .hugo import hugo_adapts_media, index_filename, render_index
+from .hugo import index_filename, render_index
 
 log = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ def _bootstrap_post(cfg: Config, store: ReviewStore, post: BlogPost) -> str:
     hugo_matches = False
     if live_index.exists():
         hugo_matches = live_index.read_text(encoding="utf-8") == render_index(
-            post, adapt_filenames=hugo_adapts_media(cfg)
+            post, cfg.shared.channels["hugo"]
         )
 
     translations_complete = all(

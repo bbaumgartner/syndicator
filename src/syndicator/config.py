@@ -61,6 +61,7 @@ class MediaConfig(BaseModel):
 
 
 class ImageSpec(BaseModel):
+    mode: Literal["copy", "convert"] = "convert"
     aspect: str | None = None  # e.g. "4:5"; None = keep aspect
     width: int | None = None
     height: int | None = None

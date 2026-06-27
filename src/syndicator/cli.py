@@ -183,9 +183,10 @@ def parity() -> None:
     """Compare freshly rendered source-language bundles against the live site repo."""
     from .config import load_config
     from .nodes.extract import scan_blog_posts
-    from .nodes.hugo import hugo_adapts_media, index_filename, render_index
+    from .nodes.hugo import index_filename, render_index
 
     cfg = load_config()
+    ch = cfg.shared.channels["hugo"]
     posts = scan_blog_posts(cfg.journals_dir, cfg.pages_dir)
     diffs = 0
     for p in posts:
@@ -193,7 +194,7 @@ def parity() -> None:
         if not live.exists():
             typer.echo(f"  MISSING {p.slug} ({live.name})")
             diffs += 1
-        elif live.read_text(encoding="utf-8") != render_index(p, adapt_filenames=hugo_adapts_media(cfg)):
+        elif live.read_text(encoding="utf-8") != render_index(p, ch):
             typer.echo(f"  DIFF    {p.slug} (source changed since last conversion)")
             diffs += 1
         else:
