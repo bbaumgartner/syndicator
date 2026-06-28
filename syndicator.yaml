@@ -58,7 +58,7 @@ channels:
     max_media_per_post: 10
     caption_model: gpt-5.5
     image: { mode: convert, aspect: "4:5", width: 1080, height: 1350, format: jpeg, quality: 90 }
-    video: { aspect: "9:16", width: 1080, height: 1920, max_seconds: 90, pad_mode: crop }
+    video: { aspect: "4:5", width: 1080, height: 1350, max_seconds: 90, pad_mode: crop }
   x:
     kind: social
     enabled: true

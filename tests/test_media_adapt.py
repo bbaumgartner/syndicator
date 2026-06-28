@@ -102,6 +102,16 @@ def make_video(path: Path, seconds=2, size="320x240"):
 
 
 @pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
+def test_adapt_video_instagram_carousel_crop(tmp_path: Path):
+    """Instagram carousel items must share the same 4:5 aspect as feed images."""
+    src = make_video(tmp_path / "clip.mp4", size="640x320")
+    spec = VideoSpec(aspect="4:5", width=1080, height=1350, max_seconds=90, pad_mode="crop")
+    out = adapt_video(src, spec, tmp_path / "ig.mp4")
+    info = probe_video(out)
+    assert info["width"] / info["height"] == pytest.approx(1080 / 1350, rel=0.01)
+
+
+@pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
 def test_adapt_video_reel_crop(tmp_path: Path):
     src = make_video(tmp_path / "clip.mp4", size="640x320")
     spec = VideoSpec(aspect="9:16", width=540, height=960, max_seconds=90, pad_mode="crop")

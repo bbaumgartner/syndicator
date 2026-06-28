@@ -55,7 +55,7 @@ def make_cfg(tmp_path: Path) -> Config:
                     "kind": "social",
                     "link_mode": "bio",
                     "image": {"mode": "convert", "aspect": "4:5", "width": 1080, "height": 1350},
-                    "video": {"aspect": "9:16", "width": 540, "height": 960, "max_seconds": 90},
+                    "video": {"aspect": "4:5", "width": 1080, "height": 1350, "max_seconds": 90, "pad_mode": "crop"},
                 },
                 "x": {"kind": "social", "max_media_per_post": 4, "max_chars": 280},
                 "substack": {"kind": "article", "enabled": False},
