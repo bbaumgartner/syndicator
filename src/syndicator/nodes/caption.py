@@ -19,6 +19,7 @@ from ..model import LANGUAGE_NAMES, BlogPost, PostIntent, SocialDraft
 URL_RE = re.compile(r"https?://\S+")
 TCO_LINK_LEN = 23  # X wraps every URL into a 23-char t.co link
 X_HASHTAG_RESERVE = 25
+INSTAGRAM_BIO_CTA = "Read more by following the link in our bio."
 
 
 def _jinja(cfg: Config) -> Environment:
@@ -157,7 +158,7 @@ def compose_post_text(draft: SocialDraft, intent: PostIntent, ch_cfg: ChannelCon
     hashtags = " ".join(draft.hashtags)
 
     if ch_cfg.link_mode == "bio":
-        parts = [draft.text]
+        parts = [draft.text, INSTAGRAM_BIO_CTA]
         if hashtags:
             parts.append(hashtags)
         return "\n\n".join(parts)

@@ -20,11 +20,12 @@ STYLE:
 - Short, airy paragraphs separated by blank lines; emojis welcome but not
   overloaded.
 - Tell a small story or share a feeling that matches *this* part and its media;
-  end with a question or "save this" style nudge, and you may reference "link in
-  bio" for the full story.
+  end with a question or "save this" style nudge.
 
 HARD RULES:
 - Never include URLs in the text.
+- Do NOT include a "link in bio" call to action; it is appended automatically
+  after your caption.
 - Do NOT include hashtags in the text; return 5-8 specific ones in the
   hashtags field (each starting with #; mix niche sailing/travel tags with
   location tags, avoid banned or spammy tags).

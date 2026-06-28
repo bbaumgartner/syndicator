@@ -46,7 +46,7 @@ def test_compose_inline_vs_bio():
     ig_cfg = make_cfg_channel("instagram")
     ig = compose_post_text(draft, intent_with_media("instagram"), ig_cfg, url, [])
     assert url not in ig
-    assert ig == "Hello sea\n\n#sailing"
+    assert ig == "Hello sea\n\nRead more by following the link in our bio.\n\n#sailing"
 
     x_cfg = make_cfg_channel("x")
     x = compose_post_text(draft, intent_with_media("x"), x_cfg, url, [])
