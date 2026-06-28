@@ -54,7 +54,7 @@ def test_run_social_creates_review_page_and_media(tmp_path: Path):
     assert intro.title == "Intro"
     assert intro.publishing_date
     assert intro.location == "Corfu, Greece"
-    assert state.posts_for("instagram")[0].location == ""
+    assert state.posts_for("instagram")[0].location == "Corfu, Greece"
     assert state.posts_for("x")[0].location == ""
 
     # Facebook captions carry the inline blog link; Instagram (bio mode) not.

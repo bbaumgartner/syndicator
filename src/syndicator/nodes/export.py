@@ -97,7 +97,7 @@ def generate_post_block(
         title=intent.section_title or ("Intro" if intent.kind == "intro" else ""),
         status="draft",
         publishing_date=intent.suggested_date,
-        location=draft.location if intent.channel == "facebook" else "",
+        location=draft.location if intent.channel in ("facebook", "instagram") else "",
         source_hash=short_hash(source_hash(post)),
         children=caption_children(text, media_rel, youtube),
     )
