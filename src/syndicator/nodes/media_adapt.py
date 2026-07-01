@@ -95,11 +95,18 @@ def _fit_without_upscale(crop_w: int, crop_h: int, max_w: int, max_h: int) -> tu
     return _even(int(crop_w * scale)), _even(int(crop_h * scale))
 
 
-def _extract_video_frame(src: Path) -> Path:
-    """Grab one frame from the middle of a video for focal-point analysis."""
+def _extract_video_frame(src: Path, *, first_frame: bool = False) -> Path:
+    """Grab one frame from a video for focal-point analysis.
+
+    Reels use the opening frame so the crop shows something interesting at
+    playback start; other videos use the midpoint.
+    """
     preview = src.parent / f".crop_preview_{src.stem}.jpg"
-    info = probe_video(src)
-    seek = info["duration"] / 2 if info["duration"] > 0 else 0
+    if first_frame:
+        seek = 0
+    else:
+        info = probe_video(src)
+        seek = info["duration"] / 2 if info["duration"] > 0 else 0
     subprocess.run(
         [
             "ffmpeg", "-y", "-v", "error",
@@ -113,7 +120,13 @@ def _extract_video_frame(src: Path) -> Path:
     return preview
 
 
-def get_crop_focus(path: Path, cfg: Config, llm: LLMClient) -> CropFocus:
+def get_crop_focus(
+    path: Path,
+    cfg: Config,
+    llm: LLMClient,
+    *,
+    first_frame: bool = False,
+) -> CropFocus:
     """Ask a vision model for the focal point; center on failure."""
     if not cfg.shared.media.crop_focus.enabled:
         return CropFocus()
@@ -121,7 +134,7 @@ def get_crop_focus(path: Path, cfg: Config, llm: LLMClient) -> CropFocus:
     try:
         image_path = path
         if path.suffix.lower() in VIDEO_EXTENSIONS:
-            preview = _extract_video_frame(path)
+            preview = _extract_video_frame(path, first_frame=first_frame)
             image_path = preview
         with Image.open(image_path) as im:
             im = ImageOps.exif_transpose(im)
@@ -305,14 +318,15 @@ def adapt_media_for_channel(
             focus = get_crop_focus(src, cfg, llm)
         return adapt_image(src, spec, out_path, focus)
 
-    if post_format == "reel" and ch_cfg.reel_video is not None:
+    is_reel = post_format == "reel" and ch_cfg.reel_video is not None
+    if is_reel:
         spec = ch_cfg.reel_video
     else:
         spec = ch_cfg.video
     out_path = out_dir / (dest_name or video_output_name(src.name, spec))
     focus = None
     if spec.width and spec.height and spec.pad_mode == "crop":
-        focus = get_crop_focus(src, cfg, llm)
+        focus = get_crop_focus(src, cfg, llm, first_frame=is_reel)
     try:
         return adapt_video(src, spec, out_path, focus)
     except subprocess.CalledProcessError as err:

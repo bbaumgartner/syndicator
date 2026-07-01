@@ -3,6 +3,7 @@
 import shutil
 import subprocess
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from PIL import Image
@@ -11,6 +12,7 @@ from syndicator.config import ImageSpec, VideoSpec
 from syndicator.model import MediaRef
 from syndicator.nodes.media_adapt import (
     CropFocus,
+    _extract_video_frame,
     _fit_without_upscale,
     adapt_image,
     adapt_media_for_channel,
@@ -18,6 +20,7 @@ from syndicator.nodes.media_adapt import (
     adapt_video,
     channel_rewrites_filenames,
     crop_box,
+    get_crop_focus,
     image_output_name,
     output_basename,
     probe_video,
@@ -168,6 +171,43 @@ def test_channel_rewrites_filenames(tmp_path):
     assert channel_rewrites_filenames(hugo) is True  # videos crop to .mp4
     instagram = cfg.shared.channels["instagram"]
     assert channel_rewrites_filenames(instagram) is True  # images convert to .jpg
+
+
+@pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
+def test_extract_video_frame_first_frame_seeks_to_start(tmp_path: Path):
+    src = make_video(tmp_path / "clip.mp4", seconds=4)
+    with patch("syndicator.nodes.media_adapt.subprocess.run") as run:
+        run.return_value = subprocess.CompletedProcess([], 0)
+        _extract_video_frame(src, first_frame=True)
+    args = run.call_args[0][0]
+    ss_idx = args.index("-ss")
+    assert args[ss_idx + 1] == "0"
+
+
+@pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
+def test_extract_video_frame_default_seeks_to_middle(tmp_path: Path):
+    src = make_video(tmp_path / "clip.mp4", seconds=4)
+    with (
+        patch("syndicator.nodes.media_adapt.probe_video", return_value={"duration": 4.0, "width": 320, "height": 240}),
+        patch("syndicator.nodes.media_adapt.subprocess.run") as run,
+    ):
+        run.return_value = subprocess.CompletedProcess([], 0)
+        _extract_video_frame(src)
+    args = run.call_args[0][0]
+    ss_idx = args.index("-ss")
+    assert float(args[ss_idx + 1]) == pytest.approx(2.0)
+
+
+@pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
+def test_get_crop_focus_reel_uses_first_frame(tmp_path: Path):
+    cfg = make_cfg(tmp_path)
+    cfg.shared.media.crop_focus.enabled = True
+    llm = FakeLLM()
+    src = make_video(tmp_path / "clip.mp4", seconds=4)
+    with patch("syndicator.nodes.media_adapt._extract_video_frame") as extract:
+        extract.return_value = make_image(tmp_path / ".crop_preview_clip.jpg")
+        get_crop_focus(src, cfg, llm, first_frame=True)
+    extract.assert_called_once_with(src, first_frame=True)
 
 
 @pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
