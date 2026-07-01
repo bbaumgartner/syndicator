@@ -89,7 +89,7 @@ class ChannelConfig(BaseModel):
     caption_model: str = "gpt-5.5"
     image: ImageSpec = ImageSpec()
     video: VideoSpec = VideoSpec()
-    reel_video: VideoSpec | None = None  # 9:16 crop for reel-format posts
+    reel_video: VideoSpec | None = None  # e.g. 4:5 crop for reel-format posts
 
 
 class LanguagesConfig(BaseModel):

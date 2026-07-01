@@ -220,7 +220,7 @@ def test_adapt_media_for_channel_reel_uses_reel_video_spec(tmp_path: Path):
         media, "instagram", cfg, tmp_path / "reel", llm, post_format="reel"
     )
     info = probe_video(out)
-    assert info["width"] / info["height"] == pytest.approx(9 / 16, rel=0.02)
+    assert info["width"] / info["height"] == pytest.approx(1080 / 1350, rel=0.01)
 
 
 @pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")

@@ -8,7 +8,7 @@ decide taste.
 
 Section media rules (Instagram / Facebook):
 - Sections with uploadable videos: one reel post per video (per-channel
-  ``reel_video`` spec, e.g. 9:16 on Instagram, 4:5 on Facebook).
+  ``reel_video`` spec, 4:5 on Instagram and Facebook).
 - Sections with videos and images: reel posts plus one carousel with all
   uploadable media.
 - Sections without videos: one single post (unchanged).

@@ -60,7 +60,9 @@ channels:
     caption_model: gpt-5.5
     image: { mode: convert, aspect: "4:5", width: 1080, height: 1350, format: jpeg, quality: 90 }
     video: { aspect: "4:5", width: 1080, height: 1350, max_seconds: 90, pad_mode: crop }
-    reel_video: { aspect: "9:16", width: 1080, height: 1920, max_seconds: 90, pad_mode: crop }
+    # 4:5 (not 9:16): manual upload via instagram.com rejects taller ratios with
+    # "4:5 bis 16:9". Mobile Reels tab prefers 9:16, but our export workflow is desktop.
+    reel_video: { aspect: "4:5", width: 1080, height: 1350, max_seconds: 90, pad_mode: crop }
   x:
     kind: social
     enabled: true
