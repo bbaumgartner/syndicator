@@ -38,7 +38,7 @@ channels:
     kind: site
     enabled: true
     image: { mode: copy }
-    video: { aspect: "16:9", width: 1920, height: 1080, pad_mode: crop }
+    video: { aspect: "16:9", width: 700, height: 394, pad_mode: crop }
   facebook:
     kind: social
     enabled: true
