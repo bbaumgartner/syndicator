@@ -49,6 +49,7 @@ channels:
     caption_model: gpt-5.5
     image: { mode: convert, max_edge: 2048, format: jpeg, quality: 90 }
     video: { max_seconds: 240 }
+    reel_video: { aspect: "4:5", width: 1080, height: 1350, max_seconds: 240, pad_mode: crop }
   instagram:
     kind: social
     enabled: true
@@ -59,6 +60,7 @@ channels:
     caption_model: gpt-5.5
     image: { mode: convert, aspect: "4:5", width: 1080, height: 1350, format: jpeg, quality: 90 }
     video: { aspect: "4:5", width: 1080, height: 1350, max_seconds: 90, pad_mode: crop }
+    reel_video: { aspect: "9:16", width: 1080, height: 1920, max_seconds: 90, pad_mode: crop }
   x:
     kind: social
     enabled: true

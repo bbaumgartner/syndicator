@@ -45,6 +45,7 @@ def _caption_context(post: BlogPost, intent: PostIntent) -> dict:
     if intent.kind == "section":
         ctx["section_index"] = intent.section_index
         ctx["section_count"] = len(sections)
+        ctx["post_format"] = intent.format
     if post.meta.position:
         ctx["position_hint"] = post.meta.position
     return ctx

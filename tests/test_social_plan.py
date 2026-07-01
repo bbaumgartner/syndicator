@@ -3,7 +3,7 @@
 from datetime import date
 from pathlib import Path
 
-from syndicator.model import Block, BlogPost, Meta
+from syndicator.model import Block, BlogPost, MediaRef, Meta
 from syndicator.nodes.extract import scan_blog_posts
 from syndicator.nodes.social_plan import plan_social
 
@@ -23,28 +23,51 @@ def test_plan_counts_and_dates(tmp_path: Path):
     plans = plan_social(post, cfg, start=date(2026, 6, 12))
 
     assert set(plans) == {"facebook", "instagram", "x"}
-    for intents in plans.values():
-        # intro + 3 sections
-        assert [i.kind for i in intents] == ["intro", "section", "section", "section"]
-        assert [i.index for i in intents] == [0, 1, 2, 3]
+    for ch in ("facebook", "instagram"):
+        intents = plans[ch]
+        assert [i.kind for i in intents] == ["intro"] + ["section"] * 4
+        assert [i.format for i in intents] == [
+            "single",
+            "reel",
+            "carousel",
+            "reel",
+            "single",
+        ]
+
+    x = plans["x"]
+    assert [i.kind for i in x] == ["intro"] + ["section"] * 3
+    assert all(i.format == "single" for i in x)
 
     fb = plans["facebook"]
-    # posts_per_week=3 -> spacing 7/3 days: 0, +2, +5, +7
-    assert [i.suggested_date for i in fb] == ["2026-06-12", "2026-06-14", "2026-06-17", "2026-06-19"]
+    assert [i.suggested_date for i in fb] == [
+        "2026-06-12",
+        "2026-06-14",
+        "2026-06-17",
+        "2026-06-19",
+        "2026-06-21",
+    ]
     assert fb[1].section_title == "Gastfreundschaft"
-    assert len(fb[1].media) == 5  # 4 images + 1 video
+    assert fb[1].format == "reel"
+    assert len(fb[1].media) == 1
+    assert fb[1].media[0].kind == "video"
+    assert fb[2].format == "carousel"
+    assert len(fb[2].media) == 5  # 4 images + 1 video
 
 
-def test_x_video_exclusivity(tmp_path: Path):
+def test_x_one_post_per_section_video_wins(tmp_path: Path):
     cfg = make_cfg(tmp_path)
     post = griechenland(cfg)
     plans = plan_social(post, cfg, start=date(2026, 6, 12))
 
+    assert len(plans["x"]) == 4  # intro + 3 sections
+
     gast = plans["x"][1]  # Gastfreundschaft has images and a video
+    assert gast.format == "single"
     assert len(gast.media) == 1
     assert gast.media[0].kind == "video"
 
     herbst = plans["x"][3]  # Herbstpläne: images only -> capped at 4
+    assert herbst.format == "single"
     assert all(m.kind == "image" for m in herbst.media)
     assert len(herbst.media) == 4
 
@@ -70,14 +93,44 @@ def test_instagram_header_fallback_for_text_only_section(tmp_path: Path):
     assert plans["x"][1].media == []
 
 
-def test_plan_matches_section_count(tmp_path: Path):
+def test_video_only_section_yields_reels_on_ig_and_fb(tmp_path: Path):
+    cfg = make_cfg(tmp_path)
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"x")
+    post = BlogPost(
+        meta=Meta(date="2026-01-01", title="Test", language="german", status="online"),
+        blocks=[
+            Block(kind="text", raw="Intro."),
+            Block(
+                kind="media",
+                raw=f"![clip]({video})",
+                media=MediaRef(kind="video", source_path=video, filename="clip.mp4"),
+            ),
+        ],
+        source_path=tmp_path / "journals" / "x.md",
+    )
+    plans = plan_social(post, cfg)
+    for ch in ("facebook", "instagram"):
+        section_intents = plans[ch][1:]
+        assert len(section_intents) == 1
+        assert section_intents[0].format == "reel"
+        assert len(section_intents[0].media) == 1
+
+    x_section = plans["x"][1]
+    assert x_section.format == "single"
+    assert len(x_section.media) == 1
+    assert x_section.media[0].kind == "video"
+
+
+def test_plan_splits_sections_with_videos(tmp_path: Path):
     cfg = make_cfg(tmp_path)
     posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
-    for post in posts.values():
-        plans = plan_social(post, cfg)
-        for intents in plans.values():
-            assert len(intents) == 1 + len(post.sections)
-            assert [i.kind for i in intents[1:]] == ["section"] * len(post.sections)
+    post = posts["2026-06-10_Griechenland_❤️"]
+    create_dummy_assets([post])
+    plans = plan_social(post, cfg)
+    assert len(plans["facebook"]) == 5
+    assert len(plans["instagram"]) == 5
+    assert len(plans["x"]) == 4
 
 
 def test_missing_assets_are_excluded(tmp_path: Path):

@@ -44,8 +44,8 @@ def test_run_social_creates_review_page_and_media(tmp_path: Path):
 
     store = ReviewStore(cfg.pages_dir)
     state = store.load(post.slug)
-    # 3 channels x (intro + 3 sections) blocks, all draft.
-    assert len(state.posts) == 12
+    # 2x5 (FB/IG) + 1x4 (X) section-derived posts, all draft.
+    assert len(state.posts) == 14
     assert state.channel_state("facebook") == "draft"
     h = short_hash(source_hash(post))
     assert all(p.status == "draft" and p.source_hash == h for p in state.posts)
@@ -65,7 +65,7 @@ def test_run_social_creates_review_page_and_media(tmp_path: Path):
 
     # Adapted media live in assets/syndicator and are embedded relative to pages/.
     assert "](../assets/syndicator/" in fb_text
-    ig_dir = cfg.social_assets_dir / post.slug / "instagram" / "01-gastfreundschaft"
+    ig_dir = cfg.social_assets_dir / post.slug / "instagram" / "02-gastfreundschaft-carousel"
     ig_images = list(ig_dir.glob("*.jpg"))
     assert ig_images
     with Image.open(ig_images[0]) as im:
@@ -113,6 +113,7 @@ def test_stale_drafts_regenerate_published_is_immutable(tmp_path: Path):
     store.save(state)
     fb_dir = cfg.social_assets_dir / post.slug / "facebook"
     frozen_sentinel = fb_dir / "00-intro" / "sentinel.txt"
+    frozen_sentinel.parent.mkdir(parents=True, exist_ok=True)
     frozen_sentinel.write_text("keep", encoding="utf-8")
     draft_sentinel = fb_dir / "01-section" / "sentinel.txt"
     draft_sentinel.parent.mkdir(parents=True, exist_ok=True)

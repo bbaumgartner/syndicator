@@ -280,6 +280,7 @@ def adapt_media_for_channel(
     out_dir: Path,
     llm: LLMClient,
     dest_name: str | None = None,
+    post_format: str = "single",
 ) -> Path | None:
     """Adapt one media file for a channel; returns the output path.
 
@@ -304,7 +305,10 @@ def adapt_media_for_channel(
             focus = get_crop_focus(src, cfg, llm)
         return adapt_image(src, spec, out_path, focus)
 
-    spec = ch_cfg.video
+    if post_format == "reel" and ch_cfg.reel_video is not None:
+        spec = ch_cfg.reel_video
+    else:
+        spec = ch_cfg.video
     out_path = out_dir / (dest_name or video_output_name(src.name, spec))
     focus = None
     if spec.width and spec.height and spec.pad_mode == "crop":

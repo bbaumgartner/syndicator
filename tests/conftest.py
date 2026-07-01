@@ -7,6 +7,7 @@ from syndicator.llm import LLMClient
 from syndicator.model import SocialDraft
 
 FIXTURES = Path(__file__).parent / "fixtures"
+REEL_VIDEO = {"aspect": "9:16", "width": 1080, "height": 1920, "max_seconds": 90, "pad_mode": "crop"}
 
 
 class FakeLLM(LLMClient):
@@ -50,12 +51,13 @@ def make_cfg(tmp_path: Path) -> Config:
                     "image": {"mode": "copy"},
                     "video": {"aspect": "16:9", "width": 1920, "height": 1080, "pad_mode": "crop"},
                 },
-                "facebook": {"kind": "social"},
+                "facebook": {"kind": "social", "reel_video": REEL_VIDEO},
                 "instagram": {
                     "kind": "social",
                     "link_mode": "bio",
                     "image": {"mode": "convert", "aspect": "4:5", "width": 1080, "height": 1350},
                     "video": {"aspect": "4:5", "width": 1080, "height": 1350, "max_seconds": 90, "pad_mode": "crop"},
+                    "reel_video": REEL_VIDEO,
                 },
                 "x": {"kind": "social", "max_media_per_post": 4, "max_chars": 280},
                 "substack": {"kind": "article", "enabled": False},

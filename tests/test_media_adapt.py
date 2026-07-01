@@ -170,6 +170,32 @@ def test_channel_rewrites_filenames(tmp_path):
     assert channel_rewrites_filenames(instagram) is True  # images convert to .jpg
 
 
+@pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
+def test_adapt_media_for_channel_reel_uses_reel_video_spec(tmp_path: Path):
+    cfg = make_cfg(tmp_path)
+    llm = FakeLLM()
+    src = make_video(tmp_path / "clip.mp4", size="640x320")
+    media = MediaRef(kind="video", source_path=src, filename="clip.mp4")
+    out = adapt_media_for_channel(
+        media, "instagram", cfg, tmp_path / "reel", llm, post_format="reel"
+    )
+    info = probe_video(out)
+    assert info["width"] / info["height"] == pytest.approx(9 / 16, rel=0.02)
+
+
+@pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
+def test_adapt_media_for_channel_carousel_uses_feed_video_spec(tmp_path: Path):
+    cfg = make_cfg(tmp_path)
+    llm = FakeLLM()
+    src = make_video(tmp_path / "clip.mp4", size="640x320")
+    media = MediaRef(kind="video", source_path=src, filename="clip.mp4")
+    out = adapt_media_for_channel(
+        media, "instagram", cfg, tmp_path / "carousel", llm, post_format="carousel"
+    )
+    info = probe_video(out)
+    assert info["width"] / info["height"] == pytest.approx(1080 / 1350, rel=0.01)
+
+
 def test_adapt_media_for_channel_dispatch(tmp_path: Path):
     cfg = make_cfg(tmp_path)
     llm = FakeLLM()

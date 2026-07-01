@@ -86,14 +86,16 @@ def test_caption_context_omits_other_section_text(tmp_path: Path):
     cfg = make_cfg(tmp_path)
     posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
     post = posts["2026-06-10_Griechenland_❤️"]
+    create_dummy_assets([post])
     plans = plan_social(post, cfg)
-    section_intent = plans["facebook"][2]  # Wirtschaftskrise
+    section_intent = plans["facebook"][3]  # Wirtschaftskrise reel
     ctx = _caption_context(post, section_intent)
 
     assert "outline" not in ctx
     assert "intro" not in ctx
     assert ctx["section_titles"] == ["Gastfreundschaft", "Wirtschaftskrise", "Herbstpläne"]
     assert ctx["write_about_this_part"]["title"] == "Wirtschaftskrise"
+    assert ctx["post_format"] == "reel"
     assert "Wirtschaftskrise" in ctx["write_about_this_part"]["text"]
     assert "Gastfreundschaft" not in ctx["write_about_this_part"]["text"]
     assert "Herbstpläne" not in ctx["write_about_this_part"]["text"]

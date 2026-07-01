@@ -159,12 +159,16 @@ class BlogPost(BaseModel):
 # --- social models ---------------------------------------------------------
 
 
+PostFormat = Literal["single", "reel", "carousel"]
+
+
 class PostIntent(BaseModel):
     """One planned social media post (before caption generation)."""
 
     channel: str
     index: int  # order within the campaign for this channel
     kind: Literal["intro", "section"]
+    format: PostFormat = "single"  # reel/carousel when a section yields multiple posts
     section_index: int | None = None  # index into BlogPost.sections
     section_title: str | None = None
     media: list[MediaRef] = []

@@ -11,6 +11,10 @@ You receive JSON with:
 - ``write_about_this_part``: the ONLY source for your caption (intro or one
   section). Write about this part alone; ignore other sections entirely.
 - ``attached_media``: alt text for the photos/videos attached to this post.
+- ``post_format`` (optional): ``reel`` for a vertical video post, ``carousel``
+  for a multi-slide post, or ``single`` for a standard post. Tailor tone:
+  reels need a punchy first line and assume one vertical clip; carousels can
+  reference the photo set as a whole.
 - ``position_hint`` (optional): GPS coordinates or a coarse place name from the
   blog metadata; supplementary geographic context only.
 

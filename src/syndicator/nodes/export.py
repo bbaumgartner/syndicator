@@ -46,7 +46,24 @@ def _package_dirname(intent: PostIntent) -> str:
         return f"{intent.index:02d}-intro"
     title = (intent.section_title or "section").lower()
     title = re.sub(r"[^\w]+", "-", title, flags=re.UNICODE).strip("-") or "section"
+    if intent.format == "reel" and intent.media:
+        stem = Path(intent.media[0].filename).stem.lower()
+        stem = re.sub(r"[^\w]+", "-", stem, flags=re.UNICODE).strip("-") or "reel"
+        return f"{intent.index:02d}-{title}-reel-{stem}"
+    if intent.format == "carousel":
+        return f"{intent.index:02d}-{title}-carousel"
     return f"{intent.index:02d}-{title}"
+
+
+def _post_title(intent: PostIntent) -> str:
+    if intent.kind == "intro":
+        return "Intro"
+    base = intent.section_title or "Section"
+    if intent.format == "reel":
+        return f"{base} (Reel)"
+    if intent.format == "carousel":
+        return f"{base} (Carousel)"
+    return base
 
 
 def _referenced_dirs(posts: list[SocialPostState]) -> set[str]:
@@ -83,7 +100,9 @@ def generate_post_block(
 
     media_rel: list[str] = []
     for media in intent.media:
-        out = adapt_media_for_channel(media, intent.channel, cfg, pkg_dir, llm)
+        out = adapt_media_for_channel(
+            media, intent.channel, cfg, pkg_dir, llm, post_format=intent.format
+        )
         if out is not None:
             media_rel.append(
                 f"../assets/{PAGE_PREFIX}/{post.slug}/{intent.channel}/{dirname}/{out.name}"
@@ -94,7 +113,7 @@ def generate_post_block(
 
     return SocialPostState(
         channel=intent.channel,
-        title=intent.section_title or ("Intro" if intent.kind == "intro" else ""),
+        title=_post_title(intent),
         status="draft",
         publishing_date=intent.suggested_date,
         location=draft.location if intent.channel in ("facebook", "instagram") else "",

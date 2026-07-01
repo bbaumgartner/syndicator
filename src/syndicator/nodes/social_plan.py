@@ -1,15 +1,20 @@
 """social_plan node: turn a BlogPost into per-channel post intents.
 
 Deterministic, no LLM. Per social channel: one intro post (intro text +
-header image) plus one post per section, in order. Suggested posting dates
-spread posts according to ``social.posts_per_week``. The user can still drop
-or reorder posts during review — this node plans, it does not decide taste.
+header image) plus planned posts per section, in order. Suggested posting
+dates spread posts according to ``social.posts_per_week``. The user can
+still drop or reorder posts during review — this node plans, it does not
+decide taste.
 
-Channel-specific media rules:
-- x:         one video OR up to ``max_media_per_post`` images (no mixing).
-- instagram: needs at least one uploadable medium; falls back to the header
-             image for text-only sections. YouTube links cannot be uploaded.
-- facebook:  all section media up to the cap.
+Section media rules (Instagram / Facebook):
+- Sections with uploadable videos: one reel post per video (per-channel
+  ``reel_video`` spec, e.g. 9:16 on Instagram, 4:5 on Facebook).
+- Sections with videos and images: reel posts plus one carousel with all
+  uploadable media.
+- Sections without videos: one single post (unchanged).
+
+X keeps one post per section: one video OR up to ``max_media_per_post`` images
+(no mixing; video wins when present).
 """
 
 from __future__ import annotations
@@ -24,7 +29,9 @@ def _uploadable(media: list[MediaRef]) -> list[MediaRef]:
     return [m for m in media if m.kind in ("image", "video") and m.exists]
 
 
-def _select_media(channel: str, ch_cfg: ChannelConfig, media: list[MediaRef], header: MediaRef | None) -> list[MediaRef]:
+def _select_single_media(
+    channel: str, ch_cfg: ChannelConfig, media: list[MediaRef], header: MediaRef | None
+) -> list[MediaRef]:
     uploadable = _uploadable(media)
     cap = ch_cfg.max_media_per_post
 
@@ -43,8 +50,83 @@ def _select_media(channel: str, ch_cfg: ChannelConfig, media: list[MediaRef], he
     return uploadable[:cap]
 
 
-def _section_youtube(section: Section) -> list[str]:
-    return [m.url for m in section.media if m.kind == "youtube" and m.url]
+def _select_carousel_media(
+    channel: str, ch_cfg: ChannelConfig, media: list[MediaRef]
+) -> list[MediaRef]:
+    uploadable = _uploadable(media)
+    cap = ch_cfg.max_media_per_post
+
+    if channel == "x":
+        return [m for m in uploadable if m.kind == "image"][:cap]
+
+    return uploadable[:cap]
+
+
+def _plan_section_intents(
+    channel: str,
+    ch_cfg: ChannelConfig,
+    section: Section,
+    section_index: int,
+    header: MediaRef | None,
+) -> list[PostIntent]:
+    if channel == "x":
+        return [
+            PostIntent(
+                channel=channel,
+                index=0,
+                kind="section",
+                format="single",
+                section_index=section_index,
+                section_title=section.title,
+                media=_select_single_media(channel, ch_cfg, section.media, header),
+            )
+        ]
+
+    uploadable = _uploadable(section.media)
+    videos = [m for m in uploadable if m.kind == "video"]
+    images = [m for m in uploadable if m.kind == "image"]
+
+    if not videos:
+        return [
+            PostIntent(
+                channel=channel,
+                index=0,  # filled in by caller
+                kind="section",
+                format="single",
+                section_index=section_index,
+                section_title=section.title,
+                media=_select_single_media(channel, ch_cfg, section.media, header),
+            )
+        ]
+
+    intents: list[PostIntent] = []
+    for video in videos:
+        intents.append(
+            PostIntent(
+                channel=channel,
+                index=0,
+                kind="section",
+                format="reel",
+                section_index=section_index,
+                section_title=section.title,
+                media=[video],
+            )
+        )
+
+    if images:
+        intents.append(
+            PostIntent(
+                channel=channel,
+                index=0,
+                kind="section",
+                format="carousel",
+                section_index=section_index,
+                section_title=section.title,
+                media=_select_carousel_media(channel, ch_cfg, section.media),
+            )
+        )
+
+    return intents
 
 
 def plan_social(post: BlogPost, cfg: Config, start: date | None = None) -> dict[str, list[PostIntent]]:
@@ -57,7 +139,7 @@ def plan_social(post: BlogPost, cfg: Config, start: date | None = None) -> dict[
     for channel, ch_cfg in cfg.social_channels().items():
         intents: list[PostIntent] = []
 
-        intro_media = _select_media(channel, ch_cfg, [header] if header else [], header)
+        intro_media = _select_single_media(channel, ch_cfg, [header] if header else [], header)
         intents.append(
             PostIntent(
                 channel=channel,
@@ -69,18 +151,11 @@ def plan_social(post: BlogPost, cfg: Config, start: date | None = None) -> dict[
         )
 
         for si, section in enumerate(post.sections):
-            offset = timedelta(days=round((len(intents)) * spacing))
-            intents.append(
-                PostIntent(
-                    channel=channel,
-                    index=len(intents),
-                    kind="section",
-                    section_index=si,
-                    section_title=section.title,
-                    media=_select_media(channel, ch_cfg, section.media, header),
-                    suggested_date=(start + offset).isoformat(),
-                )
-            )
+            for intent in _plan_section_intents(channel, ch_cfg, section, si, header):
+                offset = timedelta(days=round(len(intents) * spacing))
+                intent.index = len(intents)
+                intent.suggested_date = (start + offset).isoformat()
+                intents.append(intent)
 
         plans[channel] = intents
     return plans
