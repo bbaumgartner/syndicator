@@ -9,11 +9,13 @@ from pathlib import Path
 
 import pytest
 
+from syndicator.model import Meta
 from syndicator.nodes.extract import scan_blog_posts
 from syndicator.nodes.hugo import (
     bundle_dir_name,
     collect_asset_copies,
     build_content,
+    front_matter,
     render_index,
     transform_content,
     write_bundle,
@@ -44,6 +46,15 @@ def test_render_index_matches_old_converter(slug):
     post = all_posts()[slug]
     golden_path = FIXTURES / "golden" / f"{slug}__{GOLDEN[slug]}"
     assert render_index(post) == golden_path.read_text(encoding="utf-8")
+
+
+def test_front_matter_escapes_special_characters():
+    """Quotes, backslashes and newlines in titles must not break the TOML."""
+    meta = Meta(date="2026-01-01", title='Der "Superstar"', author="A\\B")
+    fm = front_matter(meta, 'Zeile eins\nmit "Zitat"')
+    assert 'title = "Der \\"Superstar\\""' in fm
+    assert 'author = "A\\\\B"' in fm
+    assert 'summary = "Zeile eins\\nmit \\"Zitat\\""' in fm
 
 
 def test_bundle_dir_names():
@@ -82,6 +93,26 @@ def test_transform_content_adapts_filenames(tmp_path):
     adapted = transform_content(content, ch)
     assert "foo.png" in adapted
     assert '{{< video src="bar.mp4" >}}' in adapted
+
+
+def test_write_bundle_copies_corrupt_image_as_fallback(tmp_path):
+    """Unreadable media must not abort the bundle; the original is copied."""
+    cfg = make_cfg(tmp_path)
+    # Force convert mode so the corrupt file actually goes through Pillow.
+    cfg.shared.channels["hugo"].image.mode = "convert"
+    posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
+    post = posts["2024-06-14_Renan"]
+
+    for media in post.all_media():
+        if media.source_path is None:
+            continue
+        media.source_path.parent.mkdir(parents=True, exist_ok=True)
+        media.source_path.write_bytes(b"not an image")
+
+    bundle = write_bundle(post, cfg.hugo_posts_dir, cfg, FakeLLM())
+    assert (bundle / "index.en.md").exists()
+    copied = bundle / "renand.jpg"
+    assert copied.read_bytes() == b"not an image"
 
 
 def test_write_bundle_keeps_images_unchanged(tmp_path):

@@ -79,10 +79,10 @@ def _sanitize(draft: SocialDraft) -> SocialDraft:
     hashtags = []
     for tag in draft.hashtags:
         tag = tag.strip().replace(" ", "")
-        if not tag:
-            continue
         if not tag.startswith("#"):
             tag = f"#{tag}"
+        if tag == "#" or tag in hashtags:
+            continue
         hashtags.append(tag)
 
     location = URL_RE.sub("", draft.location).strip()[:80]
@@ -165,8 +165,7 @@ def compose_post_text(draft: SocialDraft, intent: PostIntent, ch_cfg: ChannelCon
         return "\n\n".join(parts)
 
     if intent.channel == "x":
-        tail = " ".join(filter(None, [hashtags, url]))
-        return f"{draft.text}\n\n{tail}" if tail else draft.text
+        return _compose_x_text(draft, ch_cfg, url)
 
     parts = [draft.text]
     parts.extend(youtube_links)
@@ -175,3 +174,26 @@ def compose_post_text(draft: SocialDraft, intent: PostIntent, ch_cfg: ChannelCon
     if hashtags:
         parts.append(hashtags)
     return "\n\n".join(parts)
+
+
+def _x_post_length(text: str, tags: list[str], url: str) -> int:
+    """Effective X character count; every URL is wrapped into a t.co link."""
+    tail_lengths = [len(t) for t in tags] + ([TCO_LINK_LEN] if url else [])
+    if not tail_lengths:
+        return len(text)
+    return len(text) + 2 + sum(tail_lengths) + len(tail_lengths) - 1
+
+
+def _compose_x_text(draft: SocialDraft, ch_cfg: ChannelConfig, url: str) -> str:
+    """X post: text, blank line, hashtags and link.
+
+    The hashtag reserve in the text budget is only a suggestion to the LLM;
+    enforce the hard platform limit here by dropping trailing hashtags (the
+    link always survives — clicks on it are the point of the post).
+    """
+    max_chars = ch_cfg.max_chars or 280
+    tags = list(draft.hashtags)
+    while tags and _x_post_length(draft.text, tags, url) > max_chars:
+        tags.pop()
+    tail = " ".join(filter(None, [" ".join(tags), url]))
+    return f"{draft.text}\n\n{tail}" if tail else draft.text

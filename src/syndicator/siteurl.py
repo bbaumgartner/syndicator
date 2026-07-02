@@ -49,8 +49,17 @@ def _rss_lookup(cfg: Config, slug: str, lang: str) -> str | None:
         log.warning("RSS lookup failed (%s): %s", feed_url, err)
         return None
 
+    links = re.findall(r"<link>([^<]+)</link>", resp.text)
+
+    # Exact match on the sanitized slug segment first: a date-prefix match
+    # alone would pick an arbitrary post when several share the same date.
+    expected = f"/posts/{hugo_path_segment(slug)}"
+    for link in links:
+        if unquote(link).lower().rstrip("/").endswith(expected):
+            return link
+
     date_part = slug.split("_", 1)[0]
-    for link in re.findall(r"<link>([^<]+)</link>", resp.text):
+    for link in links:
         if f"/posts/{date_part}_" in unquote(link) or f"/posts/{date_part}_" in link:
             return link
     return None

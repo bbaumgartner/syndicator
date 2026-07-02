@@ -38,7 +38,7 @@ from .social_plan import plan_social
 
 log = logging.getLogger(__name__)
 
-_ASSET_DIR_RE = re.compile(rf"\.\./assets/{PAGE_PREFIX}/[^/)]+/[^/)]+/([^/)]+)/")
+_EMBED_PATH_RE = re.compile(rf"\((\.\./assets/{PAGE_PREFIX}/[^)]+)\)")
 
 
 def _package_dirname(intent: PostIntent) -> str:
@@ -67,11 +67,19 @@ def _post_title(intent: PostIntent) -> str:
 
 
 def _referenced_dirs(posts: list[SocialPostState]) -> set[str]:
-    """Package dir names referenced by the media embeds of the given blocks."""
+    """Package dir names referenced by the media embeds of the given blocks.
+
+    The package dir is the second-to-last path segment of every embed
+    (``.../<channel>/<package-dir>/<file>``); counting segments from the left
+    would break for slugs that contain ``/``.
+    """
     dirs: set[str] = set()
     for post in posts:
         for line in post.children:
-            dirs.update(_ASSET_DIR_RE.findall(line))
+            for path in _EMBED_PATH_RE.findall(line):
+                parts = path.split("/")
+                if len(parts) >= 2:
+                    dirs.add(parts[-2])
     return dirs
 
 

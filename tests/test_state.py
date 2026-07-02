@@ -205,7 +205,6 @@ def test_bootstrap_marks_hugo_and_renan(tmp_path: Path):
     )
     assert charly.channel_state("facebook") == "pending"
 
-    athen = store.load("2026-06-03_Athen")
     assert read_hugo_hash(posts["2026-06-03_Athen"]) == ""  # stale -> regenerate on first run
 
     # The blog posts got their syndication:: backlink — without hash changes.
@@ -236,6 +235,47 @@ def test_bootstrap_is_idempotent_and_keeps_progress(tmp_path: Path):
     assert state.channel_state("instagram") == "published"
 
 
+def test_page_filename_roundtrip_with_special_characters(tmp_path: Path):
+    """Logseq-invalid filename chars are percent-encoded and decode back."""
+    slugs = [
+        "2026-01-01_Trogir/Split",
+        "2026-01-01_Frage?",
+        "2026-01-01_100%_Sicher",
+        '2026-01-01_"Zitat"<hier>|dort*',
+        "2026-01-01_Törn ❤️",
+    ]
+    store = ReviewStore(tmp_path / "pages")
+    for slug in slugs:
+        filename = page_filename(slug)
+        assert "/" not in filename and "?" not in filename and '"' not in filename
+        store.save(ReviewState(slug=slug, posts=[make_post_block()]))
+    found = sorted(s.slug for s in store.all())
+    assert found == sorted(slugs)
+
+
+def test_parse_unknown_status_coerced_to_draft():
+    text = (
+        "- Facebook\n"
+        "\t- Intro\n"
+        "\t  channel:: facebook\n"
+        "\t  status:: totally-bogus\n"
+    )
+    state = parse_review_page("2026-01-01_T", text)
+    assert state.posts_for("facebook")[0].status == "draft"
+
+
+def test_parse_post_block_without_status_defaults_to_draft():
+    text = "- Facebook\n\t- Intro\n\t  channel:: facebook\n"
+    state = parse_review_page("2026-01-01_T", text)
+    assert state.posts_for("facebook")[0].status == "draft"
+
+
+def test_review_state_slug_without_title_part():
+    state = ReviewState(slug="2026-01-01")
+    assert state.date == "2026-01-01"
+    assert state.title == "2026-01-01"
+
+
 def test_pipeline_lock(tmp_path: Path):
     lock_path = tmp_path / ".syndicator-lock.json"
     lock = PipelineLock(lock_path)
@@ -258,3 +298,24 @@ def test_pipeline_lock_blocks_other_host(tmp_path: Path, monkeypatch):
     assert not other.acquire()
     with pytest.raises(RuntimeError):
         other.__enter__()
+
+
+def test_pipeline_lock_expired_or_corrupt_is_taken_over(tmp_path: Path, monkeypatch):
+    lock_path = tmp_path / ".syndicator-lock.json"
+    assert PipelineLock(lock_path).acquire()
+
+    import syndicator.state as state_mod
+
+    monkeypatch.setattr(state_mod.socket, "gethostname", lambda: "other-host")
+    # Still fresh: blocked. Expired TTL: taken over (crash recovery).
+    assert not PipelineLock(lock_path, ttl_seconds=3600).acquire()
+    assert PipelineLock(lock_path, ttl_seconds=0).acquire()
+
+    # Corrupt lock file never deadlocks.
+    lock_path.write_text("not json{", encoding="utf-8")
+    assert PipelineLock(lock_path).acquire()
+
+    # Release only removes our own lock.
+    lock_path.write_text('{"host": "someone-else", "ts": 0}', encoding="utf-8")
+    PipelineLock(lock_path).release()
+    assert lock_path.exists()

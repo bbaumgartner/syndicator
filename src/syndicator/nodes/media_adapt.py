@@ -189,19 +189,40 @@ def adapt_image(src: Path, spec: ImageSpec, out_path: Path, focus: CropFocus | N
     return out_path
 
 
+def _stream_rotation(stream: dict) -> int:
+    """Display rotation in degrees: side data (modern) or rotate tag (legacy)."""
+    for side in stream.get("side_data_list") or []:
+        if side.get("rotation") is not None:
+            try:
+                return round(float(side["rotation"]))
+            except (TypeError, ValueError):
+                return 0
+    try:
+        return round(float((stream.get("tags") or {}).get("rotate") or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 def probe_video(path: Path) -> dict:
     cmd = [
         "ffprobe", "-v", "error",
         "-select_streams", "v:0",
-        "-show_entries", "stream=width,height:format=duration",
+        "-show_entries", "stream=width,height,tags:stream_side_data=rotation:format=duration",
         "-of", "json", str(path),
     ]
     out = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
     data = json.loads(out)
     stream = (data.get("streams") or [{}])[0]
+    width = int(stream.get("width") or 0)
+    height = int(stream.get("height") or 0)
+    # ffmpeg auto-rotates in the filter pipeline, so crop/scale geometry must
+    # use display dimensions (e.g. phone portrait videos: coded landscape
+    # plus a ±90° display matrix).
+    if _stream_rotation(stream) % 180 != 0:
+        width, height = height, width
     return {
-        "width": int(stream.get("width") or 0),
-        "height": int(stream.get("height") or 0),
+        "width": width,
+        "height": height,
         "duration": float((data.get("format") or {}).get("duration") or 0.0),
     }
 
@@ -216,6 +237,10 @@ def adapt_video(
     info = probe_video(src)
 
     needs_aspect = bool(spec.aspect and spec.width and spec.height)
+    if needs_aspect and (info["width"] <= 0 or info["height"] <= 0):
+        # e.g. audio-only container: no video stream to crop or pad.
+        log.warning("no video dimensions for %s — skipping aspect conversion", src.name)
+        needs_aspect = False
     needs_trim = bool(spec.max_seconds and info["duration"] > spec.max_seconds)
 
     if not needs_aspect and not needs_trim and src.suffix.lower() == ".mp4":
@@ -313,10 +338,15 @@ def adapt_media_for_channel(
             out_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(src, out_path)
             return out_path
-        focus = None
-        if spec.width and spec.height:
-            focus = get_crop_focus(src, cfg, llm)
-        return adapt_image(src, spec, out_path, focus)
+        try:
+            focus = None
+            if spec.width and spec.height:
+                focus = get_crop_focus(src, cfg, llm)
+            return adapt_image(src, spec, out_path, focus)
+        except (OSError, Image.DecompressionBombError) as err:
+            # Same graceful degradation as failing videos below.
+            log.error("image adaptation failed for %s: %s", src.name, err)
+            return None
 
     is_reel = post_format == "reel" and ch_cfg.reel_video is not None
     if is_reel:

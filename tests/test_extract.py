@@ -138,3 +138,60 @@ def test_source_hash_stability_and_sensitivity():
     assert source_hash(a) == source_hash(b)
     b.blocks[0].raw += " geändert"
     assert source_hash(a) != source_hash(b)
+
+
+def test_scan_skips_posts_without_date_or_title(tmp_path: Path):
+    journals = tmp_path / "journals"
+    journals.mkdir()
+    (journals / "2026_01_01.md").write_text(
+        "- [[Blog]]\n"
+        "\t- type:: blog\n"
+        "\t  status:: online\n"
+        "\t  language:: german\n"
+        "\t- Beitrag ohne Datum und Titel.\n",
+        encoding="utf-8",
+    )
+    assert scan_blog_posts(journals, tmp_path / "pages") == []
+
+
+def test_scan_survives_unreadable_file(tmp_path: Path):
+    journals = tmp_path / "journals"
+    journals.mkdir()
+    (journals / "2026_01_01.md").write_bytes(b"\xff\xfe invalid utf-8 \xff")
+    (journals / "2026_01_02.md").write_text(
+        "- [[Blog]]\n"
+        "\t- type:: blog\n"
+        "\t  status:: online\n"
+        "\t  language:: german\n"
+        "\t  date:: 2026-01-02\n"
+        "\t  title:: Gültig\n"
+        "\t- Text.\n",
+        encoding="utf-8",
+    )
+    posts = scan_blog_posts(journals, tmp_path / "pages")
+    assert [p.slug for p in posts] == ["2026-01-02_Gültig"]
+
+
+def test_two_blog_branches_in_one_journal(tmp_path: Path):
+    journal = tmp_path / "2026_01_03.md"
+    journal.write_text(
+        "- [[Blog]]\n"
+        "\t- type:: blog\n"
+        "\t  status:: online\n"
+        "\t  language:: german\n"
+        "\t  date:: 2026-01-03\n"
+        "\t  title:: Erster\n"
+        "\t- Text eins.\n"
+        "- Dazwischen privates Zeug\n"
+        "- [[Blog]]\n"
+        "\t- type:: blog\n"
+        "\t  status:: online\n"
+        "\t  language:: german\n"
+        "\t  date:: 2026-01-03\n"
+        "\t  title:: Zweiter\n"
+        "\t- Text zwei.\n",
+        encoding="utf-8",
+    )
+    posts = extract_posts(journal)
+    assert [p.meta.title for p in posts] == ["Erster", "Zweiter"]
+    assert [p.blocks[0].raw for p in posts] == ["Text eins.", "Text zwei."]

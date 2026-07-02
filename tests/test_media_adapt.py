@@ -22,7 +22,6 @@ from syndicator.nodes.media_adapt import (
     crop_box,
     get_crop_focus,
     image_output_name,
-    output_basename,
     probe_video,
     video_output_name,
 )
@@ -104,6 +103,29 @@ def make_video(path: Path, seconds=2, size="320x240"):
     return path
 
 
+def make_rotated_video(path: Path, seconds=2, size="320x240", rotation=90):
+    """Landscape-coded video with a display-matrix rotation (phone portrait)."""
+    plain = path.with_name(f"plain_{path.name}")
+    make_video(plain, seconds=seconds, size=size)
+    result = subprocess.run(
+        ["ffmpeg", "-y", "-v", "error", "-display_rotation", str(rotation),
+         "-i", str(plain), "-c", "copy", str(path)],
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        pytest.skip("ffmpeg lacks -display_rotation")
+    return path
+
+
+def make_audio_only(path: Path, seconds=2):
+    subprocess.run(
+        ["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i",
+         f"sine=frequency=440:duration={seconds}", "-c:a", "aac", str(path)],
+        check=True, capture_output=True,
+    )
+    return path
+
+
 @pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
 def test_adapt_video_instagram_carousel_crop(tmp_path: Path):
     """Instagram carousel items must share the same 4:5 aspect as feed images."""
@@ -146,6 +168,84 @@ def test_adapt_video_passthrough_copy(tmp_path: Path):
     spec = VideoSpec(max_seconds=140)
     out = adapt_video(src, spec, tmp_path / "copy.mp4")
     assert out.read_bytes() == src.read_bytes()
+
+
+@pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
+def test_probe_video_reports_display_dimensions_for_rotated_video(tmp_path: Path):
+    """Phone portrait videos: coded landscape + 90° display matrix."""
+    src = make_rotated_video(tmp_path / "portrait.mp4", size="320x240", rotation=90)
+    info = probe_video(src)
+    assert (info["width"], info["height"]) == (240, 320)
+
+
+def test_probe_video_rotation_parsing_from_side_data_and_tags():
+    """Unit check of the rotation sources without invoking ffprobe."""
+    import json
+    from unittest.mock import patch
+    import subprocess as sp
+
+    def fake_probe(payload):
+        completed = sp.CompletedProcess([], 0, stdout=json.dumps(payload), stderr="")
+        with patch("syndicator.nodes.media_adapt.subprocess.run", return_value=completed):
+            return probe_video(Path("dummy.mp4"))
+
+    side_data = {
+        "streams": [{"width": 1920, "height": 1080, "side_data_list": [{"rotation": -90}]}],
+        "format": {"duration": "10.0"},
+    }
+    assert fake_probe(side_data)["width"] == 1080
+    assert fake_probe(side_data)["height"] == 1920
+
+    legacy_tag = {
+        "streams": [{"width": 1920, "height": 1080, "tags": {"rotate": "270"}}],
+        "format": {"duration": "10.0"},
+    }
+    assert fake_probe(legacy_tag)["width"] == 1080
+
+    upside_down = {
+        "streams": [{"width": 1920, "height": 1080, "side_data_list": [{"rotation": 180}]}],
+        "format": {"duration": "10.0"},
+    }
+    assert fake_probe(upside_down)["width"] == 1920
+
+    no_rotation = {"streams": [{"width": 1920, "height": 1080}], "format": {"duration": "10.0"}}
+    assert fake_probe(no_rotation)["width"] == 1920
+
+    garbage_rotation = {
+        "streams": [{"width": 1920, "height": 1080, "side_data_list": [{"rotation": "n/a"}]}],
+        "format": {"duration": "10.0"},
+    }
+    assert fake_probe(garbage_rotation)["width"] == 1920
+
+
+@pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
+def test_adapt_video_crops_rotated_video(tmp_path: Path):
+    """The crop window must be computed in display coordinates, otherwise
+    ffmpeg rejects the filter (crop wider than the rotated frame)."""
+    src = make_rotated_video(tmp_path / "portrait.mp4", size="320x240", rotation=90)
+    spec = VideoSpec(aspect="16:9", width=1920, height=1080, pad_mode="crop")
+    out = adapt_video(src, spec, tmp_path / "landscape.mp4")
+    info = probe_video(out)
+    assert info["width"] / info["height"] == pytest.approx(16 / 9, rel=0.02)
+
+
+@pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
+def test_adapt_video_audio_only_skips_aspect_instead_of_crashing(tmp_path: Path):
+    """ffprobe exits 0 for audio-only containers; aspect math must not divide by zero."""
+    src = make_audio_only(tmp_path / "voice.m4v")
+    spec = VideoSpec(aspect="4:5", width=1080, height=1350, max_seconds=90, pad_mode="crop")
+    out = adapt_video(src, spec, tmp_path / "out.mp4")
+    assert out.exists()
+
+
+def test_adapt_media_for_channel_corrupt_image_returns_none(tmp_path: Path):
+    """A corrupt image must degrade gracefully (like videos), not kill the run."""
+    cfg = make_cfg(tmp_path)
+    corrupt = tmp_path / "corrupt.jpg"
+    corrupt.write_bytes(b"not an image at all")
+    media = MediaRef(kind="image", source_path=corrupt, filename="corrupt.jpg")
+    out = adapt_media_for_channel(media, "instagram", cfg, tmp_path / "out", FakeLLM())
+    assert out is None
 
 
 def test_image_output_name_copy_mode():

@@ -48,6 +48,8 @@ class LLMClient:
                 return call()
             except Exception as err:  # noqa: BLE001 - retry then re-raise
                 last_err = err
+                if attempt + 1 == self.max_retries:
+                    break
                 wait = 2**attempt
                 log.warning("LLM call failed (attempt %d/%d): %s — retrying in %ds",
                             attempt + 1, self.max_retries, err, wait)

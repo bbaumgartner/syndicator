@@ -35,6 +35,14 @@ def test_sanitize_strips_urls_and_normalizes_hashtags():
     assert clean.location == "Corfu  Greece"
 
 
+def test_sanitize_drops_bare_hash_and_duplicates():
+    draft = SocialDraft(
+        text="t",
+        hashtags=["#", "  ", "#sailing", "sailing", "#sailing", "#greece"],
+    )
+    assert _sanitize(draft).hashtags == ["#sailing", "#greece"]
+
+
 def test_compose_inline_vs_bio():
     draft = SocialDraft(text="Hello sea", hashtags=["#sailing"])
     url = "https://example.org/posts/x/"
@@ -58,6 +66,31 @@ def make_cfg_channel(name):
 
     modes = {"facebook": "inline", "instagram": "bio", "x": "inline"}
     return ChannelConfig(kind="social", link_mode=modes[name], max_chars=280 if name == "x" else None)
+
+
+def test_compose_x_never_exceeds_limit():
+    """The composed X post must respect max_chars with the t.co link length,
+    dropping trailing hashtags when the reserve is blown — the link survives."""
+    cfg_ch = make_cfg_channel("x")
+    url = "https://example.org/posts/2026-06-10_griechenland-a-very-long-slug/"
+    text = "a" * x_text_budget(cfg_ch)
+    draft = SocialDraft(text=text, hashtags=["#sailing", "#mediterranean", "#travelcouple"])
+
+    composed = compose_post_text(draft, intent_with_media("x"), cfg_ch, url, [])
+    effective = len(composed) - len(url) + 23  # X wraps every URL to 23 chars
+    assert effective <= 280
+    assert url in composed
+    assert "#sailing" in composed  # leading hashtags kept
+    assert "#travelcouple" not in composed  # trailing hashtag dropped
+
+    # With a short text nothing is dropped.
+    short = SocialDraft(text="Ahoy!", hashtags=["#sailing", "#greece"])
+    composed = compose_post_text(short, intent_with_media("x"), cfg_ch, url, [])
+    assert composed == f"Ahoy!\n\n#sailing #greece {url}"
+
+    # No URL and no hashtags: bare text without trailing whitespace.
+    bare = SocialDraft(text="Just text", hashtags=[])
+    assert compose_post_text(bare, intent_with_media("x"), cfg_ch, "", []) == "Just text"
 
 
 def test_x_budget_enforcement():

@@ -1,12 +1,15 @@
 """End-to-end tests for the social pipeline (fake LLM, no network)."""
 
+from datetime import date
 from pathlib import Path
 
 from PIL import Image
 
+from syndicator.model import Block, BlogPost, MediaRef, Meta
+from syndicator.nodes.export import _referenced_dirs, export_social
 from syndicator.nodes.extract import scan_blog_posts, source_hash
 from syndicator.pipeline import next_catchup_post, run_social_for_post
-from syndicator.state import ReviewStore, SocialPostState, page_filename, short_hash
+from syndicator.state import ReviewStore, SocialPostState, caption_children, page_filename, short_hash
 
 from conftest import FakeLLM, make_cfg
 
@@ -141,6 +144,67 @@ def test_stale_drafts_regenerate_published_is_immutable(tmp_path: Path):
     assert state.channel_state("x") == "published"
     assert state.posts_for("facebook")[0].children == frozen_children
     assert frozen_sentinel.exists()
+
+
+def test_referenced_dirs_uses_second_to_last_segment():
+    """Package dirs must be found even when the slug itself contains '/'."""
+    posts = [
+        SocialPostState(
+            channel="facebook",
+            title="Intro",
+            children=caption_children(
+                "Caption",
+                [
+                    "../assets/syndicator/2026-06-10_Trip/facebook/00-intro/img.jpg",
+                    "../assets/syndicator/2026-06-10_Trogir/Split/facebook/01-title/img.jpg",
+                ],
+                [],
+            ),
+        ),
+    ]
+    assert _referenced_dirs(posts) == {"00-intro", "01-title"}
+
+
+def test_export_with_slash_in_slug_keeps_referenced_media(tmp_path: Path):
+    """A '/' in the post title must not confuse the package-dir cleanup —
+    the old left-anchored regex captured the channel name and deleted
+    every package dir of the channel, including published media."""
+    cfg = make_cfg(tmp_path)
+    img = tmp_path / "media" / "photo.jpg"
+    img.parent.mkdir(parents=True)
+    Image.new("RGB", (1600, 900), (30, 90, 160)).save(img)
+
+    post = BlogPost(
+        meta=Meta(date="2026-01-01", title="Trogir/Split", language="german", status="online"),
+        blocks=[
+            Block(kind="text", raw="Intro."),
+            Block(
+                kind="media",
+                raw=f"![photo.jpg]({img})",
+                media=MediaRef(kind="image", source_path=img, filename="photo.jpg"),
+            ),
+            Block(kind="text", raw="Ein Abschnitt."),
+        ],
+        source_path=tmp_path / "journals" / "x.md",
+    )
+    assert post.slug == "2026-01-01_Trogir/Split"
+
+    export_social(post, cfg, FakeLLM(), verify_links=False, start=date(2026, 1, 2))
+    store = ReviewStore(cfg.pages_dir)
+    state = store.load(post.slug)
+    assert state.posts_for("facebook")
+
+    fb_dir = cfg.social_assets_dir / post.slug / "facebook"
+    dirs_before = {p.name for p in fb_dir.iterdir() if p.is_dir()}
+    assert dirs_before  # media packages were created
+
+    # Freeze one block, then re-export: its package dir must survive.
+    state.posts_for("facebook")[0].status = "published"
+    store.save(state)
+    export_social(post, cfg, FakeLLM(), channels=["facebook"], verify_links=False, start=date(2026, 1, 2))
+
+    dirs_after = {p.name for p in fb_dir.iterdir() if p.is_dir()}
+    assert dirs_before <= dirs_after
 
 
 def test_catchup_order_and_state_transitions(tmp_path: Path):
