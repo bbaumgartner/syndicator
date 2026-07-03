@@ -300,6 +300,55 @@ def test_pipeline_lock_blocks_other_host(tmp_path: Path, monkeypatch):
         other.__enter__()
 
 
+def test_locked_reentrant_depth(tmp_path: Path):
+    """Nested _locked: lock file survives inner exit, disappears only on outer exit."""
+    import syndicator.pipeline as pl
+    from syndicator.pipeline import _locked
+
+    cfg = make_cfg(tmp_path)
+    # Reset module state in case a previous test left it dirty.
+    pl._lock_depth = 0
+    pl._active_lock = None
+
+    with _locked(cfg):
+        assert cfg.lock_path.exists(), "lock file must exist after outer entry"
+        with _locked(cfg):
+            assert cfg.lock_path.exists(), "lock file must still exist inside inner"
+        # Inner exited — but outer still holds it.
+        assert cfg.lock_path.exists(), "lock file must survive inner exit"
+    # Outer exited — lock released.
+    assert not cfg.lock_path.exists(), "lock file must be gone after outer exit"
+    assert pl._lock_depth == 0
+
+
+def test_run_social_for_post_blocked_by_other_host(tmp_path: Path):
+    """run_social_for_post raises RuntimeError when another host holds the lock."""
+    import json
+    import time
+
+    from syndicator.nodes.extract import scan_blog_posts
+    from syndicator.pipeline import run_social_for_post
+
+    cfg = make_cfg(tmp_path)
+    # Pre-create the lock file as another host would, with a fresh timestamp.
+    cfg.lock_path.parent.mkdir(parents=True, exist_ok=True)
+    cfg.lock_path.write_text(
+        json.dumps({"host": "other-machine", "ts": time.time()}),
+        encoding="utf-8",
+    )
+    lock_mtime_before = cfg.lock_path.stat().st_mtime
+
+    post = scan_blog_posts(cfg.journals_dir, cfg.pages_dir)[0]
+    with pytest.raises(RuntimeError, match="pipeline lock held by another machine"):
+        run_social_for_post(cfg, post)
+
+    # Lock file still belongs to other-machine; nothing was written.
+    info = json.loads(cfg.lock_path.read_text(encoding="utf-8"))
+    assert info["host"] == "other-machine"
+    assert cfg.lock_path.stat().st_mtime == lock_mtime_before
+    assert not ReviewStore(cfg.pages_dir).exists(post.slug)
+
+
 def test_pipeline_lock_expired_or_corrupt_is_taken_over(tmp_path: Path, monkeypatch):
     lock_path = tmp_path / ".syndicator-lock.json"
     assert PipelineLock(lock_path).acquire()

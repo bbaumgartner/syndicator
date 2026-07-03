@@ -14,11 +14,17 @@ hugo -> journeymap -> git push). This module also composes the bootstrap and
 parity pipelines as plain orchestrator code. All state lives on the per-post
 review pages inside the Logseq graph (see state.py); the review itself happens
 in Logseq.
+
+All mutating entry points (``run_all``, ``run_social_for_post``,
+``run_bootstrap``, ``mark_channels_published``) serialize on the cross-machine
+lock via the reentrant ``_locked`` wrapper so that, e.g., a ``catchup`` on the
+Mac cannot race the server daemon's ``run_all``.
 """
 
 from __future__ import annotations
 
 import logging
+from contextlib import contextmanager
 from datetime import date
 from dataclasses import dataclass, field
 
@@ -36,6 +42,48 @@ from .state import PipelineLock, ReviewState, ReviewStore, SocialPostState, shor
 _FROZEN_STATUSES = ("approved", "scheduled", "published")
 
 log = logging.getLogger(__name__)
+
+# Module-level reentrant lock depth counter. The process is single-threaded —
+# CLI commands and the watch daemon both run pipelines sequentially — so a plain
+# int is sufficient; no threading.Lock needed.
+_lock_depth: int = 0
+_active_lock: PipelineLock | None = None
+
+
+@contextmanager
+def _locked(cfg: Config):
+    """Reentrant context manager that serializes all mutating pipeline entry points.
+
+    Depth 0 → 1 acquires ``PipelineLock(cfg.lock_path)``, raising
+    ``RuntimeError`` if another machine currently holds the lock.  Nested
+    entries (depth > 0) only bump the counter.  The last exit (depth → 0)
+    releases the lock and removes the lock file.
+
+    Why this wrapper is required instead of a naked ``with PipelineLock(...)``
+    in each function: ``PipelineLock.acquire()`` succeeds for the *same* host
+    even when the file already exists (same-host re-acquire is intentional),
+    and ``release()`` unconditionally deletes the file.  A naively nested pair
+    of ``with PipelineLock(...)`` calls would therefore delete the lock file
+    when the inner ``with`` exits, while the outer scope still believes it holds
+    the lock — silently opening the cross-machine race window for the remainder
+    of the outer call.  The reentrant depth counter prevents that by ensuring
+    exactly one ``PipelineLock`` is live for the duration of the outermost
+    mutating call.
+    """
+    global _lock_depth, _active_lock
+    if _lock_depth == 0:
+        lock = PipelineLock(cfg.lock_path)
+        lock.__enter__()  # raises RuntimeError on conflict with another host
+        _active_lock = lock
+    _lock_depth += 1
+    try:
+        yield
+    finally:
+        _lock_depth -= 1
+        if _lock_depth == 0:
+            assert _active_lock is not None
+            _active_lock.__exit__(None, None, None)
+            _active_lock = None
 
 
 @dataclass(frozen=True)
@@ -92,51 +140,53 @@ def run_parity(cfg: Config) -> list[ParityCheck]:
 
 def run_bootstrap(cfg: Config) -> BootstrapResult:
     """Compose bootstrap: scan posts, compare live bundles, and write state."""
-    from .nodes.bootstrap import hugo_bundle_hash
+    with _locked(cfg):
+        from .nodes.bootstrap import hugo_bundle_hash
 
-    store = make_store(cfg)
-    posts = scan_posts(cfg)
-    result = BootstrapResult(posts=len(posts))
+        store = make_store(cfg)
+        posts = scan_posts(cfg)
+        result = BootstrapResult(posts=len(posts))
 
-    for post in posts:
-        state = store.load(post.slug)
-        hugo_hash = hugo_bundle_hash(cfg, post)
-        store.save(state)
-        set_hugo_hash(post, hugo_hash)
-        ensure_syndication_link(post)
-        if hugo_hash:
-            result.hugo_in_sync.append(post.slug)
-        else:
-            result.hugo_stale.append(post.slug)
+        for post in posts:
+            state = store.load(post.slug)
+            hugo_hash = hugo_bundle_hash(cfg, post)
+            store.save(state)
+            set_hugo_hash(post, hugo_hash)
+            ensure_syndication_link(post)
+            if hugo_hash:
+                result.hugo_in_sync.append(post.slug)
+            else:
+                result.hugo_stale.append(post.slug)
 
-    return result
+        return result
 
 
 def mark_channels_published(cfg: Config, slug: str, channels: list[str] | None) -> list[str]:
     """Mark selected channel blocks on a review page as published."""
-    store = make_store(cfg)
-    if not store.exists(slug):
-        raise ValueError(f"No review page for {slug} — run `syndicator catchup --post {slug}` first.")
+    with _locked(cfg):
+        store = make_store(cfg)
+        if not store.exists(slug):
+            raise ValueError(f"No review page for {slug} — run `syndicator catchup --post {slug}` first.")
 
-    state = store.load(slug)
-    social = list(cfg.social_channels())
-    targets = channels or [c for c in social if state.channel_state(c) == "draft"]
-    if not targets:
-        raise ValueError("Nothing to mark: no draft channels and none given via --channel.")
+        state = store.load(slug)
+        social = list(cfg.social_channels())
+        targets = channels or [c for c in social if state.channel_state(c) == "draft"]
+        if not targets:
+            raise ValueError("Nothing to mark: no draft channels and none given via --channel.")
 
-    for channel in targets:
-        if channel not in social:
-            raise ValueError(f"Unknown channel: {channel}")
-        posts = state.posts_for(channel)
-        if not posts:
-            raise ValueError(
-                f"  {slug} {channel}: no blocks on review page — flip status:: in Logseq"
-            )
-        for post in posts:
-            post.status = "published"
+        for channel in targets:
+            if channel not in social:
+                raise ValueError(f"Unknown channel: {channel}")
+            posts = state.posts_for(channel)
+            if not posts:
+                raise ValueError(
+                    f"  {slug} {channel}: no blocks on review page — flip status:: in Logseq"
+                )
+            for post in posts:
+                post.status = "published"
 
-    store.save(state)
-    return targets
+        store.save(state)
+        return targets
 
 
 def stale_draft_channels(cfg: Config, store: ReviewStore, post: BlogPost) -> list[str]:
@@ -202,44 +252,45 @@ def run_social_for_post(
     fresh drafts too. Published blocks are immutable and never regenerated.
     Returns the review page path, or None when there was nothing to do.
     """
-    store = make_store(cfg)
-    if channels is None:
-        if force:
-            state = store.load(post.slug)
-            channels = [
-                name for name in cfg.social_channels()
-                if state.channel_state(name) != "published"
-            ]
-        else:
-            channels = social_channels_to_export(cfg, store, post)
-    if not channels:
-        log.info("%s: no social channels to export (published is immutable)", post.slug)
-        return None
+    with _locked(cfg):
+        store = make_store(cfg)
+        if channels is None:
+            if force:
+                state = store.load(post.slug)
+                channels = [
+                    name for name in cfg.social_channels()
+                    if state.channel_state(name) != "published"
+                ]
+            else:
+                channels = social_channels_to_export(cfg, store, post)
+        if not channels:
+            log.info("%s: no social channels to export (published is immutable)", post.slug)
+            return None
 
-    llm = llm or make_llm(cfg)
-    state = store.load(post.slug)
-    plans = plan_social(post, cfg, start)
-    plans = {c: intents for c, intents in plans.items() if c in channels}
-    _log_social_plan(post.slug, plans)
-    src_hash = short_hash(source_hash(post))
+        llm = llm or make_llm(cfg)
+        state = store.load(post.slug)
+        plans = plan_social(post, cfg, start)
+        plans = {c: intents for c, intents in plans.items() if c in channels}
+        _log_social_plan(post.slug, plans)
+        src_hash = short_hash(source_hash(post))
 
-    links: dict[str, str] = {}
-    page = store.path_for(post.slug)
-    for channel, intents in plans.items():
-        lang = cfg.shared.channels[channel].language
-        if lang not in links:
-            links[lang] = resolve_post_url(cfg, post.slug, lang, verify=verify_links)
-        url = links[lang]
-        posts = _run_channel(cfg, post, llm, state, channel, intents, url, src_hash)
-        cleanup_channel_assets(cfg, post.slug, channel, posts)
-        state.replace_channel_posts(channel, posts)
-        # Record state after each successful channel so a later channel's
-        # failure never discards the finished (paid-for) LLM work above.
-        page = store.save(state)
+        links: dict[str, str] = {}
+        page = store.path_for(post.slug)
+        for channel, intents in plans.items():
+            lang = cfg.shared.channels[channel].language
+            if lang not in links:
+                links[lang] = resolve_post_url(cfg, post.slug, lang, verify=verify_links)
+            url = links[lang]
+            posts = _run_channel(cfg, post, llm, state, channel, intents, url, src_hash)
+            cleanup_channel_assets(cfg, post.slug, channel, posts)
+            state.replace_channel_posts(channel, posts)
+            # Record state after each successful channel so a later channel's
+            # failure never discards the finished (paid-for) LLM work above.
+            page = store.save(state)
 
-    log.info("review page written to %s", page)
-    ensure_syndication_link(post)
-    return page
+        log.info("review page written to %s", page)
+        ensure_syndication_link(post)
+        return page
 
 
 def _run_channel(
@@ -362,7 +413,7 @@ def run_all(
     store = make_store(cfg)
     llm = make_llm(cfg)
 
-    with PipelineLock(cfg.lock_path):
+    with _locked(cfg):
         if slugs:
             posts = [find_post(cfg, slug) for slug in slugs]
         else:
