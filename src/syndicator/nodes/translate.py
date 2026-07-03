@@ -1,5 +1,10 @@
 """translate node: LLM translation of the rendered post body.
 
+Consumes the source-language index file the hugo node wrote into the bundle —
+the artifact hand-off — rather than re-deriving the body from the BlogPost, so
+the asset references it restores match the adapted media in the bundle (e.g. a
+video whose filename hugo rewrote from ``clip.mov`` to ``clip.mp4``).
+
 Behavior port of the old cmd/translate: identical prompts, temperatures
 (0.3 / 0.9 for pirate speak), positional asset-reference restoration,
 per-language disclaimer, summary = first paragraph of the translated body,
@@ -20,10 +25,9 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
 from ..config import REPO_ROOT, Config
-from ..hugo_format import escape_toml
+from ..hugo_format import escape_toml, index_filename, split_front_matter
 from ..llm import LLMClient
 from ..model import LANGUAGE_NAMES, BlogPost
-from .hugo import build_content, transform_content
 
 log = logging.getLogger(__name__)
 
@@ -182,7 +186,9 @@ def translate_bundle(
     Returns the list of languages translated.
     """
     source_lang = post.lang_code
-    source_body = transform_content(build_content(post))
+    source_index = bundle_dir / index_filename(post.meta.language)
+    _, body = split_front_matter(source_index.read_text(encoding="utf-8"))
+    source_body = body.rstrip("\n")
     english_body: str | None = source_body if source_lang == "en" else None
 
     translated_langs: list[str] = []

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from syndicator.hugo_format import index_filename
 from syndicator.nodes.extract import scan_blog_posts
 from syndicator.nodes.hugo import write_bundle
 from syndicator.nodes.translate import (
@@ -10,7 +11,7 @@ from syndicator.nodes.translate import (
     restore_asset_references,
     translate_bundle,
 )
-from conftest import FakeLLM, make_cfg
+from conftest import FakeLLM, create_dummy_assets, make_cfg
 
 
 def test_restore_asset_references_positional():
@@ -40,6 +41,43 @@ def test_extract_first_paragraph():
 def test_disclaimers_exist_for_all_languages():
     for lang in ("en", "de", "es", "fr", "it", "arrr"):
         assert disclaimer_for(lang).startswith("---")
+
+
+def test_translations_reference_adapted_video_filenames(tmp_path: Path):
+    """Translated pages must reference the adapted video (clip.mp4) that the
+    hugo bundle actually contains, not the source filename (clip.mov)."""
+    cfg = make_cfg(tmp_path)
+    journal = cfg.journals_dir / "2026_07_01.md"
+    journal.write_text(
+        "- [[Blog]]\n"
+        "\t- type:: blog\n"
+        "\t  status:: online\n"
+        "\t  language:: german\n"
+        "\t  date:: 2026-07-01\n"
+        "\t  title:: Clip Post\n"
+        "\t  author:: Benno\n"
+        "\t- Ein kurzer Einleitungstext fuer den Blogbeitrag.\n"
+        "\t- ![clip](../assets/clip.mov)\n"
+        "\t- Noch ein Absatz nach dem Video.\n",
+        encoding="utf-8",
+    )
+
+    posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
+    post = posts["2026-07-01_Clip_Post"]
+    create_dummy_assets([post])
+
+    bundle = write_bundle(post, cfg.hugo_posts_dir, cfg, FakeLLM())
+    assert (bundle / "clip.mp4").exists()  # hugo adapted (fell back to raw copy)
+
+    translate_bundle(post, cfg, FakeLLM(), bundle)
+
+    source_index = index_filename(post.meta.language)
+    for index in bundle.glob("index.*.md"):
+        if index.name == source_index:
+            continue
+        text = index.read_text(encoding="utf-8")
+        assert "clip.mp4" in text, f"{index.name} lost the adapted video reference"
+        assert "clip.mov" not in text, f"{index.name} still references clip.mov"
 
 
 def test_translate_bundle_writes_files(tmp_path: Path):
