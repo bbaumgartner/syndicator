@@ -1,9 +1,17 @@
-"""Pipeline orchestration: wire nodes together, update state.
+"""Pipeline orchestration: wire nodes together, gate and record state.
 
-The social pipeline (plan -> caption -> media -> review page) runs
-independently of the site pipeline (translate -> hugo -> journeymap -> git
-push). All state lives on the per-post review pages inside the Logseq graph
-(see state.py); the review itself happens in Logseq.
+The orchestrator composes the social pipeline as plain code here:
+``plan -> caption -> media/package -> page write``. It loads the review
+state, plans with the ``social_plan`` node, decides per block what is frozen
+(published content is immutable) versus regenerated, captions with the
+``caption`` node, and hands each intent to the ``export`` node — the
+Logseq-edge writer that adapts media into a package and assembles the review
+block. All conditional logic (channel selection, freezing) lives here, none
+in the nodes.
+
+The social pipeline runs independently of the site pipeline (translate ->
+hugo -> journeymap -> git push). All state lives on the per-post review pages
+inside the Logseq graph (see state.py); the review itself happens in Logseq.
 """
 
 from __future__ import annotations
@@ -13,11 +21,16 @@ from datetime import date
 
 from .config import Config
 from .llm import LLMClient
-from .model import BlogPost
+from .model import BlogPost, PostIntent
 from .nodes.backlink import ensure_syndication_link, read_hugo_hash, set_hugo_hash
-from .nodes.export import export_social
+from .nodes.caption import compose_post_text, generate_caption, youtube_links
+from .nodes.export import build_post_block, cleanup_channel_assets, package_intent_media
 from .nodes.extract import scan_blog_posts, source_hash
-from .state import PipelineLock, ReviewStore, short_hash
+from .nodes.social_plan import plan_social
+from .siteurl import resolve_post_url
+from .state import PipelineLock, ReviewState, ReviewStore, SocialPostState, short_hash
+
+_FROZEN_STATUSES = ("approved", "scheduled", "published")
 
 log = logging.getLogger(__name__)
 
@@ -104,11 +117,67 @@ def run_social_for_post(
         return None
 
     llm = llm or make_llm(cfg)
-    page = export_social(
-        post, cfg, llm, channels=channels, verify_links=verify_links, start=start
-    )
+    state = store.load(post.slug)
+    plans = plan_social(post, cfg, start)
+    plans = {c: intents for c, intents in plans.items() if c in channels}
+    src_hash = short_hash(source_hash(post))
+
+    links: dict[str, str] = {}
+    for channel, intents in plans.items():
+        lang = cfg.shared.channels[channel].language
+        if lang not in links:
+            links[lang] = resolve_post_url(cfg, post.slug, lang, verify=verify_links)
+        url = links[lang]
+        posts = _run_channel(cfg, post, llm, state, channel, intents, url, src_hash)
+        cleanup_channel_assets(cfg, post.slug, channel, posts)
+        state.replace_channel_posts(channel, posts)
+
+    page = store.save(state)
+    log.info("review page written to %s", page)
     ensure_syndication_link(post)
     return page
+
+
+def _run_channel(
+    cfg: Config,
+    post: BlogPost,
+    llm: LLMClient,
+    state: ReviewState,
+    channel: str,
+    intents: list[PostIntent],
+    url: str,
+    src_hash: str,
+) -> list[SocialPostState]:
+    """Freeze published blocks, (re)generate the rest for one channel.
+
+    Frozen-vs-generate gating is orchestrator logic: blocks whose status is
+    approved/scheduled/published are immutable and matched by position; every
+    other slot is captioned, media-adapted and reassembled. Frozen blocks
+    beyond the current plan length stay listed at the end.
+    """
+    ch_cfg = cfg.shared.channels[channel]
+    frozen = {
+        i: p
+        for i, p in enumerate(state.posts_for(channel))
+        if p.status in _FROZEN_STATUSES
+    }
+    posts: list[SocialPostState] = []
+    for i, intent in enumerate(intents):
+        if i in frozen:
+            log.info("%s %s #%d: %s — frozen", post.slug, channel, i, frozen[i].status)
+            posts.append(frozen.pop(i))
+            continue
+        log.info("caption %s #%d (%s)", channel, intent.index, intent.kind)
+        draft = generate_caption(post, intent, cfg, llm)
+        youtube = youtube_links(post, intent)
+        text = compose_post_text(draft, intent, ch_cfg, url, youtube)
+        media_rel = package_intent_media(cfg, post.slug, intent, llm)
+        location = draft.location if channel in ("facebook", "instagram") else ""
+        posts.append(
+            build_post_block(intent, text, media_rel, youtube, location, src_hash)
+        )
+    posts.extend(frozen.values())
+    return posts
 
 
 # --- site pipeline ----------------------------------------------------------

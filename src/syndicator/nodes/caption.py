@@ -40,7 +40,7 @@ def _caption_context(post: BlogPost, intent: PostIntent) -> dict:
         "section_titles": [s.title for s in sections if s.title],
         "write_about_this_part": _intent_part(post, intent),
         "attached_media": _media_descriptions(intent),
-        "youtube_links": _youtube_links(post, intent),
+        "youtube_links": youtube_links(post, intent),
     }
     if intent.kind == "section":
         ctx["section_index"] = intent.section_index
@@ -66,7 +66,7 @@ def _media_descriptions(intent: PostIntent) -> list[dict]:
     return [{"kind": m.kind, "filename": m.filename, "alt": m.alt} for m in intent.media]
 
 
-def _youtube_links(post: BlogPost, intent: PostIntent) -> list[str]:
+def youtube_links(post: BlogPost, intent: PostIntent) -> list[str]:
     if intent.kind == "intro":
         return []
     section = post.sections[intent.section_index or 0]

@@ -1,4 +1,11 @@
-"""export node: generate social post blocks on the Logseq review page.
+"""export node: the Logseq-review-package edge writer.
+
+The orchestrator composes the social pipeline (plan -> caption ->
+media/package -> page write); this node owns only the Logseq review-package
+edge: how one planned post becomes a package directory of adapted media and
+one block on the review page. It neither plans, captions, nor gates — the
+orchestrator (pipeline.py) sequences those steps and decides which existing
+blocks are frozen.
 
 Output layout:
 
@@ -9,7 +16,8 @@ Output layout:
 Each planned social post becomes one block on the review page: caption in a
 code fence, adapted media embedded via ``../assets/...`` paths, status and
 metadata as block properties. Published blocks are immutable: they are kept
-verbatim (including their media directories) when a channel is regenerated.
+verbatim (including their media directories) when a channel is regenerated —
+the orchestrator selects which blocks survive; this node only writes.
 """
 
 from __future__ import annotations
@@ -17,24 +25,13 @@ from __future__ import annotations
 import logging
 import re
 import shutil
-from datetime import date
 from pathlib import Path
 
 from ..config import Config
 from ..llm import LLMClient
-from ..model import BlogPost, PostIntent, SocialDraft
-from ..siteurl import resolve_post_url
-from ..state import (
-    PAGE_PREFIX,
-    ReviewStore,
-    SocialPostState,
-    caption_children,
-    short_hash,
-)
-from .caption import _youtube_links, compose_post_text, generate_caption
-from .extract import source_hash
+from ..model import PostIntent
+from ..state import PAGE_PREFIX, SocialPostState, caption_children
 from .media_adapt import adapt_media_for_channel
-from .social_plan import plan_social
 
 log = logging.getLogger(__name__)
 
@@ -66,6 +63,55 @@ def _post_title(intent: PostIntent) -> str:
     return base
 
 
+def package_intent_media(
+    cfg: Config,
+    slug: str,
+    intent: PostIntent,
+    llm: LLMClient,
+) -> list[str]:
+    """Adapt one intent's media into its package dir (media_adapt step).
+
+    Replaces the package dir wholesale — media adaptation recreates it — so a
+    regenerated block never keeps stale files. Returns the ``../assets/...``
+    embed paths, relative to the review page in ``pages/``.
+    """
+    dirname = _package_dirname(intent)
+    pkg_dir = cfg.social_assets_dir / slug / intent.channel / dirname
+    if pkg_dir.exists():
+        shutil.rmtree(pkg_dir)
+
+    media_rel: list[str] = []
+    for media in intent.media:
+        out = adapt_media_for_channel(
+            media, intent.channel, cfg, pkg_dir, llm, post_format=intent.format
+        )
+        if out is not None:
+            media_rel.append(
+                f"../assets/{PAGE_PREFIX}/{slug}/{intent.channel}/{dirname}/{out.name}"
+            )
+    return media_rel
+
+
+def build_post_block(
+    intent: PostIntent,
+    text: str,
+    media_rel: list[str],
+    youtube_links: list[str],
+    location: str,
+    source_hash: str,
+) -> SocialPostState:
+    """Assemble one review-page block (status: draft) from ready inputs."""
+    return SocialPostState(
+        channel=intent.channel,
+        title=_post_title(intent),
+        status="draft",
+        publishing_date=intent.suggested_date,
+        location=location,
+        source_hash=source_hash,
+        children=caption_children(text, media_rel, youtube_links),
+    )
+
+
 def _referenced_dirs(posts: list[SocialPostState]) -> set[str]:
     """Package dir names referenced by the media embeds of the given blocks.
 
@@ -91,94 +137,10 @@ def _cleanup_channel_dir(channel_dir: Path, keep: set[str]) -> None:
             shutil.rmtree(sub)
 
 
-def generate_post_block(
-    post: BlogPost,
-    intent: PostIntent,
-    draft: SocialDraft,
-    url: str,
-    cfg: Config,
-    llm: LLMClient,
-) -> SocialPostState:
-    """Adapt media and assemble one social post block (status: draft)."""
-    ch_cfg = cfg.shared.channels[intent.channel]
-    dirname = _package_dirname(intent)
-    pkg_dir = cfg.social_assets_dir / post.slug / intent.channel / dirname
-    if pkg_dir.exists():
-        shutil.rmtree(pkg_dir)  # replace wholesale; media adaptation recreates it
-
-    media_rel: list[str] = []
-    for media in intent.media:
-        out = adapt_media_for_channel(
-            media, intent.channel, cfg, pkg_dir, llm, post_format=intent.format
-        )
-        if out is not None:
-            media_rel.append(
-                f"../assets/{PAGE_PREFIX}/{post.slug}/{intent.channel}/{dirname}/{out.name}"
-            )
-
-    youtube = _youtube_links(post, intent)
-    text = compose_post_text(draft, intent, ch_cfg, url, youtube)
-
-    return SocialPostState(
-        channel=intent.channel,
-        title=_post_title(intent),
-        status="draft",
-        publishing_date=intent.suggested_date,
-        location=draft.location if intent.channel in ("facebook", "instagram") else "",
-        source_hash=short_hash(source_hash(post)),
-        children=caption_children(text, media_rel, youtube),
+def cleanup_channel_assets(
+    cfg: Config, slug: str, channel: str, posts: list[SocialPostState]
+) -> None:
+    """Drop package dirs no longer referenced by the channel's blocks."""
+    _cleanup_channel_dir(
+        cfg.social_assets_dir / slug / channel, _referenced_dirs(posts)
     )
-
-
-def export_social(
-    post: BlogPost,
-    cfg: Config,
-    llm: LLMClient,
-    channels: list[str] | None = None,
-    verify_links: bool = True,
-    start: date | None = None,
-) -> Path:
-    """Run the social pipeline for one post: plan, caption, adapt, write page.
-
-    Returns the path of the review page. Existing published blocks are kept
-    untouched; everything else in the selected channels is regenerated.
-    """
-    store = ReviewStore(cfg.pages_dir)
-    state = store.load(post.slug)
-
-    plans = plan_social(post, cfg, start)
-    if channels is not None:
-        plans = {c: intents for c, intents in plans.items() if c in channels}
-
-    links: dict[str, str] = {}
-    for channel, intents in plans.items():
-        lang = cfg.shared.channels[channel].language
-        if lang not in links:
-            links[lang] = resolve_post_url(cfg, post.slug, lang, verify=verify_links)
-        url = links[lang]
-
-        frozen = {
-            i: p
-            for i, p in enumerate(state.posts_for(channel))
-            if p.status in ("approved", "scheduled", "published")
-        }
-        new_posts: list[SocialPostState] = []
-        for i, intent in enumerate(intents):
-            if i in frozen:
-                log.info("%s %s #%d: %s — frozen", post.slug, channel, i, frozen[i].status)
-                new_posts.append(frozen.pop(i))
-                continue
-            log.info("caption %s #%d (%s)", channel, intent.index, intent.kind)
-            draft = generate_caption(post, intent, cfg, llm)
-            new_posts.append(generate_post_block(post, intent, draft, url, cfg, llm))
-        # Frozen blocks beyond the current plan length stay listed.
-        new_posts.extend(frozen.values())
-
-        _cleanup_channel_dir(
-            cfg.social_assets_dir / post.slug / channel, _referenced_dirs(new_posts)
-        )
-        state.replace_channel_posts(channel, new_posts)
-
-    page = store.save(state)
-    log.info("review page written to %s", page)
-    return page

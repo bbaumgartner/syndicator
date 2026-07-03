@@ -6,7 +6,7 @@ from pathlib import Path
 from PIL import Image
 
 from syndicator.model import Block, BlogPost, MediaRef, Meta
-from syndicator.nodes.export import _referenced_dirs, export_social
+from syndicator.nodes.export import _referenced_dirs
 from syndicator.nodes.extract import scan_blog_posts, source_hash
 from syndicator.pipeline import next_catchup_post, run_social_for_post
 from syndicator.state import ReviewStore, SocialPostState, caption_children, page_filename, short_hash
@@ -174,6 +174,11 @@ def test_export_with_slash_in_slug_keeps_referenced_media(tmp_path: Path):
     img.parent.mkdir(parents=True)
     Image.new("RGB", (1600, 900), (30, 90, 160)).save(img)
 
+    source_path = tmp_path / "journals" / "x.md"
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+    source_path.write_text(
+        "- type:: blog\n  date:: 2026-01-01\n  title:: Trogir/Split\n", encoding="utf-8"
+    )
     post = BlogPost(
         meta=Meta(date="2026-01-01", title="Trogir/Split", language="german", status="online"),
         blocks=[
@@ -185,11 +190,11 @@ def test_export_with_slash_in_slug_keeps_referenced_media(tmp_path: Path):
             ),
             Block(kind="text", raw="Ein Abschnitt."),
         ],
-        source_path=tmp_path / "journals" / "x.md",
+        source_path=source_path,
     )
     assert post.slug == "2026-01-01_Trogir/Split"
 
-    export_social(post, cfg, FakeLLM(), verify_links=False, start=date(2026, 1, 2))
+    run_social_for_post(cfg, post, llm=FakeLLM(), verify_links=False, start=date(2026, 1, 2))
     store = ReviewStore(cfg.pages_dir)
     state = store.load(post.slug)
     assert state.posts_for("facebook")
@@ -201,7 +206,9 @@ def test_export_with_slash_in_slug_keeps_referenced_media(tmp_path: Path):
     # Freeze one block, then re-export: its package dir must survive.
     state.posts_for("facebook")[0].status = "published"
     store.save(state)
-    export_social(post, cfg, FakeLLM(), channels=["facebook"], verify_links=False, start=date(2026, 1, 2))
+    run_social_for_post(
+        cfg, post, llm=FakeLLM(), channels=["facebook"], verify_links=False, start=date(2026, 1, 2)
+    )
 
     dirs_after = {p.name for p in fb_dir.iterdir() if p.is_dir()}
     assert dirs_before <= dirs_after
