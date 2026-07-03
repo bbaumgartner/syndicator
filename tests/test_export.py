@@ -3,6 +3,7 @@
 from datetime import date
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 from syndicator.model import Block, BlogPost, MediaRef, Meta
@@ -144,6 +145,53 @@ def test_stale_drafts_regenerate_published_is_immutable(tmp_path: Path):
     assert state.channel_state("x") == "published"
     assert state.posts_for("facebook")[0].children == frozen_children
     assert frozen_sentinel.exists()
+
+
+class ScriptedLLM(FakeLLM):
+    """FakeLLM that records caption node calls and can fail one channel."""
+
+    def __init__(self, fail_node: str | None = None):
+        super().__init__()
+        self.fail_node = fail_node
+        self.nodes: list[str] = []
+
+    def complete_structured(self, node, model, system, user_content, schema, temperature=None):
+        self.nodes.append(node)
+        if node == self.fail_node:
+            raise RuntimeError(f"caption failed for {node}")
+        return super().complete_structured(node, model, system, user_content, schema, temperature)
+
+
+def test_state_recorded_after_each_channel(tmp_path: Path):
+    """A later channel's failure must not discard the finished (paid-for) work
+    of the channels before it; a rerun completes only the missing channels."""
+    cfg = make_cfg(tmp_path)
+    posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
+    post = posts["2026-05-19_Charly_Superstar"]
+    create_real_assets([post])
+    store = ReviewStore(cfg.pages_dir)
+
+    # Facebook is the first channel, Instagram the second: fail on Instagram.
+    failing = ScriptedLLM(fail_node="caption_instagram")
+    with pytest.raises(RuntimeError):
+        run_social_for_post(cfg, post, llm=failing, verify_links=False)
+
+    state = store.load(post.slug)
+    assert state.posts_for("facebook")  # channel 1 blocks persisted
+    assert state.channel_state("facebook") == "draft"
+    assert not state.posts_for("instagram")  # channel 2 never reached the page
+    assert not state.posts_for("x")
+
+    # Rerun with a working LLM: facebook is not re-captioned (no re-payment).
+    rerun = ScriptedLLM()
+    run_social_for_post(cfg, post, llm=rerun, verify_links=False)
+    assert "caption_facebook" not in rerun.nodes
+    assert "caption_instagram" in rerun.nodes
+    assert "caption_x" in rerun.nodes
+
+    state = store.load(post.slug)
+    for channel in ("facebook", "instagram", "x"):
+        assert state.channel_state(channel) == "draft"
 
 
 def test_referenced_dirs_uses_second_to_last_segment():

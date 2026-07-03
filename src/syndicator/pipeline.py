@@ -123,6 +123,7 @@ def run_social_for_post(
     src_hash = short_hash(source_hash(post))
 
     links: dict[str, str] = {}
+    page = store.path_for(post.slug)
     for channel, intents in plans.items():
         lang = cfg.shared.channels[channel].language
         if lang not in links:
@@ -131,8 +132,10 @@ def run_social_for_post(
         posts = _run_channel(cfg, post, llm, state, channel, intents, url, src_hash)
         cleanup_channel_assets(cfg, post.slug, channel, posts)
         state.replace_channel_posts(channel, posts)
+        # Record state after each successful channel so a later channel's
+        # failure never discards the finished (paid-for) LLM work above.
+        page = store.save(state)
 
-    page = store.save(state)
     log.info("review page written to %s", page)
     ensure_syndication_link(post)
     return page
