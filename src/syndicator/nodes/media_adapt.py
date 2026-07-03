@@ -5,6 +5,9 @@ Instagram 4:5 portrait) with an optional vision-LLM focal point, resize,
 JPEG output. Videos via ffmpeg: aspect conversion with focal-point crop
 by default (no upscale; downscale only when the crop exceeds the target cap),
 optional blurred/black padding, duration caps, H.264/AAC transcode.
+
+Crop-focus analysis writes preview frames and thumbnails into a temporary
+directory (never into the Logseq graph).
 """
 
 from __future__ import annotations
@@ -13,6 +16,7 @@ import json
 import logging
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from PIL import Image, ImageOps
@@ -95,13 +99,13 @@ def _fit_without_upscale(crop_w: int, crop_h: int, max_w: int, max_h: int) -> tu
     return _even(int(crop_w * scale)), _even(int(crop_h * scale))
 
 
-def _extract_video_frame(src: Path, *, first_frame: bool = False) -> Path:
+def _extract_video_frame(src: Path, tmp_dir: Path, *, first_frame: bool = False) -> Path:
     """Grab one frame from a video for focal-point analysis.
 
     Reels use the opening frame so the crop shows something interesting at
     playback start; other videos use the midpoint.
     """
-    preview = src.parent / f".crop_preview_{src.stem}.jpg"
+    preview = tmp_dir / f".crop_preview_{src.stem}.jpg"
     if first_frame:
         seek = 0
     else:
@@ -130,37 +134,33 @@ def get_crop_focus(
     """Ask a vision model for the focal point; center on failure."""
     if not cfg.shared.media.crop_focus.enabled:
         return CropFocus()
-    preview: Path | None = None
     try:
-        image_path = path
-        if path.suffix.lower() in VIDEO_EXTENSIONS:
-            preview = _extract_video_frame(path, first_frame=first_frame)
-            image_path = preview
-        with Image.open(image_path) as im:
-            im = ImageOps.exif_transpose(im)
-            im.thumbnail((512, 512))
-            thumb = image_path.parent / f".crop_thumb_{image_path.stem}.jpg"
-            im.convert("RGB").save(thumb, "JPEG", quality=70)
-        system = (config_mod.REPO_ROOT / "prompts" / "crop_focus.md").read_text(encoding="utf-8")
-        user_content = [
-            {"type": "text", "text": "Photo to analyze:"},
-            {"type": "image_url", "image_url": {"url": image_data_url(thumb)}},
-        ]
-        thumb.unlink(missing_ok=True)
-        focus = llm.complete_structured(
-            node="crop_focus",
-            model=cfg.shared.media.crop_focus.model,
-            system=system,
-            user_content=user_content,
-            schema=CropFocus,
-        )
-        return CropFocus(x=min(max(focus.x, 0.0), 1.0), y=min(max(focus.y, 0.0), 1.0))
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            image_path = path
+            if path.suffix.lower() in VIDEO_EXTENSIONS:
+                image_path = _extract_video_frame(path, tmp_dir, first_frame=first_frame)
+            with Image.open(image_path) as im:
+                im = ImageOps.exif_transpose(im)
+                im.thumbnail((512, 512))
+                thumb = tmp_dir / f".crop_thumb_{image_path.stem}.jpg"
+                im.convert("RGB").save(thumb, "JPEG", quality=70)
+            system = (config_mod.REPO_ROOT / "prompts" / "crop_focus.md").read_text(encoding="utf-8")
+            user_content = [
+                {"type": "text", "text": "Photo to analyze:"},
+                {"type": "image_url", "image_url": {"url": image_data_url(thumb)}},
+            ]
+            focus = llm.complete_structured(
+                node="crop_focus",
+                model=cfg.shared.media.crop_focus.model,
+                system=system,
+                user_content=user_content,
+                schema=CropFocus,
+            )
+            return CropFocus(x=min(max(focus.x, 0.0), 1.0), y=min(max(focus.y, 0.0), 1.0))
     except Exception as err:  # noqa: BLE001 - crop focus is best-effort
         log.warning("crop focus failed for %s (%s) — using center", path.name, err)
         return CropFocus()
-    finally:
-        if preview is not None:
-            preview.unlink(missing_ok=True)
 
 
 def adapt_image(src: Path, spec: ImageSpec, out_path: Path, focus: CropFocus | None = None) -> Path:

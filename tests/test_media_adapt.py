@@ -278,7 +278,7 @@ def test_extract_video_frame_first_frame_seeks_to_start(tmp_path: Path):
     src = make_video(tmp_path / "clip.mp4", seconds=4)
     with patch("syndicator.nodes.media_adapt.subprocess.run") as run:
         run.return_value = subprocess.CompletedProcess([], 0)
-        _extract_video_frame(src, first_frame=True)
+        _extract_video_frame(src, tmp_path, first_frame=True)
     args = run.call_args[0][0]
     ss_idx = args.index("-ss")
     assert args[ss_idx + 1] == "0"
@@ -292,7 +292,7 @@ def test_extract_video_frame_default_seeks_to_middle(tmp_path: Path):
         patch("syndicator.nodes.media_adapt.subprocess.run") as run,
     ):
         run.return_value = subprocess.CompletedProcess([], 0)
-        _extract_video_frame(src)
+        _extract_video_frame(src, tmp_path)
     args = run.call_args[0][0]
     ss_idx = args.index("-ss")
     assert float(args[ss_idx + 1]) == pytest.approx(2.0)
@@ -307,7 +307,9 @@ def test_get_crop_focus_reel_uses_first_frame(tmp_path: Path):
     with patch("syndicator.nodes.media_adapt._extract_video_frame") as extract:
         extract.return_value = make_image(tmp_path / ".crop_preview_clip.jpg")
         get_crop_focus(src, cfg, llm, first_frame=True)
-    extract.assert_called_once_with(src, first_frame=True)
+    extract.assert_called_once()
+    assert extract.call_args[0][0] == src
+    assert extract.call_args.kwargs == {"first_frame": True}
 
 
 @pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
