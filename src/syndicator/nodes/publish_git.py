@@ -3,6 +3,12 @@
 Same behavior as the old watch script (git add --all, commit, push), plus a
 deploy check that polls the live URL of newly published posts so social
 exports only reference links that actually resolve.
+
+The site repo *is* the artifact/State for this node: a dirty working tree or
+commits ahead of upstream are pending work. That makes recovery the usual
+"run it again" — a run interrupted after commit but before (or during) a
+failed push leaves commits ahead of upstream, and the next run pushes them
+even when no post changed in that run.
 """
 
 from __future__ import annotations
@@ -31,22 +37,48 @@ def has_changes(cfg: Config) -> bool:
     return bool(result.stdout.strip())
 
 
+def has_unpushed_commits(cfg: Config) -> bool:
+    """True when HEAD is ahead of its upstream (commits waiting to be pushed).
+
+    Handles the no-upstream case conservatively: ``git rev-list @{u}..HEAD``
+    fails when no upstream is configured, so we log a warning and return False
+    rather than crash.
+    """
+    result = _git(cfg, "rev-list", "--count", "@{u}..HEAD")
+    if result.returncode != 0:
+        log.warning(
+            "cannot determine unpushed commits (no upstream?): %s",
+            (result.stderr or result.stdout).strip(),
+        )
+        return False
+    return int(result.stdout.strip() or "0") > 0
+
+
 def commit_and_push(cfg: Config, message: str = COMMIT_MESSAGE) -> bool:
     """Returns True when a commit was pushed.
 
-    The hash-based state decides what gets re-rendered; this git check is
-    only the final gate: a re-render can be byte-identical to what is live
-    (source edits that do not affect the rendered output), and committing a
-    clean tree would fail.
-    """
-    if not has_changes(cfg):
-        log.info("site repo clean — nothing to commit")
-        return False
+    The git repo itself is the artifact/State for this node: a dirty working
+    tree or commits ahead of upstream are pending work. So this both commits
+    (when the tree is dirty) and pushes (when a commit was just made *or* the
+    repo already has unpushed commits from an interrupted earlier run) —
+    repairing a committed-but-unpushed state left by a failed push.
 
-    _git(cfg, "add", "--all")
-    commit = _git(cfg, "commit", "-m", message)
-    if commit.returncode != 0:
-        log.error("git commit failed: %s", commit.stderr or commit.stdout)
+    The hash-based state decides what gets re-rendered; the dirty-tree check is
+    the final gate on committing: a re-render can be byte-identical to what is
+    live (source edits that do not affect the rendered output), and committing
+    a clean tree would fail.
+    """
+    committed = False
+    if has_changes(cfg):
+        _git(cfg, "add", "--all")
+        commit = _git(cfg, "commit", "-m", message)
+        if commit.returncode != 0:
+            log.error("git commit failed: %s", commit.stderr or commit.stdout)
+            return False
+        committed = True
+
+    if not committed and not has_unpushed_commits(cfg):
+        log.info("site repo clean — nothing to commit or push")
         return False
 
     push = _git(cfg, "push")

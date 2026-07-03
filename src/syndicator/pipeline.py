@@ -407,7 +407,12 @@ def run_all(
     real run pushes the site.
     """
     from .nodes.journeymap import generate_journey_map
-    from .nodes.publish_git import commit_and_push, wait_for_deploy
+    from .nodes.publish_git import (
+        commit_and_push,
+        has_changes,
+        has_unpushed_commits,
+        wait_for_deploy,
+    )
     from .siteurl import post_url
 
     store = make_store(cfg)
@@ -430,20 +435,28 @@ def run_all(
                     if was_new:
                         new_posts.append(post)
 
-            if site_changed:
-                generate_journey_map(cfg)
-                if try_run:
+            # A try run leaves the tree dirty on purpose — the next real run
+            # picks the post up again via has_changes — so it must never push
+            # even if the repo is dirty/ahead.
+            if try_run:
+                if site_changed:
+                    generate_journey_map(cfg)
                     log.info(
                         "try run: skipping commit/push — inspect with: git -C %s status",
                         cfg.local.sailingnomads_dir,
                     )
                 else:
-                    pushed = commit_and_push(cfg)
-                    if pushed:
-                        for post in new_posts:
-                            set_hugo_hash(post, short_hash(source_hash(post)))
-                            url = post_url(cfg, post.slug, cfg.shared.site.default_language)
-                            wait_for_deploy(cfg, url)
+                    log.info("site: nothing changed")
+            elif site_changed or has_changes(cfg) or has_unpushed_commits(cfg):
+                # Publish when this run re-rendered a post, or a previous run
+                # left the repo dirty/ahead (a repair push after a failed push).
+                generate_journey_map(cfg)
+                pushed = commit_and_push(cfg)
+                if pushed:
+                    for post in new_posts:
+                        set_hugo_hash(post, short_hash(source_hash(post)))
+                        url = post_url(cfg, post.slug, cfg.shared.site.default_language)
+                        wait_for_deploy(cfg, url)
             else:
                 log.info("site: nothing changed")
 

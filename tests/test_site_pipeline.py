@@ -7,9 +7,16 @@ import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from syndicator.nodes.extract import scan_blog_posts, source_hash
 from syndicator.nodes.journeymap import generate_journey_map
-from syndicator.nodes.publish_git import commit_and_push, has_changes, wait_for_deploy
+from syndicator.nodes.publish_git import (
+    commit_and_push,
+    has_changes,
+    has_unpushed_commits,
+    wait_for_deploy,
+)
 from syndicator.watch import _Handler, is_relevant_path
 from syndicator.nodes.backlink import read_hugo_hash, set_hugo_hash
 from syndicator.pipeline import run_all, run_site_for_post, site_changed_posts
@@ -106,6 +113,77 @@ def test_commit_and_push_with_local_remote(tmp_path: Path):
     assert has_changes(cfg)
     assert commit_and_push(cfg) is True
     assert not has_changes(cfg)
+    log_remote = subprocess.run(
+        ["git", "-C", str(remote), "log", "--oneline"], capture_output=True, text=True
+    ).stdout
+    assert "automatic change by syndicator" in log_remote
+
+
+def _init_local_remote(cfg, tmp_path: Path) -> Path:
+    """Set up the site repo with a bare local remote, one pushed commit."""
+    site = cfg.local.sailingnomads_dir
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "--bare", "-q", str(remote)], check=True)
+    _git(site, "init", "-q", "-b", "main")
+    _git(site, "config", "user.email", "test@example.org")
+    _git(site, "config", "user.name", "Test")
+    (site / "README.md").write_text("hi", encoding="utf-8")
+    _git(site, "add", "-A")
+    _git(site, "commit", "-q", "-m", "init")
+    _git(site, "remote", "add", "origin", str(remote))
+    _git(site, "push", "-q", "-u", "origin", "main")
+    return remote
+
+
+def test_has_unpushed_commits(tmp_path: Path):
+    cfg = make_cfg(tmp_path)
+    site = cfg.local.sailingnomads_dir
+    _init_local_remote(cfg, tmp_path)
+
+    # Clean, fully pushed repo: nothing ahead of upstream.
+    assert has_unpushed_commits(cfg) is False
+
+    # Commit locally without pushing: HEAD is ahead of upstream.
+    (site / "ahead.md").write_text("x", encoding="utf-8")
+    _git(site, "add", "-A")
+    _git(site, "commit", "-q", "-m", "local only")
+    assert has_unpushed_commits(cfg) is True
+
+    # Push: back in sync.
+    _git(site, "push", "-q")
+    assert has_unpushed_commits(cfg) is False
+
+
+def test_has_unpushed_commits_no_upstream(tmp_path: Path):
+    cfg = make_cfg(tmp_path)
+    site = cfg.local.sailingnomads_dir
+    _git(site, "init", "-q", "-b", "main")
+    _git(site, "config", "user.email", "test@example.org")
+    _git(site, "config", "user.name", "Test")
+    (site / "README.md").write_text("hi", encoding="utf-8")
+    _git(site, "add", "-A")
+    _git(site, "commit", "-q", "-m", "init")
+    # No upstream configured — must return False, not crash.
+    assert has_unpushed_commits(cfg) is False
+
+
+def test_commit_and_push_repairs_unpushed_commit(tmp_path: Path):
+    """A committed-but-unpushed state (e.g. left by an earlier failed push) is
+    pushed on the next commit_and_push even though the working tree is clean."""
+    cfg = make_cfg(tmp_path)
+    site = cfg.local.sailingnomads_dir
+    remote = _init_local_remote(cfg, tmp_path)
+
+    # Simulate the leftover state: commit locally, do not push.
+    (site / "content" / "posts").mkdir(parents=True, exist_ok=True)
+    (site / "content" / "posts" / "new.md").write_text("x", encoding="utf-8")
+    _git(site, "add", "-A")
+    _git(site, "commit", "-q", "-m", "automatic change by syndicator")
+    assert not has_changes(cfg)  # clean working tree...
+    assert has_unpushed_commits(cfg)  # ...but a commit is waiting.
+
+    assert commit_and_push(cfg) is True
+    assert not has_unpushed_commits(cfg)
     log_remote = subprocess.run(
         ["git", "-C", str(remote), "log", "--oneline"], capture_output=True, text=True
     ).stdout
@@ -211,6 +289,52 @@ def test_run_all_reprocesses_edited_post_and_stale_drafts(tmp_path: Path, monkey
     # Stale facebook drafts regenerated from the new source.
     new_hashes = {p.source_hash for p in store.load(slug).posts_for("facebook")}
     assert new_hashes != old_hashes
+
+
+def test_run_all_repairs_unpushed_commit_on_next_run(tmp_path: Path, monkeypatch):
+    """Run 1 renders posts then fails to push; run 2 with NO source changes
+    still runs the repair push because the repo is left committed-but-unpushed.
+    """
+    cfg = make_cfg(tmp_path)
+    calls = _patch_run_all_externals(monkeypatch)
+
+    # Run 1: render everything, then the push fails (RuntimeError aborts the run).
+    def failing_commit(cfg, message=None):
+        calls.commits += 1
+        raise RuntimeError("git push failed — resolve manually, then re-run")
+
+    monkeypatch.setattr("syndicator.nodes.publish_git.commit_and_push", failing_commit)
+    with pytest.raises(RuntimeError):
+        run_all(cfg, site_only=True)
+    assert calls.commits == 1
+    assert calls.journeymaps == 1
+    # Posts were rendered and their hugo-hash recorded, so run 2 sees no
+    # changed posts — the in-run flag alone would never push again.
+    assert site_changed_posts(cfg, ReviewStore(cfg.pages_dir)) == []
+    assert not cfg.lock_path.exists()  # lock released despite the failure
+
+    # Simulate the leftover artifact/State: clean working tree, but a commit
+    # sits ahead of upstream (what a failed push leaves behind). run_all reads
+    # both from .nodes.publish_git at function level, so patch there.
+    monkeypatch.setattr("syndicator.nodes.publish_git.has_changes", lambda cfg: False)
+    monkeypatch.setattr(
+        "syndicator.nodes.publish_git.has_unpushed_commits", lambda cfg: True
+    )
+
+    recorded: list[bool] = []
+
+    def recording_commit(cfg, message=None):
+        calls.commits += 1
+        recorded.append(True)
+        return True
+
+    monkeypatch.setattr("syndicator.nodes.publish_git.commit_and_push", recording_commit)
+
+    # Run 2: no source change, yet the repair push runs (journeymap too).
+    run_all(cfg, site_only=True)
+    assert recorded == [True]
+    assert calls.commits == 2
+    assert calls.journeymaps == 2
 
 
 def test_run_all_try_run_records_no_state_and_skips_push(tmp_path: Path, monkeypatch):
