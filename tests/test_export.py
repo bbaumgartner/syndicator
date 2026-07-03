@@ -194,6 +194,21 @@ def test_state_recorded_after_each_channel(tmp_path: Path):
         assert state.channel_state(channel) == "draft"
 
 
+def test_planned_posts_are_logged(tmp_path: Path, caplog):
+    cfg = make_cfg(tmp_path)
+    posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
+    post = posts["2026-05-19_Charly_Superstar"]
+    create_real_assets([post])
+
+    with caplog.at_level("INFO", logger="syndicator.pipeline"):
+        run_social_for_post(cfg, post, llm=FakeLLM(), verify_links=False, channels=["facebook"])
+
+    plan_lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("plan ")]
+    assert plan_lines
+    assert all(f"plan {post.slug} facebook #" in line for line in plan_lines)
+    assert any("intro/" in line and " media, " in line for line in plan_lines)
+
+
 def test_referenced_dirs_uses_second_to_last_segment():
     """Package dirs must be found even when the slug itself contains '/'."""
     posts = [

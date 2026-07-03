@@ -87,6 +87,22 @@ def next_catchup_post(cfg: Config, store: ReviewStore) -> BlogPost | None:
     return None
 
 
+def _log_social_plan(slug: str, plans: dict[str, list[PostIntent]]) -> None:
+    """Log the social_plan -> caption boundary: one line per planned intent."""
+    for channel, intents in plans.items():
+        for intent in intents:
+            log.info(
+                "plan %s %s #%d: %s/%s, %d media, %s",
+                slug,
+                channel,
+                intent.index,
+                intent.kind,
+                intent.format,
+                len(intent.media),
+                intent.suggested_date or "-",
+            )
+
+
 def run_social_for_post(
     cfg: Config,
     post: BlogPost,
@@ -120,6 +136,7 @@ def run_social_for_post(
     state = store.load(post.slug)
     plans = plan_social(post, cfg, start)
     plans = {c: intents for c, intents in plans.items() if c in channels}
+    _log_social_plan(post.slug, plans)
     src_hash = short_hash(source_hash(post))
 
     links: dict[str, str] = {}
