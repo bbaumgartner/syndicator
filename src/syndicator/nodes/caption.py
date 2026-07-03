@@ -3,6 +3,10 @@
 One prompt template per channel (prompts/caption_<channel>.md); model per
 channel from config. Output is a validated SocialDraft; the final post text
 (link, hashtags) is assembled deterministically by compose_post_text().
+
+Character-budget behavior (LLM retry + tail-dropping composition) is
+triggered by ``ch_cfg.max_chars`` being set, not by channel name — X is
+simply the only built-in channel that sets it today.
 """
 
 from __future__ import annotations
@@ -27,7 +31,7 @@ def _jinja(cfg: Config) -> Environment:
     return Environment(loader=FileSystemLoader(REPO_ROOT / "prompts"), keep_trailing_newline=True)
 
 
-def x_text_budget(ch_cfg: ChannelConfig) -> int:
+def text_budget(ch_cfg: ChannelConfig) -> int:
     max_chars = ch_cfg.max_chars or 280
     return max_chars - (TCO_LINK_LEN + 2) - X_HASHTAG_RESERVE
 
@@ -104,7 +108,7 @@ def generate_caption(
         site_title=cfg.shared.site.title,
         base_url=cfg.shared.site.base_url,
         language_name=language,
-        text_budget=x_text_budget(ch_cfg),
+        text_budget=text_budget(ch_cfg),
     )
 
     user = json.dumps(_caption_context(post, intent), ensure_ascii=False, indent=1)
@@ -118,21 +122,22 @@ def generate_caption(
     )
     draft = _sanitize(draft)
 
-    if intent.channel == "x":
-        draft = _enforce_x_budget(draft, ch_cfg, system, user, llm, cfg)
+    if ch_cfg.max_chars is not None:
+        draft = _enforce_text_budget(draft, ch_cfg, system, user, llm, cfg, intent.channel)
 
     return draft
 
 
-def _enforce_x_budget(
+def _enforce_text_budget(
     draft: SocialDraft,
     ch_cfg: ChannelConfig,
     system: str,
     user: str,
     llm: LLMClient,
     cfg: Config,
+    channel: str,
 ) -> SocialDraft:
-    budget = x_text_budget(ch_cfg)
+    budget = text_budget(ch_cfg)
     if len(draft.text) <= budget:
         return draft
 
@@ -142,7 +147,7 @@ def _enforce_x_budget(
         previous_text=draft.text,
     )
     shorter = llm.complete_structured(
-        node="caption_x",
+        node=f"caption_{channel}",
         model=ch_cfg.caption_model,
         system=system,
         user_content=retry_user,
@@ -169,8 +174,8 @@ def compose_post_text(draft: SocialDraft, intent: PostIntent, ch_cfg: ChannelCon
             parts.append(hashtags)
         return "\n\n".join(parts)
 
-    if intent.channel == "x":
-        return _compose_x_text(draft, ch_cfg, url)
+    if ch_cfg.max_chars is not None:
+        return _compose_budgeted_text(draft, ch_cfg, url)
 
     parts = [draft.text]
     parts.extend(youtube_links)
@@ -181,16 +186,16 @@ def compose_post_text(draft: SocialDraft, intent: PostIntent, ch_cfg: ChannelCon
     return "\n\n".join(parts)
 
 
-def _x_post_length(text: str, tags: list[str], url: str) -> int:
-    """Effective X character count; every URL is wrapped into a t.co link."""
+def _post_length(text: str, tags: list[str], url: str) -> int:
+    """Effective character count; every URL is wrapped into a t.co-length link."""
     tail_lengths = [len(t) for t in tags] + ([TCO_LINK_LEN] if url else [])
     if not tail_lengths:
         return len(text)
     return len(text) + 2 + sum(tail_lengths) + len(tail_lengths) - 1
 
 
-def _compose_x_text(draft: SocialDraft, ch_cfg: ChannelConfig, url: str) -> str:
-    """X post: text, blank line, hashtags and link.
+def _compose_budgeted_text(draft: SocialDraft, ch_cfg: ChannelConfig, url: str) -> str:
+    """Character-budgeted post: text, blank line, hashtags and link.
 
     The hashtag reserve in the text budget is only a suggestion to the LLM;
     enforce the hard platform limit here by dropping trailing hashtags (the
@@ -198,7 +203,7 @@ def _compose_x_text(draft: SocialDraft, ch_cfg: ChannelConfig, url: str) -> str:
     """
     max_chars = ch_cfg.max_chars or 280
     tags = list(draft.hashtags)
-    while tags and _x_post_length(draft.text, tags, url) > max_chars:
+    while tags and _post_length(draft.text, tags, url) > max_chars:
         tags.pop()
     tail = " ".join(filter(None, [" ".join(tags), url]))
     return f"{draft.text}\n\n{tail}" if tail else draft.text

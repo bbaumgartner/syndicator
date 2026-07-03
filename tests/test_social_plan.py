@@ -139,3 +139,54 @@ def test_missing_assets_are_excluded(tmp_path: Path):
     post = posts["2026-05-19_Charly_Superstar"]  # no dummy assets created
     plans = plan_social(post, cfg)
     assert all(not i.media for i in plans["facebook"])
+
+
+def test_new_channel_gets_x_like_planning_from_config_alone(tmp_path: Path):
+    """Extensibility scenario (architecture.md 10): a brand new platform is
+    added by writing config only — no code change. A synthetic "mastodon"
+    channel with ``video_exclusive`` set behaves exactly like X: one post
+    per section (video wins, else images only, never mixed; no reel/carousel
+    splitting), purely because of its config, not its name."""
+    from syndicator.config import ChannelConfig
+    from syndicator.nodes.caption import _enforce_text_budget, compose_post_text, text_budget
+    from syndicator.model import PostIntent, SocialDraft
+
+    cfg = make_cfg(tmp_path)
+    cfg.shared.channels["mastodon"] = ChannelConfig(
+        kind="social", max_media_per_post=4, max_chars=280, video_exclusive=True
+    )
+    post = griechenland(cfg)
+
+    plans = plan_social(post, cfg, start=date(2026, 6, 12))
+    assert "mastodon" in plans
+
+    def shape(intents):
+        return [(i.kind, i.format, [m.kind for m in i.media]) for i in intents]
+
+    assert shape(plans["mastodon"]) == shape(plans["x"])
+
+    mastodon_cfg = cfg.shared.channels["mastodon"]
+    gast = plans["mastodon"][1]  # Gastfreundschaft has images and a video
+    assert gast.format == "single"  # never split into reel/carousel
+    assert len(gast.media) == 1 and gast.media[0].kind == "video"  # video wins, no mixing
+
+    # Character-budget composition (LLM retry + tail-dropping) is triggered
+    # by max_chars, independent of the channel name.
+    budget = text_budget(mastodon_cfg)
+    long_draft = SocialDraft(text="a" * 400, hashtags=["#one", "#two", "#three"])
+    from conftest import FakeLLM
+
+    fixed = _enforce_text_budget(long_draft, mastodon_cfg, "sys", "user", FakeLLM(), cfg, "mastodon")
+    assert fixed.text == "[fake caption_mastodon]"  # real channel name reaches the LLM node
+
+    url = "https://example.org/posts/mastodon/"
+    composed = compose_post_text(
+        SocialDraft(text="a" * budget, hashtags=["#sailing", "#mediterranean", "#travelcouple"]),
+        PostIntent(channel="mastodon", index=0, kind="section"),
+        mastodon_cfg,
+        url,
+        [],
+    )
+    effective = len(composed) - len(url) + 23
+    assert effective <= 280
+    assert "#travelcouple" not in composed  # trailing hashtag dropped like on X

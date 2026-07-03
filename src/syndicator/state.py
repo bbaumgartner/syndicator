@@ -32,7 +32,6 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from .config import ALL_CHANNELS
 log = logging.getLogger(__name__)
 
 ChannelStatus = Literal["pending", "draft", "published"]
@@ -122,13 +121,18 @@ class ReviewState(BaseModel):
 # --- page rendering ---------------------------------------------------------
 
 
-def _channel_label(channel: str) -> str:
-    return "X" if channel == "x" else channel.capitalize()
+def _channel_label(channel: str, labels: dict[str, str] | None = None) -> str:
+    if labels and channel in labels:
+        return labels[channel]
+    return channel.capitalize()
 
 
-def _channel_order(posts: list[SocialPostState]) -> list[str]:
+def _channel_order(posts: list[SocialPostState], order: list[str] | None = None) -> list[str]:
     seen = {p.channel for p in posts}
-    ordered = [c for c in ALL_CHANNELS if c in seen]
+    if order is None:
+        # Fallback: first-seen order of channels in the state's own posts.
+        order = list(dict.fromkeys(p.channel for p in posts))
+    ordered = [c for c in order if c in seen]
     return ordered + sorted(seen - set(ordered))
 
 
@@ -169,10 +173,14 @@ def _post_block_lines(post: SocialPostState) -> list[str]:
     return lines
 
 
-def render_review_page(state: ReviewState) -> str:
+def render_review_page(
+    state: ReviewState,
+    channel_order: list[str] | None = None,
+    channel_labels: dict[str, str] | None = None,
+) -> str:
     lines: list[str] = []
-    for channel in _channel_order(state.posts):
-        lines.append(f"- {_channel_label(channel)}")
+    for channel in _channel_order(state.posts, channel_order):
+        lines.append(f"- {_channel_label(channel, channel_labels)}")
         for post in state.posts_for(channel):
             lines.extend(_post_block_lines(post))
 
@@ -273,10 +281,24 @@ def parse_review_page(slug: str, text: str) -> ReviewState:
 
 
 class ReviewStore:
-    """Load/save review state from/to Logseq pages in the graph."""
+    """Load/save review state from/to Logseq pages in the graph.
 
-    def __init__(self, pages_dir: Path):
+    ``channel_order``/``channel_labels`` control how channels are ordered and
+    titled on rendered pages (normally derived from config by
+    ``pipeline.make_store``). When omitted (e.g. tests constructing a store
+    directly), rendering falls back to first-seen channel order and
+    capitalized names — see ``render_review_page``.
+    """
+
+    def __init__(
+        self,
+        pages_dir: Path,
+        channel_order: list[str] | None = None,
+        channel_labels: dict[str, str] | None = None,
+    ):
         self.pages_dir = pages_dir
+        self.channel_order = channel_order
+        self.channel_labels = channel_labels
 
     def path_for(self, slug: str) -> Path:
         return self.pages_dir / page_filename(slug)
@@ -293,7 +315,7 @@ class ReviewStore:
     def save(self, state: ReviewState) -> Path:
         """Render and write the page; atomic, and only when content changed."""
         path = self.path_for(state.slug)
-        content = render_review_page(state)
+        content = render_review_page(state, self.channel_order, self.channel_labels)
         if path.exists() and path.read_text(encoding="utf-8") == content:
             return path
         path.parent.mkdir(parents=True, exist_ok=True)

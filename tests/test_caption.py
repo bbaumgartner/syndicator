@@ -8,7 +8,7 @@ from syndicator.nodes.caption import (
     _sanitize,
     compose_post_text,
     generate_caption,
-    x_text_budget,
+    text_budget,
 )
 from syndicator.nodes.extract import scan_blog_posts
 from syndicator.nodes.social_plan import plan_social
@@ -73,7 +73,7 @@ def test_compose_x_never_exceeds_limit():
     dropping trailing hashtags when the reserve is blown — the link survives."""
     cfg_ch = make_cfg_channel("x")
     url = "https://example.org/posts/2026-06-10_griechenland-a-very-long-slug/"
-    text = "a" * x_text_budget(cfg_ch)
+    text = "a" * text_budget(cfg_ch)
     draft = SocialDraft(text=text, hashtags=["#sailing", "#mediterranean", "#travelcouple"])
 
     composed = compose_post_text(draft, intent_with_media("x"), cfg_ch, url, [])
@@ -96,14 +96,14 @@ def test_compose_x_never_exceeds_limit():
 def test_x_budget_enforcement(tmp_path: Path):
     cfg = make_cfg(tmp_path)
     cfg_ch = make_cfg_channel("x")
-    budget = x_text_budget(cfg_ch)
+    budget = text_budget(cfg_ch)
     assert budget == 280 - 25 - 25
 
     long_draft = SocialDraft(text="a" * 400, hashtags=[])
-    from syndicator.nodes.caption import _enforce_x_budget
+    from syndicator.nodes.caption import _enforce_text_budget
 
     # The LLM rewrite fits the budget -> used as-is.
-    fixed = _enforce_x_budget(long_draft, cfg_ch, "sys", "user", FakeLLM(), cfg)
+    fixed = _enforce_text_budget(long_draft, cfg_ch, "sys", "user", FakeLLM(), cfg, "x")
     assert fixed.text == "[fake caption_x]"
 
     # Rewrite still too long -> hard truncation with ellipsis.
@@ -111,7 +111,7 @@ def test_x_budget_enforcement(tmp_path: Path):
         def complete_structured(self, node, model, system, user_content, schema, temperature=None):
             return SocialDraft(text="b" * 400, hashtags=[])
 
-    fixed = _enforce_x_budget(long_draft, cfg_ch, "sys", "user", StillTooLongLLM(), cfg)
+    fixed = _enforce_text_budget(long_draft, cfg_ch, "sys", "user", StillTooLongLLM(), cfg, "x")
     assert len(fixed.text) <= budget
     assert fixed.text.endswith("…")
 

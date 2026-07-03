@@ -6,15 +6,17 @@ dates spread posts according to ``social.posts_per_week``. The user can
 still drop or reorder posts during review — this node plans, it does not
 decide taste.
 
-Section media rules (Instagram / Facebook):
-- Sections with uploadable videos: one reel post per video (per-channel
-  ``reel_video`` spec, 4:5 on Instagram and Facebook).
-- Sections with videos and images: reel posts plus one carousel with all
-  uploadable media.
-- Sections without videos: one single post (unchanged).
-
-X keeps one post per section: one video OR up to ``max_media_per_post`` images
-(no mixing; video wins when present).
+Section media rules, driven by channel configuration (see ``ChannelConfig``
+in ``config.py``):
+- Channels with a ``reel_video`` spec (e.g. Instagram, Facebook): sections
+  with uploadable videos get one reel post per video, plus one carousel with
+  all uploadable media when images are present too. Sections without videos
+  get one single post.
+- ``video_exclusive`` channels (e.g. X) keep one post per section: one video
+  OR up to ``max_media_per_post`` images (no mixing; video wins when
+  present) — sections are never split into reel/carousel posts.
+- ``fallback_to_header`` channels (e.g. Instagram) fall back to the post's
+  header image when a part has no other usable media.
 """
 
 from __future__ import annotations
@@ -30,33 +32,28 @@ def _uploadable(media: list[MediaRef]) -> list[MediaRef]:
 
 
 def _select_single_media(
-    channel: str, ch_cfg: ChannelConfig, media: list[MediaRef], header: MediaRef | None
+    ch_cfg: ChannelConfig, media: list[MediaRef], header: MediaRef | None
 ) -> list[MediaRef]:
     uploadable = _uploadable(media)
     cap = ch_cfg.max_media_per_post
 
-    if channel == "x":
+    if ch_cfg.video_exclusive:
         videos = [m for m in uploadable if m.kind == "video"]
         if videos:
             return videos[:1]
         return [m for m in uploadable if m.kind == "image"][:cap]
 
-    if channel == "instagram":
-        selected = uploadable[:cap]
-        if not selected and header is not None and header.exists:
-            selected = [header]
-        return selected
-
-    return uploadable[:cap]
+    selected = uploadable[:cap]
+    if ch_cfg.fallback_to_header and not selected and header is not None and header.exists:
+        selected = [header]
+    return selected
 
 
-def _select_carousel_media(
-    channel: str, ch_cfg: ChannelConfig, media: list[MediaRef]
-) -> list[MediaRef]:
+def _select_carousel_media(ch_cfg: ChannelConfig, media: list[MediaRef]) -> list[MediaRef]:
     uploadable = _uploadable(media)
     cap = ch_cfg.max_media_per_post
 
-    if channel == "x":
+    if ch_cfg.video_exclusive:
         return [m for m in uploadable if m.kind == "image"][:cap]
 
     return uploadable[:cap]
@@ -69,7 +66,7 @@ def _plan_section_intents(
     section_index: int,
     header: MediaRef | None,
 ) -> list[PostIntent]:
-    if channel == "x":
+    if ch_cfg.reel_video is None:
         return [
             PostIntent(
                 channel=channel,
@@ -78,7 +75,7 @@ def _plan_section_intents(
                 format="single",
                 section_index=section_index,
                 section_title=section.title,
-                media=_select_single_media(channel, ch_cfg, section.media, header),
+                media=_select_single_media(ch_cfg, section.media, header),
             )
         ]
 
@@ -95,7 +92,7 @@ def _plan_section_intents(
                 format="single",
                 section_index=section_index,
                 section_title=section.title,
-                media=_select_single_media(channel, ch_cfg, section.media, header),
+                media=_select_single_media(ch_cfg, section.media, header),
             )
         ]
 
@@ -122,7 +119,7 @@ def _plan_section_intents(
                 format="carousel",
                 section_index=section_index,
                 section_title=section.title,
-                media=_select_carousel_media(channel, ch_cfg, section.media),
+                media=_select_carousel_media(ch_cfg, section.media),
             )
         )
 
@@ -139,7 +136,7 @@ def plan_social(post: BlogPost, cfg: Config, start: date | None = None) -> dict[
     for channel, ch_cfg in cfg.social_channels().items():
         intents: list[PostIntent] = []
 
-        intro_media = _select_single_media(channel, ch_cfg, [header] if header else [], header)
+        intro_media = _select_single_media(ch_cfg, [header] if header else [], header)
         intents.append(
             PostIntent(
                 channel=channel,

@@ -72,6 +72,34 @@ def test_store_roundtrip_and_channel_state(tmp_path: Path):
     assert [s.slug for s in store.all()] == ["2026-01-01_Test Post"]
 
 
+def test_review_page_uses_configured_channel_order_and_labels(tmp_path: Path):
+    """ReviewStore threads channel order/labels from config (pipeline.make_store)
+    into rendering, instead of the deleted ALL_CHANNELS constant."""
+    store = ReviewStore(
+        tmp_path / "pages",
+        channel_order=["x", "facebook", "instagram"],
+        channel_labels={"x": "X", "facebook": "Facebook", "instagram": "Instagram"},
+    )
+    state = ReviewState(slug="2026-01-01_Test Post")
+    # Posts are added in a different order than the configured channel order.
+    state.posts = [
+        make_post_block(channel="instagram", index=0),
+        make_post_block(channel="facebook", index=0),
+        make_post_block(channel="x", index=0),
+    ]
+    store.save(state)
+
+    text = store.path_for("2026-01-01_Test Post").read_text(encoding="utf-8")
+    assert text.index("- X\n") < text.index("- Facebook\n") < text.index("- Instagram\n")
+
+    # A ReviewStore built without config (e.g. tests) still falls back to
+    # first-seen order and capitalized labels.
+    plain = ReviewStore(tmp_path / "pages2")
+    plain.save(state)
+    plain_text = plain.path_for("2026-01-01_Test Post").read_text(encoding="utf-8")
+    assert plain_text.index("- Instagram\n") < plain_text.index("- Facebook\n") < plain_text.index("- X\n")
+
+
 def test_location_roundtrip(tmp_path: Path):
     store = ReviewStore(tmp_path / "pages")
     state = ReviewState(slug="2026-01-01_Test Post")

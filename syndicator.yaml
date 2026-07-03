@@ -47,6 +47,7 @@ channels:
     link_mode: inline
     max_media_per_post: 10
     caption_model: gpt-5.5
+    supports_location: true
     image: { mode: convert, max_edge: 2048, format: jpeg, quality: 90 }
     video: { max_seconds: 240 }
     reel_video: { aspect: "4:5", width: 1080, height: 1350, max_seconds: 240, pad_mode: crop }
@@ -58,6 +59,8 @@ channels:
     link_mode: bio
     max_media_per_post: 10
     caption_model: gpt-5.5
+    fallback_to_header: true
+    supports_location: true
     image: { mode: convert, aspect: "4:5", width: 1080, height: 1350, format: jpeg, quality: 90 }
     video: { aspect: "4:5", width: 1080, height: 1350, max_seconds: 90, pad_mode: crop }
     # 4:5 (not 9:16): manual upload via instagram.com rejects taller ratios with
@@ -72,6 +75,8 @@ channels:
     max_media_per_post: 4
     max_chars: 280
     caption_model: gpt-5.5
+    label: X
+    video_exclusive: true
     image: { mode: convert, max_edge: 2048, format: jpeg, quality: 90 }
     video: { max_seconds: 140 }
   substack:

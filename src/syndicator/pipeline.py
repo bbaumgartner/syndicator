@@ -105,7 +105,9 @@ def make_llm(cfg: Config) -> LLMClient:
 
 
 def make_store(cfg: Config) -> ReviewStore:
-    return ReviewStore(cfg.pages_dir)
+    channel_order = list(cfg.shared.channels)  # pyyaml preserves YAML insertion order
+    channel_labels = {name: ch.label or name.capitalize() for name, ch in cfg.shared.channels.items()}
+    return ReviewStore(cfg.pages_dir, channel_order=channel_order, channel_labels=channel_labels)
 
 
 def scan_posts(cfg: Config) -> list[BlogPost]:
@@ -327,7 +329,7 @@ def _run_channel(
         youtube = youtube_links(post, intent)
         text = compose_post_text(draft, intent, ch_cfg, url, youtube)
         media_rel = package_intent_media(cfg, post.slug, intent, llm)
-        location = draft.location if channel in ("facebook", "instagram") else ""
+        location = draft.location if ch_cfg.supports_location else ""
         posts.append(
             build_post_block(intent, text, media_rel, youtube, location, src_hash)
         )
