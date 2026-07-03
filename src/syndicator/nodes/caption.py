@@ -119,22 +119,27 @@ def generate_caption(
     draft = _sanitize(draft)
 
     if intent.channel == "x":
-        draft = _enforce_x_budget(draft, ch_cfg, system, user, llm)
+        draft = _enforce_x_budget(draft, ch_cfg, system, user, llm, cfg)
 
     return draft
 
 
 def _enforce_x_budget(
-    draft: SocialDraft, ch_cfg: ChannelConfig, system: str, user: str, llm: LLMClient
+    draft: SocialDraft,
+    ch_cfg: ChannelConfig,
+    system: str,
+    user: str,
+    llm: LLMClient,
+    cfg: Config,
 ) -> SocialDraft:
     budget = x_text_budget(ch_cfg)
     if len(draft.text) <= budget:
         return draft
 
-    retry_user = (
-        user
-        + f"\n\nYour previous text was {len(draft.text)} characters; the hard limit is {budget}."
-        + f" Rewrite it shorter:\n{draft.text}"
+    retry_user = user + _jinja(cfg).get_template("caption_shorten.md").render(
+        previous_length=len(draft.text),
+        budget=budget,
+        previous_text=draft.text,
     )
     shorter = llm.complete_structured(
         node="caption_x",

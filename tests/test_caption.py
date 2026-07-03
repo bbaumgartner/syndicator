@@ -93,7 +93,8 @@ def test_compose_x_never_exceeds_limit():
     assert compose_post_text(bare, intent_with_media("x"), cfg_ch, "", []) == "Just text"
 
 
-def test_x_budget_enforcement():
+def test_x_budget_enforcement(tmp_path: Path):
+    cfg = make_cfg(tmp_path)
     cfg_ch = make_cfg_channel("x")
     budget = x_text_budget(cfg_ch)
     assert budget == 280 - 25 - 25
@@ -102,7 +103,7 @@ def test_x_budget_enforcement():
     from syndicator.nodes.caption import _enforce_x_budget
 
     # The LLM rewrite fits the budget -> used as-is.
-    fixed = _enforce_x_budget(long_draft, cfg_ch, "sys", "user", FakeLLM())
+    fixed = _enforce_x_budget(long_draft, cfg_ch, "sys", "user", FakeLLM(), cfg)
     assert fixed.text == "[fake caption_x]"
 
     # Rewrite still too long -> hard truncation with ellipsis.
@@ -110,7 +111,7 @@ def test_x_budget_enforcement():
         def complete_structured(self, node, model, system, user_content, schema, temperature=None):
             return SocialDraft(text="b" * 400, hashtags=[])
 
-    fixed = _enforce_x_budget(long_draft, cfg_ch, "sys", "user", StillTooLongLLM())
+    fixed = _enforce_x_budget(long_draft, cfg_ch, "sys", "user", StillTooLongLLM(), cfg)
     assert len(fixed.text) <= budget
     assert fixed.text.endswith("…")
 
