@@ -1,54 +1,28 @@
-"""bootstrap node: create review pages with initial state for existing posts.
+"""Bootstrap comparison node: compare source renders with live Hugo bundles.
 
-- hugo: everything that is live on sailingnomads.ch counts as published.
-  The recorded source hash is only set when a fresh render matches the live
-  bundle byte for byte; otherwise the post is considered stale and the first
-  pipeline run regenerates (and re-translates) it.
-- social channels: status lives on per-post blocks (``status::`` on each block).
-  Posts without blocks stay pending and form the catch-up backlog.
+For one post, this node checks whether the live source-language bundle index
+matches a fresh render and whether all configured translation files exist.
+It returns the short source hash only when both checks pass; otherwise ``""``,
+so the orchestrator can mark the post stale and regenerate it on first run.
 """
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
 
 from ..config import Config
 from ..hugo_format import index_filename
 from ..model import BlogPost
-from ..state import ReviewStore, short_hash
-from .backlink import ensure_syndication_link, set_hugo_hash
-from .extract import scan_blog_posts, source_hash
+from ..state import short_hash
+from .extract import source_hash
 from .hugo import render_index
 
 log = logging.getLogger(__name__)
 
 
-@dataclass
-class BootstrapResult:
-    posts: int = 0
-    hugo_in_sync: list[str] = field(default_factory=list)
-    hugo_stale: list[str] = field(default_factory=list)
-
-
-def bootstrap(cfg: Config) -> BootstrapResult:
-    store = ReviewStore(cfg.pages_dir)
-    posts = scan_blog_posts(cfg.journals_dir, cfg.pages_dir)
-    result = BootstrapResult(posts=len(posts))
-
-    for post in posts:
-        hugo_hash = _bootstrap_post(cfg, store, post)
-        if hugo_hash:
-            result.hugo_in_sync.append(post.slug)
-        else:
-            result.hugo_stale.append(post.slug)
-
-    return result
-
-
-def _bootstrap_post(cfg: Config, store: ReviewStore, post: BlogPost) -> str:
+def hugo_bundle_hash(cfg: Config, post: BlogPost) -> str:
+    """Return the source hash when the live bundle is fully in sync."""
     h = short_hash(source_hash(post))
-    state = store.load(post.slug)
 
     bundle = cfg.hugo_posts_dir / post.slug
     live_index = bundle / index_filename(post.meta.language)
@@ -68,8 +42,4 @@ def _bootstrap_post(cfg: Config, store: ReviewStore, post: BlogPost) -> str:
         log.info("hugo bundle stale or missing for %s — will be regenerated on first run", post.slug)
     elif not translations_complete:
         log.info("translations incomplete for %s — will be regenerated on first run", post.slug)
-
-    store.save(state)
-    set_hugo_hash(post, hugo_hash)
-    ensure_syndication_link(post)
     return hugo_hash

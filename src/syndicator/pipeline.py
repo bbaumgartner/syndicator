@@ -10,15 +10,17 @@ block. All conditional logic (channel selection, freezing) lives here, none
 in the nodes.
 
 The social pipeline runs independently of the site pipeline (translate ->
-hugo -> journeymap -> git push). All state lives on the per-post review pages
-inside the Logseq graph (see state.py); the review itself happens in Logseq.
+hugo -> journeymap -> git push). This module also composes the bootstrap and
+parity pipelines as plain orchestrator code. All state lives on the per-post
+review pages inside the Logseq graph (see state.py); the review itself happens
+in Logseq.
 """
 
 from __future__ import annotations
 
 import logging
 from datetime import date
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .config import Config
 from .llm import LLMClient
@@ -41,6 +43,13 @@ class ParityCheck:
     slug: str
     index_name: str
     status: str  # "ok" | "diff" | "missing"
+
+
+@dataclass
+class BootstrapResult:
+    posts: int = 0
+    hugo_in_sync: list[str] = field(default_factory=list)
+    hugo_stale: list[str] = field(default_factory=list)
 
 
 def make_llm(cfg: Config) -> LLMClient:
@@ -79,6 +88,28 @@ def run_parity(cfg: Config) -> list[ParityCheck]:
         status = "ok" if live.read_bytes() == rendered else "diff"
         checks.append(ParityCheck(post.slug, live.name, status))
     return checks
+
+
+def run_bootstrap(cfg: Config) -> BootstrapResult:
+    """Compose bootstrap: scan posts, compare live bundles, and write state."""
+    from .nodes.bootstrap import hugo_bundle_hash
+
+    store = make_store(cfg)
+    posts = scan_posts(cfg)
+    result = BootstrapResult(posts=len(posts))
+
+    for post in posts:
+        state = store.load(post.slug)
+        hugo_hash = hugo_bundle_hash(cfg, post)
+        store.save(state)
+        set_hugo_hash(post, hugo_hash)
+        ensure_syndication_link(post)
+        if hugo_hash:
+            result.hugo_in_sync.append(post.slug)
+        else:
+            result.hugo_stale.append(post.slug)
+
+    return result
 
 
 def stale_draft_channels(cfg: Config, store: ReviewStore, post: BlogPost) -> list[str]:

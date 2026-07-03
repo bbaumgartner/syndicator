@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 
 from syndicator.nodes.backlink import read_hugo_hash
-from syndicator.nodes.bootstrap import bootstrap
 from syndicator.nodes.extract import scan_blog_posts, source_hash
 from syndicator.nodes.hugo import write_bundle
+from syndicator.pipeline import run_bootstrap
 from syndicator.state import (
     PipelineLock,
     ReviewState,
@@ -190,7 +190,7 @@ def test_bootstrap_marks_hugo_and_renan(tmp_path: Path):
                 if lang != post.lang_code:
                     (out / f"index.{lang}.md").write_text("dummy", encoding="utf-8")
 
-    result = bootstrap(cfg)
+    result = run_bootstrap(cfg)
     assert result.posts == len(posts)
     assert "2026-06-03_Athen" in result.hugo_stale
     assert "2026-05-19_Charly_Superstar" in result.hugo_in_sync
@@ -220,7 +220,7 @@ def test_bootstrap_is_idempotent_and_keeps_progress(tmp_path: Path):
     for post in posts:
         write_bundle(post, cfg.hugo_posts_dir, cfg)
 
-    bootstrap(cfg)
+    run_bootstrap(cfg)
     store = ReviewStore(cfg.pages_dir)
     state = store.load("2026-05-19_Charly_Superstar")
     state.posts = [
@@ -229,7 +229,7 @@ def test_bootstrap_is_idempotent_and_keeps_progress(tmp_path: Path):
     ]
     store.save(state)
 
-    bootstrap(cfg)
+    run_bootstrap(cfg)
     state = store.load("2026-05-19_Charly_Superstar")
     assert state.channel_state("facebook") == "published"
     assert state.channel_state("instagram") == "published"

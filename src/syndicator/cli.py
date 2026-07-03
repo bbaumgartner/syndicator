@@ -29,7 +29,7 @@ def version() -> None:
 def bootstrap() -> None:
     """Create review pages with initial state for all existing posts."""
     from .config import load_config
-    from .nodes.bootstrap import bootstrap as run_bootstrap
+    from .pipeline import run_bootstrap
 
     cfg = load_config()
     result = run_bootstrap(cfg)
