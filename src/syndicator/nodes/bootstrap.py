@@ -14,11 +14,12 @@ import logging
 from dataclasses import dataclass, field
 
 from ..config import Config
+from ..hugo_format import index_filename
 from ..model import BlogPost
 from ..state import ReviewStore, short_hash
 from .backlink import ensure_syndication_link, set_hugo_hash
 from .extract import scan_blog_posts, source_hash
-from .hugo import index_filename, render_index
+from .hugo import render_index
 
 log = logging.getLogger(__name__)
 

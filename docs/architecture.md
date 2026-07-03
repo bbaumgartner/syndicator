@@ -180,7 +180,7 @@ the middle is representation-independent.
 | State | `state.py` (review-page store, lock), `backlink.py` (state on the blog source) — both are Logseq-edge implementations |
 | LLM access | `llm.py` (single client: retries, structured outputs) + `prompts/` (templates) |
 | Configuration | `config.py`: `syndicator.yaml` (shared, committed) + `config.local.yaml` (machine paths) |
-| Edge helpers | `siteurl.py` (live-site URLs), `deploy/` (systemd unit) |
+| Edge helpers | `siteurl.py` (live-site URLs), `hugo_format.py` (front-matter/bundle format), `deploy/` (systemd unit) |
 
 ### 5.2 Node instances (Level 2)
 

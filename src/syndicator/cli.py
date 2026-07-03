@@ -182,8 +182,9 @@ def watch() -> None:
 def parity() -> None:
     """Compare freshly rendered source-language bundles against the live site repo."""
     from .config import load_config
+    from .hugo_format import index_filename
     from .nodes.extract import scan_blog_posts
-    from .nodes.hugo import index_filename, render_index
+    from .nodes.hugo import render_index
 
     cfg = load_config()
     ch = cfg.shared.channels["hugo"]

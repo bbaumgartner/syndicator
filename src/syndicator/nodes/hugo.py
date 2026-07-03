@@ -14,6 +14,7 @@ import shutil
 from pathlib import Path
 
 from ..config import ChannelConfig, Config
+from ..hugo_format import escape_toml, index_filename
 from ..llm import LLMClient
 from ..model import BlogPost, Meta
 from .media_adapt import adapt_path_for_channel, channel_rewrites_filenames, output_basename
@@ -28,28 +29,6 @@ YOUTUBE_ID_RE = re.compile(r"(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/e
 VIDEO_EXTENSIONS = {
     ".mp4", ".mov", ".avi", ".wmv", ".flv", ".webm", ".mkv", ".m4v", ".mpg", ".mpeg",
 }
-
-LANGUAGE_FILENAMES = {
-    "german": "index.de.md",
-    "english": "index.en.md",
-    "spanish": "index.es.md",
-    "french": "index.fr.md",
-    "italian": "index.it.md",
-}
-
-
-def index_filename(language: str) -> str:
-    return LANGUAGE_FILENAMES.get(language.strip().lower(), "index.de.md")
-
-
-def escape_toml(s: str) -> str:
-    s = s.replace("\\", "\\\\")
-    s = s.replace('"', '\\"')
-    s = s.replace("\n", "\\n")
-    s = s.replace("\r", "\\r")
-    s = s.replace("\t", "\\t")
-    return s
-
 
 def front_matter(meta: Meta, summary: str) -> str:
     return (

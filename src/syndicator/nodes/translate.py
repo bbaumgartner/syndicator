@@ -20,9 +20,10 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
 from ..config import REPO_ROOT, Config
+from ..hugo_format import escape_toml
 from ..llm import LLMClient
 from ..model import LANGUAGE_NAMES, BlogPost
-from .hugo import build_content, escape_toml, transform_content
+from .hugo import build_content, transform_content
 
 log = logging.getLogger(__name__)
 
