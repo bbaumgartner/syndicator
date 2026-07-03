@@ -34,7 +34,7 @@ def hugo_bundle_hash(cfg: Config, post: BlogPost) -> str:
 
     translations_complete = all(
         (bundle / f"index.{lang}.md").exists()
-        for lang in cfg.shared.languages.supported
+        for lang in cfg.shared.languages.codes()
         if lang != post.lang_code
     )
     hugo_hash = h if hugo_matches and translations_complete else ""

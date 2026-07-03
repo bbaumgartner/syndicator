@@ -17,22 +17,14 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-# Mirrors writer.go getFilename(): unknown/empty language falls back to German.
+# Source-language words as written in the Logseq diary — bounded edge knowledge
+# (mirrors writer.go getFilename(); unknown/empty language falls back to German).
 LANGUAGE_WORD_TO_CODE = {
     "german": "de",
     "english": "en",
     "spanish": "es",
     "french": "fr",
     "italian": "it",
-}
-
-LANGUAGE_NAMES = {
-    "en": "English",
-    "de": "German",
-    "es": "Spanish",
-    "fr": "French",
-    "it": "Italian",
-    "arrr": "Pirate Speak",
 }
 
 VIDEO_EXTENSIONS = {

@@ -18,7 +18,7 @@ from jinja2 import Environment, FileSystemLoader
 
 from ..config import REPO_ROOT, ChannelConfig, Config
 from ..llm import LLMClient
-from ..model import LANGUAGE_NAMES, BlogPost, PostIntent, SocialDraft
+from ..model import BlogPost, PostIntent, SocialDraft
 
 URL_RE = re.compile(r"https?://\S+")
 TCO_LINK_LEN = 23  # X wraps every URL into a 23-char t.co link
@@ -101,7 +101,7 @@ def generate_caption(
     llm: LLMClient,
 ) -> SocialDraft:
     ch_cfg = cfg.shared.channels[intent.channel]
-    language = LANGUAGE_NAMES.get(ch_cfg.language, ch_cfg.language)
+    language = cfg.shared.languages.name_for(ch_cfg.language)
 
     template = _jinja(cfg).get_template(f"caption_{intent.channel}.md")
     system = template.render(

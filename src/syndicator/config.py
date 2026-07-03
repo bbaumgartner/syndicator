@@ -93,8 +93,68 @@ class ChannelConfig(BaseModel):
     supports_location: bool = False  # export a location:: suggestion on review blocks
 
 
+class LanguageConfig(BaseModel):
+    code: str
+    name: str  # English display name used in prompts, e.g. "Spanish"
+    disclaimer: str  # full translated-by-LLM notice appended to each translation
+
+
+_BUILTIN_LANGUAGES: list[LanguageConfig] = [
+    LanguageConfig(
+        code="en",
+        name="English",
+        disclaimer="---\n\n*This blog post has been automatically translated by a Large Language Model.",
+    ),
+    LanguageConfig(
+        code="de",
+        name="German",
+        disclaimer="---\n\n*Dieser Blogbeitrag wurde automatisch von einem Large Language Model übersetzt.",
+    ),
+    LanguageConfig(
+        code="es",
+        name="Spanish",
+        disclaimer="---\n\n*Esta publicación de blog ha sido traducida automáticamente por un Large Language Model.",
+    ),
+    LanguageConfig(
+        code="fr",
+        name="French",
+        disclaimer="---\n\n*Cet article de blog a été traduit automatiquement par un Large Language Model.",
+    ),
+    LanguageConfig(
+        code="it",
+        name="Italian",
+        disclaimer="---\n\n*Questo post del blog è stato tradotto automaticamente da un Large Language Model.",
+    ),
+    LanguageConfig(
+        code="arrr",
+        name="Pirate Speak",
+        disclaimer="---\n\n*Arrr, this here blog post be rewritten in the tongue o' pirates by a Large Language Model, ye scallywag!*",
+    ),
+]
+
+
 class LanguagesConfig(BaseModel):
-    supported: list[str] = ["en", "de", "es", "fr", "it", "arrr"]
+    supported: list[LanguageConfig] = Field(default_factory=lambda: list(_BUILTIN_LANGUAGES))
+
+    def codes(self) -> list[str]:
+        return [lang.code for lang in self.supported]
+
+    def name_for(self, code: str) -> str:
+        """Return the English display name for a language code, falling back to the code itself."""
+        for lang in self.supported:
+            if lang.code == code:
+                return lang.name
+        return code
+
+    def disclaimer_for(self, code: str) -> str:
+        """Return the disclaimer for a language code, falling back to the 'en' entry."""
+        for lang in self.supported:
+            if lang.code == code:
+                return lang.disclaimer
+        for lang in self.supported:
+            if lang.code == "en":
+                return lang.disclaimer
+        return self.supported[0].disclaimer if self.supported else ""
 
 
 class SharedConfig(BaseModel):

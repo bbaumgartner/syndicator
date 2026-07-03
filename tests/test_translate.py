@@ -2,12 +2,12 @@
 
 from pathlib import Path
 
+from syndicator.config import LanguageConfig, LanguagesConfig
 from syndicator.hugo_format import index_filename
 from syndicator.nodes.extract import scan_blog_posts
 from syndicator.nodes.hugo import bundle_media_plan, write_bundle
 from syndicator.nodes.media_adapt import adapt_or_copy
 from syndicator.nodes.translate import (
-    disclaimer_for,
     extract_first_paragraph,
     restore_asset_references,
     translate_bundle,
@@ -40,8 +40,9 @@ def test_extract_first_paragraph():
 
 
 def test_disclaimers_exist_for_all_languages():
+    langs = LanguagesConfig()
     for lang in ("en", "de", "es", "fr", "it", "arrr"):
-        assert disclaimer_for(lang).startswith("---")
+        assert langs.disclaimer_for(lang).startswith("---")
 
 
 def test_translations_reference_adapted_video_filenames(tmp_path: Path):
@@ -97,7 +98,7 @@ def test_translate_bundle_writes_files(tmp_path: Path):
     en = (bundle / "index.en.md").read_text(encoding="utf-8")
     assert en.startswith("+++\n")
     assert 'title = "[translate_en] Charly Superstar"' in en
-    assert disclaimer_for("en") in en
+    assert LanguagesConfig().disclaimer_for("en") in en
     # Asset references restored to the real filenames.
     assert "{{< video src=" in en or "![" in en
 
@@ -126,3 +127,24 @@ def test_translate_bundle_english_source_targets(tmp_path: Path):
     assert sorted(langs) == ["arrr", "de", "es", "fr", "it"]
     assert (bundle / "index.de.md").exists()
     assert not (bundle / "index.en.md").read_text(encoding="utf-8").startswith("[translate")
+
+
+def test_translate_bundle_new_language_config_only(tmp_path: Path):
+    """Adding a 7th language (pt) requires only config — no code change needed."""
+    pt_disclaimer = "---\n\n*Este post foi traduzido automaticamente por um Large Language Model."
+    pt = LanguageConfig(code="pt", name="Portuguese", disclaimer=pt_disclaimer)
+    custom_languages = LanguagesConfig(supported=[*LanguagesConfig().supported, pt])
+
+    cfg = make_cfg(tmp_path)
+    new_shared = cfg.shared.model_copy(update={"languages": custom_languages})
+    cfg = cfg.model_copy(update={"shared": new_shared})
+
+    posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
+    post = posts["2026-05-19_Charly_Superstar"]  # German source
+    bundle = write_bundle(post, cfg.hugo_posts_dir, cfg)
+
+    langs = translate_bundle(post, cfg, FakeLLM(), bundle)
+    assert "pt" in langs
+
+    content = (bundle / "index.pt.md").read_text(encoding="utf-8")
+    assert pt_disclaimer in content

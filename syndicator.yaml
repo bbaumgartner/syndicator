@@ -11,7 +11,43 @@ site:
     poll_seconds: 30
 
 languages:
-  supported: [en, de, es, fr, it, arrr]
+  supported:
+    - code: en
+      name: English
+      disclaimer: |-
+        ---
+
+        *This blog post has been automatically translated by a Large Language Model.
+    - code: de
+      name: German
+      disclaimer: |-
+        ---
+
+        *Dieser Blogbeitrag wurde automatisch von einem Large Language Model übersetzt.
+    - code: es
+      name: Spanish
+      disclaimer: |-
+        ---
+
+        *Esta publicación de blog ha sido traducida automáticamente por un Large Language Model.
+    - code: fr
+      name: French
+      disclaimer: |-
+        ---
+
+        *Cet article de blog a été traduit automatiquement par un Large Language Model.
+    - code: it
+      name: Italian
+      disclaimer: |-
+        ---
+
+        *Questo post del blog è stato tradotto automaticamente da un Large Language Model.
+    - code: arrr
+      name: Pirate Speak
+      disclaimer: |-
+        ---
+
+        *Arrr, this here blog post be rewritten in the tongue o' pirates by a Large Language Model, ye scallywag!*
 
 translate:
   model: gpt-4.1

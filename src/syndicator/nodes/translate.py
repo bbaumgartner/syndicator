@@ -27,21 +27,12 @@ from jinja2 import Environment, FileSystemLoader
 from ..config import REPO_ROOT, Config
 from ..hugo_format import escape_toml, index_filename, split_front_matter
 from ..llm import LLMClient
-from ..model import LANGUAGE_NAMES, BlogPost
+from ..model import BlogPost
 
 log = logging.getLogger(__name__)
 
 MARKDOWN_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 SHORTCODE_SRC_RE = re.compile(r"\{\{<[^}]*\ssrc=\"([^\"]+)\"[^}]*>\}\}")
-
-DISCLAIMERS = {
-    "en": "---\n\n*This blog post has been automatically translated by a Large Language Model.",
-    "de": "---\n\n*Dieser Blogbeitrag wurde automatisch von einem Large Language Model übersetzt.",
-    "es": "---\n\n*Esta publicación de blog ha sido traducida automáticamente por un Large Language Model.",
-    "fr": "---\n\n*Cet article de blog a été traduit automatiquement par un Large Language Model.",
-    "it": "---\n\n*Questo post del blog è stato tradotto automaticamente da un Large Language Model.",
-    "arrr": "---\n\n*Arrr, this here blog post be rewritten in the tongue o' pirates by a Large Language Model, ye scallywag!*",
-}
 
 
 def restore_asset_references(source: str, translated: str) -> str:
@@ -94,17 +85,13 @@ def extract_first_paragraph(content: str) -> str:
     return " ".join(collected).strip()
 
 
-def disclaimer_for(lang: str) -> str:
-    return DISCLAIMERS.get(lang, DISCLAIMERS["en"])
-
-
-def _system_prompt(source_lang: str, target_lang: str) -> str:
+def _system_prompt(cfg: Config, source_lang: str, target_lang: str) -> str:
     env = Environment(loader=FileSystemLoader(REPO_ROOT / "prompts"), keep_trailing_newline=False)
     if target_lang == "arrr":
         return env.get_template("translate_pirate.md").render()
     return env.get_template("translate.md").render(
-        source_name=LANGUAGE_NAMES.get(source_lang, source_lang),
-        target_name=LANGUAGE_NAMES.get(target_lang, target_lang),
+        source_name=cfg.shared.languages.name_for(source_lang),
+        target_name=cfg.shared.languages.name_for(target_lang),
     )
 
 
@@ -118,7 +105,7 @@ def translate_text(llm: LLMClient, cfg: Config, text: str, source_lang: str, tar
     return llm.complete_text(
         node=f"translate_{target_lang}",
         model=cfg.shared.translate.model,
-        system=_system_prompt(source_lang, target_lang),
+        system=_system_prompt(cfg, source_lang, target_lang),
         user=text,
         temperature=_temperature(cfg, target_lang),
     )
@@ -147,7 +134,7 @@ def translated_index_content(
 
 
 def translation_target_langs(cfg: Config, post: BlogPost) -> list[str]:
-    return [lang for lang in cfg.shared.languages.supported if lang != post.lang_code]
+    return [lang for lang in cfg.shared.languages.codes() if lang != post.lang_code]
 
 
 def _translate_body(
@@ -206,7 +193,7 @@ def translate_bundle(
             body = _translate_body(llm, cfg, source_body, source_lang, lang, source_body)
             if lang == "en":
                 english_body = body
-        body = body + "\n\n" + disclaimer_for(lang)
+        body = body + "\n\n" + cfg.shared.languages.disclaimer_for(lang)
 
         # Pirate speak keeps the original title (avoids comically long results).
         title = post.meta.title
