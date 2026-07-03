@@ -171,7 +171,7 @@ def run(
 def watch() -> None:
     """Daemon mode: watch the Logseq graph and run the pipeline on changes."""
     from .config import load_config
-    from .nodes.watch import watch as run_watch
+    from .watch import watch as run_watch
     from .pipeline import run_all
 
     cfg = load_config()

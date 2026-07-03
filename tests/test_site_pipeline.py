@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from syndicator.nodes.extract import scan_blog_posts, source_hash
 from syndicator.nodes.journeymap import generate_journey_map
 from syndicator.nodes.publish_git import commit_and_push, has_changes, wait_for_deploy
-from syndicator.nodes.watch import _Handler, is_relevant_path
+from syndicator.watch import _Handler, is_relevant_path
 from syndicator.nodes.backlink import read_hugo_hash, set_hugo_hash
 from syndicator.pipeline import run_all, run_site_for_post, site_changed_posts
 from syndicator.state import ReviewStore, short_hash

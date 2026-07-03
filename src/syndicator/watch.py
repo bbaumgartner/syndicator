@@ -1,4 +1,4 @@
-"""watch node: daemon mode — trigger the pipeline on Logseq changes.
+"""watch driver: daemon mode — trigger the pipeline on Logseq changes.
 
 Watches journals/, pages/ and assets/ via watchdog. Syncthing-safe: ignores
 its own write targets (review pages ``syndicator___*.md``, adapted media in
@@ -23,8 +23,8 @@ from typing import Callable
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from ..config import Config
-from ..state import PAGE_PREFIX
+from .config import Config
+from .state import PAGE_PREFIX
 
 log = logging.getLogger(__name__)
 

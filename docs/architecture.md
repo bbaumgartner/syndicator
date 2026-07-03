@@ -173,7 +173,7 @@ the middle is representation-independent.
 
 | Concept | Realized in |
 |---|---|
-| Drivers | `cli.py` (CLI), `nodes/watch.py` (daemon) |
+| Drivers | `cli.py` (CLI), `watch.py` (daemon) |
 | Orchestrator | `pipeline.py` |
 | Nodes | modules in `nodes/` (see 5.2) |
 | Artifact types (domain model) | `model.py` — `BlogPost`, `Section`, `MediaRef`, `PostIntent`, `SocialDraft` |
