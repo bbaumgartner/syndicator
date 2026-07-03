@@ -4,7 +4,8 @@ from pathlib import Path
 
 from syndicator.hugo_format import index_filename
 from syndicator.nodes.extract import scan_blog_posts
-from syndicator.nodes.hugo import write_bundle
+from syndicator.nodes.hugo import bundle_media_plan, write_bundle
+from syndicator.nodes.media_adapt import adapt_or_copy
 from syndicator.nodes.translate import (
     disclaimer_for,
     extract_first_paragraph,
@@ -66,7 +67,10 @@ def test_translations_reference_adapted_video_filenames(tmp_path: Path):
     post = posts["2026-07-01_Clip_Post"]
     create_dummy_assets([post])
 
-    bundle = write_bundle(post, cfg.hugo_posts_dir, cfg, FakeLLM())
+    bundle = write_bundle(post, cfg.hugo_posts_dir, cfg)
+    llm = FakeLLM()
+    for src, dest_name in bundle_media_plan(post, cfg):
+        adapt_or_copy(src, "hugo", cfg, bundle, llm, dest_name=dest_name)
     assert (bundle / "clip.mp4").exists()  # hugo adapted (fell back to raw copy)
 
     translate_bundle(post, cfg, FakeLLM(), bundle)
@@ -84,7 +88,7 @@ def test_translate_bundle_writes_files(tmp_path: Path):
     cfg = make_cfg(tmp_path)
     posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
     post = posts["2026-05-19_Charly_Superstar"]  # German source
-    bundle = write_bundle(post, cfg.hugo_posts_dir, cfg, FakeLLM())
+    bundle = write_bundle(post, cfg.hugo_posts_dir, cfg)
 
     llm = FakeLLM()
     langs = translate_bundle(post, cfg, llm, bundle)
@@ -116,7 +120,7 @@ def test_translate_bundle_english_source_targets(tmp_path: Path):
     cfg = make_cfg(tmp_path)
     posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
     renan = posts["2024-06-14_Renan"]
-    bundle = write_bundle(renan, cfg.hugo_posts_dir, cfg, FakeLLM())
+    bundle = write_bundle(renan, cfg.hugo_posts_dir, cfg)
 
     langs = translate_bundle(renan, cfg, FakeLLM(), bundle)
     assert sorted(langs) == ["arrr", "de", "es", "fr", "it"]

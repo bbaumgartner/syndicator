@@ -13,6 +13,7 @@ from syndicator.model import Meta
 from syndicator.nodes.extract import scan_blog_posts
 from syndicator.nodes.hugo import (
     bundle_dir_name,
+    bundle_media_plan,
     collect_asset_copies,
     build_content,
     front_matter,
@@ -20,9 +21,9 @@ from syndicator.nodes.hugo import (
     transform_content,
     write_bundle,
 )
-from syndicator.nodes.media_adapt import output_basename
+from syndicator.nodes.media_adapt import adapt_or_copy, output_basename
 
-from conftest import FakeLLM, make_cfg
+from conftest import FakeLLM, create_dummy_assets, make_cfg
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -95,6 +96,37 @@ def test_transform_content_adapts_filenames(tmp_path):
     assert '{{< video src="bar.mp4" >}}' in adapted
 
 
+def _write_bundle_with_media(post, cfg, llm):
+    """Mirror pipeline.run_site_for_post's composition: write_bundle + the
+    media plan executed through media_adapt (adapt_or_copy)."""
+    bundle = write_bundle(post, cfg.hugo_posts_dir, cfg)
+    for src, dest_name in bundle_media_plan(post, cfg):
+        adapt_or_copy(src, "hugo", cfg, bundle, llm, dest_name=dest_name)
+    return bundle
+
+
+def test_bundle_media_plan_pairs_content_assets_and_header(tmp_path):
+    cfg = make_cfg(tmp_path)
+    posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
+    post = posts["2024-06-14_Renan"]
+    create_dummy_assets([post])
+    source_dir = post.source_path.parent
+    ch = cfg.shared.channels["hugo"]
+
+    expected_content = [
+        (src, output_basename(name, ch))
+        for src, name in collect_asset_copies(build_content(post), source_dir)
+        if src.exists()
+    ]
+    assert post.meta.header, "Renan fixture must set a header image"
+    header_src = (source_dir / post.meta.header).resolve()
+    assert header_src.exists(), "Renan fixture header image must exist"
+    expected_header = (header_src, f"featured{header_src.suffix}")
+
+    plan = bundle_media_plan(post, cfg)
+    assert plan == [*expected_content, expected_header]
+
+
 def test_write_bundle_copies_corrupt_image_as_fallback(tmp_path):
     """Unreadable media must not abort the bundle; the original is copied."""
     cfg = make_cfg(tmp_path)
@@ -109,7 +141,7 @@ def test_write_bundle_copies_corrupt_image_as_fallback(tmp_path):
         media.source_path.parent.mkdir(parents=True, exist_ok=True)
         media.source_path.write_bytes(b"not an image")
 
-    bundle = write_bundle(post, cfg.hugo_posts_dir, cfg, FakeLLM())
+    bundle = _write_bundle_with_media(post, cfg, FakeLLM())
     assert (bundle / "index.en.md").exists()
     copied = bundle / "renand.jpg"
     assert copied.read_bytes() == b"not an image"
@@ -128,7 +160,7 @@ def test_write_bundle_keeps_images_unchanged(tmp_path):
         media.source_path.parent.mkdir(parents=True, exist_ok=True)
         Image.new("RGB", (900, 1600), (80, 120, 160)).save(media.source_path)
 
-    bundle = write_bundle(post, cfg.hugo_posts_dir, cfg, FakeLLM())
+    bundle = _write_bundle_with_media(post, cfg, FakeLLM())
     with Image.open(bundle / "renand.jpg") as im:
         assert im.size == (900, 1600)
     with Image.open(bundle / "featured.jpg") as im:

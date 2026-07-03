@@ -311,6 +311,25 @@ def adapt_path_for_channel(
     )
 
 
+def adapt_or_copy(
+    src: Path,
+    channel: str,
+    cfg: Config,
+    out_dir: Path,
+    llm: LLMClient,
+    dest_name: str,
+) -> Path:
+    """Adapt src for a channel into out_dir/dest_name, copying the original on failure."""
+    out = adapt_path_for_channel(src, channel, cfg, out_dir, llm, dest_name=dest_name)
+    if out is not None:
+        return out
+    log.warning("adapt failed for %s — copying original", src.name)
+    dest = out_dir / dest_name
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(src, dest)
+    return dest
+
+
 def adapt_media_for_channel(
     media: MediaRef,
     channel: str,

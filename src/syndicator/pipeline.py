@@ -138,14 +138,17 @@ def run_site_for_post(
     not record the hugo state, so the next real run picks the post up again
     and commits (including re-translating).
     """
-    from .nodes.hugo import write_bundle
+    from .nodes.hugo import bundle_media_plan, write_bundle
+    from .nodes.media_adapt import adapt_or_copy
     from .nodes.translate import translate_bundle
 
     h = short_hash(source_hash(post))
     if not force and read_hugo_hash(post) == h:
         return False
 
-    bundle = write_bundle(post, cfg.hugo_posts_dir, cfg, llm)
+    bundle = write_bundle(post, cfg.hugo_posts_dir, cfg)
+    for src, dest_name in bundle_media_plan(post, cfg):
+        adapt_or_copy(src, "hugo", cfg, bundle, llm, dest_name=dest_name)
     log.info("%s: hugo bundle written (%s)", post.slug, bundle)
 
     translated = translate_bundle(post, cfg, llm, bundle)

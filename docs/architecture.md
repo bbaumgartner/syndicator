@@ -190,7 +190,7 @@ in the module docstrings:
 | Node | Kind | Consumes → produces |
 |---|---|---|
 | `extract` | pure, edge (Logseq) | graph files → `BlogPost` artifacts |
-| `hugo` | pure | `BlogPost` → Hugo page bundle |
+| `hugo` | pure | `BlogPost` → Hugo page bundle (bundle media plan executed via `media_adapt`) |
 | `translate` | LLM | bundle body → localized bundle files |
 | `journeymap` | pure, edge (Go tools) | journals → journey map data + video |
 | `publish_git` | pure, edge (git/Netlify) | site working tree → pushed commit, deploy confirmation |
@@ -209,7 +209,7 @@ limits). Adding a channel is adding configuration plus a prompt, not code.
 
 | Pipeline | Composition | Goal |
 |---|---|---|
-| Site | extract → hugo → translate → journeymap → publish_git | Blog post live on the website, all languages |
+| Site | extract → hugo + media_adapt → translate → journeymap → publish_git | Blog post live on the website, all languages |
 | Social | extract → social_plan → caption → media_adapt → export | Review-ready social post packages |
 | Bootstrap | extract → (compare with live site) → state | Adopt an existing site without regenerating or LLM cost |
 | Parity | extract → hugo → diff against live repo | Verify renderer output still matches production |

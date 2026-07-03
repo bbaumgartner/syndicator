@@ -4,20 +4,23 @@ Behavior-parity port of the old Go converter (main.go, processors.go,
 writer.go): identical front matter, identical media handling (flattened
 basenames, video/youtube shortcodes, featured image), identical bundle
 directory naming.
+
+This node only renders the bundle index — it is pure and never touches an
+LLM. The media that belongs in the bundle (content assets + featured header
+image) is planned here (`bundle_media_plan`) but adapted by the orchestrator
+through the `media_adapt` node (see `pipeline.run_site_for_post`).
 """
 
 from __future__ import annotations
 
 import logging
 import re
-import shutil
 from pathlib import Path
 
 from ..config import ChannelConfig, Config
 from ..hugo_format import escape_toml, index_filename
-from ..llm import LLMClient
 from ..model import BlogPost, Meta
-from .media_adapt import adapt_path_for_channel, channel_rewrites_filenames, output_basename
+from .media_adapt import channel_rewrites_filenames, output_basename
 
 log = logging.getLogger(__name__)
 
@@ -102,46 +105,42 @@ def bundle_dir_name(post: BlogPost) -> str:
     return post.slug
 
 
-def _write_channel_asset(
-    src: Path,
-    dest_name: str,
-    out_dir: Path,
-    cfg: Config,
-    llm: LLMClient,
-) -> None:
-    """Adapt src for hugo into out_dir/dest_name, falling back to a raw copy on failure."""
-    out = adapt_path_for_channel(src, "hugo", cfg, out_dir, llm, dest_name=dest_name)
-    if out is None:
-        log.warning("adapt failed for %s — copying original", src.name)
-        dest = out_dir / dest_name
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src, dest)
+def bundle_media_plan(post: BlogPost, cfg: Config) -> list[tuple[Path, str]]:
+    """The full media copy plan for the bundle: (source path, dest basename) pairs.
 
-
-def write_bundle(post: BlogPost, posts_dir: Path, cfg: Config, llm: LLMClient) -> Path:
-    """Write the source-language bundle: index file, media, featured image."""
-    out_dir = posts_dir / bundle_dir_name(post)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
+    Covers every content asset referenced in the post plus, when set, the
+    featured header image. A missing source is logged and skipped here, so
+    the orchestrator only ever sees files that exist.
+    """
     source_dir = post.source_path.parent
-    raw_content = build_content(post)
     ch = cfg.shared.channels["hugo"]
+    plan: list[tuple[Path, str]] = []
 
-    for src, name in collect_asset_copies(raw_content, source_dir):
+    for src, name in collect_asset_copies(build_content(post), source_dir):
         if not src.exists():
             log.warning("missing asset %s", src)
             continue
-        dest_name = output_basename(name, ch)
-        _write_channel_asset(src, dest_name, out_dir, cfg, llm)
+        plan.append((src, output_basename(name, ch)))
 
     if post.meta.header:
         header_src = (source_dir / post.meta.header).resolve()
         if header_src.exists():
-            featured_name = f"featured{header_src.suffix}"
-            _write_channel_asset(header_src, featured_name, out_dir, cfg, llm)
+            plan.append((header_src, f"featured{header_src.suffix}"))
         else:
             log.warning("missing header image %s", header_src)
 
+    return plan
+
+
+def write_bundle(post: BlogPost, posts_dir: Path, cfg: Config) -> Path:
+    """Write the source-language bundle index file.
+
+    Bundle media is not copied here — see `bundle_media_plan`.
+    """
+    out_dir = posts_dir / bundle_dir_name(post)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    ch = cfg.shared.channels["hugo"]
     index_path = out_dir / index_filename(post.meta.language)
     index_path.write_text(render_index(post, ch), encoding="utf-8")
     return out_dir

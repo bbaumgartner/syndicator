@@ -20,7 +20,7 @@ from syndicator.state import (
     short_hash,
 )
 
-from conftest import FakeLLM, make_cfg
+from conftest import make_cfg
 
 
 def make_post_block(channel: str = "facebook", index: int = 0, kind: str = "intro",
@@ -180,7 +180,7 @@ def test_bootstrap_marks_hugo_and_renan(tmp_path: Path):
     # Simulate the live site: render bundles for all posts except one (stale case:
     # Athen gets a bundle with modified content).
     for slug, post in posts.items():
-        out = write_bundle(post, cfg.hugo_posts_dir, cfg, FakeLLM())
+        out = write_bundle(post, cfg.hugo_posts_dir, cfg)
         if slug == "2026-06-03_Athen":
             idx = out / "index.de.md"
             idx.write_text(idx.read_text(encoding="utf-8") + "\nmanual drift\n", encoding="utf-8")
@@ -218,7 +218,7 @@ def test_bootstrap_is_idempotent_and_keeps_progress(tmp_path: Path):
     cfg = make_cfg(tmp_path)
     posts = scan_blog_posts(cfg.journals_dir, cfg.pages_dir)
     for post in posts:
-        write_bundle(post, cfg.hugo_posts_dir, cfg, FakeLLM())
+        write_bundle(post, cfg.hugo_posts_dir, cfg)
 
     bootstrap(cfg)
     store = ReviewStore(cfg.pages_dir)
