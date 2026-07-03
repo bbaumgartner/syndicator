@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date
+from dataclasses import dataclass
 
 from .config import Config
 from .llm import LLMClient
@@ -33,6 +34,13 @@ from .state import PipelineLock, ReviewState, ReviewStore, SocialPostState, shor
 _FROZEN_STATUSES = ("approved", "scheduled", "published")
 
 log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ParityCheck:
+    slug: str
+    index_name: str
+    status: str  # "ok" | "diff" | "missing"
 
 
 def make_llm(cfg: Config) -> LLMClient:
@@ -53,6 +61,24 @@ def find_post(cfg: Config, slug: str) -> BlogPost:
         known = "\n  ".join(sorted(posts))
         raise SystemExit(f"unknown post slug: {slug}\nknown posts:\n  {known}")
     return posts[slug]
+
+
+def run_parity(cfg: Config) -> list[ParityCheck]:
+    """Compare fresh source-language renders against the live site repo."""
+    from .hugo_format import index_filename
+    from .nodes.hugo import render_index
+
+    ch = cfg.shared.channels["hugo"]
+    checks: list[ParityCheck] = []
+    for post in scan_posts(cfg):
+        live = cfg.hugo_posts_dir / post.slug / index_filename(post.meta.language)
+        if not live.exists():
+            checks.append(ParityCheck(post.slug, live.name, "missing"))
+            continue
+        rendered = render_index(post, ch).encode("utf-8")
+        status = "ok" if live.read_bytes() == rendered else "diff"
+        checks.append(ParityCheck(post.slug, live.name, status))
+    return checks
 
 
 def stale_draft_channels(cfg: Config, store: ReviewStore, post: BlogPost) -> list[str]:

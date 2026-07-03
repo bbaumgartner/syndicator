@@ -182,25 +182,21 @@ def watch() -> None:
 def parity() -> None:
     """Compare freshly rendered source-language bundles against the live site repo."""
     from .config import load_config
-    from .hugo_format import index_filename
-    from .nodes.extract import scan_blog_posts
-    from .nodes.hugo import render_index
+    from .pipeline import run_parity
 
     cfg = load_config()
-    ch = cfg.shared.channels["hugo"]
-    posts = scan_blog_posts(cfg.journals_dir, cfg.pages_dir)
+    checks = run_parity(cfg)
     diffs = 0
-    for p in posts:
-        live = cfg.hugo_posts_dir / p.slug / index_filename(p.meta.language)
-        if not live.exists():
-            typer.echo(f"  MISSING {p.slug} ({live.name})")
+    for check in checks:
+        if check.status == "missing":
+            typer.echo(f"  MISSING {check.slug} ({check.index_name})")
             diffs += 1
-        elif live.read_text(encoding="utf-8") != render_index(p, ch):
-            typer.echo(f"  DIFF    {p.slug} (source changed since last conversion)")
+        elif check.status == "diff":
+            typer.echo(f"  DIFF    {check.slug} (source changed since last conversion)")
             diffs += 1
         else:
-            typer.echo(f"  OK      {p.slug}")
-    typer.echo(f"\n{len(posts) - diffs}/{len(posts)} bundles identical to a fresh render.")
+            typer.echo(f"  OK      {check.slug}")
+    typer.echo(f"\n{len(checks) - diffs}/{len(checks)} bundles identical to a fresh render.")
 
 
 @app.command()
