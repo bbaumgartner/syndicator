@@ -85,7 +85,10 @@ class LLMClient:
                 raise
             return completion.choices[0].message.content or ""
 
-        return self._with_retries(call)
+        start = time.monotonic()
+        result = self._with_retries(call)
+        log.info("LLM %s: model=%s %.1fs", node, model, time.monotonic() - start)
+        return result
 
     def complete_structured(
         self,
@@ -116,4 +119,7 @@ class LLMClient:
                 raise RuntimeError(f"model returned no parseable {schema.__name__}")
             return parsed
 
-        return self._with_retries(call)
+        start = time.monotonic()
+        result = self._with_retries(call)
+        log.info("LLM %s: model=%s %.1fs", node, model, time.monotonic() - start)
+        return result
