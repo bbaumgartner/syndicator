@@ -112,6 +112,33 @@ def run_bootstrap(cfg: Config) -> BootstrapResult:
     return result
 
 
+def mark_channels_published(cfg: Config, slug: str, channels: list[str] | None) -> list[str]:
+    """Mark selected channel blocks on a review page as published."""
+    store = make_store(cfg)
+    if not store.exists(slug):
+        raise ValueError(f"No review page for {slug} — run `syndicator catchup --post {slug}` first.")
+
+    state = store.load(slug)
+    social = list(cfg.social_channels())
+    targets = channels or [c for c in social if state.channel_state(c) == "draft"]
+    if not targets:
+        raise ValueError("Nothing to mark: no draft channels and none given via --channel.")
+
+    for channel in targets:
+        if channel not in social:
+            raise ValueError(f"Unknown channel: {channel}")
+        posts = state.posts_for(channel)
+        if not posts:
+            raise ValueError(
+                f"  {slug} {channel}: no blocks on review page — flip status:: in Logseq"
+            )
+        for post in posts:
+            post.status = "published"
+
+    store.save(state)
+    return targets
+
+
 def stale_draft_channels(cfg: Config, store: ReviewStore, post: BlogPost) -> list[str]:
     """Draft channels with blocks generated from an older source version."""
     state = store.load(post.slug)

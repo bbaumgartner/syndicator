@@ -80,33 +80,16 @@ def done(
     ``published`` on the review page blocks directly in Logseq.
     """
     from .config import load_config
-    from .state import ReviewStore
+    from .pipeline import mark_channels_published
 
     cfg = load_config()
-    store = ReviewStore(cfg.pages_dir)
-    if not store.exists(slug):
-        typer.echo(f"No review page for {slug} — run `syndicator catchup --post {slug}` first.")
-        raise typer.Exit(1)
-    state = store.load(slug)
-    social = list(cfg.social_channels())
-
-    targets = channel or [c for c in social if state.channel_state(c) == "draft"]
-    if not targets:
-        typer.echo("Nothing to mark: no draft channels and none given via --channel.")
-        raise typer.Exit(1)
-
+    try:
+        targets = mark_channels_published(cfg, slug, channel)
+    except ValueError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
     for c in targets:
-        if c not in social:
-            typer.echo(f"Unknown channel: {c}")
-            raise typer.Exit(1)
-        posts = state.posts_for(c)
-        if not posts:
-            typer.echo(f"  {slug} {c}: no blocks on review page — flip status:: in Logseq")
-            raise typer.Exit(1)
-        for p in posts:
-            p.status = "published"
         typer.echo(f"  {slug} {c} -> published")
-    store.save(state)
 
 
 @app.command()
