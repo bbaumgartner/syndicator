@@ -48,9 +48,10 @@ by hand for now.
 | journey map | Generated **locally** (Go tools), only `journey-map.mp4` ships and is committed. `data/journey.json` is an intermediate artifact — the site never reads it (verified: only `layouts/index.html` references `/journey-map.mp4`) — so it is no longer committed | Running Go tools in n8n; committing journey.json |
 | Change detection | **None.** New-post marker property only; `update` re-runs everything (re-translates!) by design | hugo-hash / source-hash machinery (deleted) |
 | State | Marker property on the blog post + Postiz calendar + git history. No lock file (worst case = duplicate drafts, human deletes them) | Review pages, cross-machine lock, n8n Data Tables |
-| Webhook auth | Shared-secret header `X-Syndicator-Secret` checked as first node + URL-as-secret | URL only (briefing pattern) |
+| Webhook auth |  URL-as-secret | Shared-secret header `X-Syndicator-Secret` checked as first node, n8n oauth |
 | Workflow versioning | None for now. n8n Cloud's built-in workflow history is enough | JSON exports in repo |
 | Workflow authoring | **n8n native MCP server** (v2.13+; `validate_workflow`, `create_workflow_from_code`, `update_workflow`; works on Cloud and self-hosted) | Hand-written JSON imports |
+| Clean up FTP files | User does it by hand | Delete after successful workflow run |
 
 ## 3. Target architecture
 
@@ -61,7 +62,7 @@ flowchart LR
         X --> A["media_adapt (ffmpeg/Pillow):\nsite 16:9 + reels 9:16 + covers + header crops"]
         X --> J["journeymap (Go tools) -> journey-map.mp4"]
         A & J --> U["SFTP upload, resumable\nstaging/&lt;slug&gt;/..."]
-        U --> W["POST webhooks (small JSON,\nX-Syndicator-Secret, retries)"]
+        U --> W["POST webhooks (small JSON, retries)"]
     end
     subgraph Server["Owner's server"]
         S[("SFTP staging\nchrooted user")]
@@ -73,7 +74,7 @@ flowchart LR
     end
     U -.-> S
     W --> WF1 & WF2
-    WF1 & WF2 -->|"FTP node: download, then delete"| S
+    WF1 & WF2 -->|"FTP node: download"| S
     WF1 -->|"Git Data API: 1 commit to main"| GH["GitHub -> site deploy"]
     WF1 & WF2 -->|"upload + create drafts"| PZ["Postiz cloud"]
     PZ --> H["Human: edit captions,\nschedule in calendar"]
@@ -97,24 +98,15 @@ Responsibilities:
 - Server: owner's Linux server (public), dedicated chrooted key-only user
   (`syndicator-sftp`, `ForceCommand internal-sftp`). Two keypairs: one for
   local, one for the n8n FTP credential.
-- Layout: `staging/<slug>/...` — one per-post directory with `site/`,
-  `header/`, `reels/`, and `covers/` subdirectories as shown in the webhook
-  manifests; `journey-map.mp4` sits at the post-directory root.
 - Local uploads **resumably** (lftp or paramiko with offset resume; must work
   through `internal-sftp`, so no rsync) and **overwrites on retry** — uploads
   are idempotent.
-- Workflows download what the manifest names and **delete the files they
-  consumed after full success**; on failure files stay for the retry.
-  Steady state: empty staging dir.
+- Workflows download what the manifest names
 
 ### 4.2 Webhooks
 
-Both webhooks: `POST`, `Content-Type: application/json`, header
-`X-Syndicator-Secret: <shared secret>` (from `config.local.yaml`, checked by
-the first node; mismatch → 403, stop). The workflow responds immediately
-with `{"status":"accepted"}` (respond-early node) and continues async.
-Local client: 3 retries with backoff (the briefing conversion lost retries —
-do not repeat that mistake).
+Both webhooks: `POST`, `Content-Type: application/json`. The workflow responds immediately with `{"status":"accepted"}` (respond-early node) and continues async.
+Local client: 3 retries with backoff.
 
 **`POST /publish`** — one call per blog post:
 
@@ -141,7 +133,7 @@ do not repeat that mistake).
     "facebook":  { "sftp_path": "2026-07-05_Titel/header/facebook.jpg" },
     "instagram": { "sftp_path": "2026-07-05_Titel/header/instagram.jpg" }
   },
-  "flags": { "site": true, "social": true }   // update: social=false; catchup: site=false
+  "flags": { "redeploy": false }   // update: redeploy true otherwise false. If redeploy ony recreate hugo and deploy
 }
 ```
 
@@ -169,14 +161,6 @@ social crops.
 - New property on the blog property block: `syndicated-at:: <ISO datetime>`,
   written by the local client after **all** webhooks for the post were
   accepted.
-- `watch` triggers for posts with `status:: online` and **no** marker.
-- `update`/`catchup` ignore the marker (and set it if missing).
-- One-time `adopt` step at cutover stamps every currently-online post so the
-  first daemon run does not fire the entire history.
-- ⚠ This adds a pipeline-owned property → update the hard-rules list in
-  `AGENTS.md` (which today allows only `syndication::`/`hugo-hash::`). The
-  old properties and `pages/syndicator___*` review pages stop being written;
-  leave existing ones in place (harmless orphans).
 
 ## 5. Local CLI v2
 
@@ -185,44 +169,13 @@ Commands (Typer, as today):
 | Command | Behavior |
 |---|---|
 | `watch` | Daemon (existing watchdog + debounce). New online post without marker → full flow: adapt media → journeymap → SFTP upload → N× `/reel` → `/publish` (flags both true) → set marker |
-| `update [--post SLUG]` | Force site redeploy: site media + journeymap → SFTP → `/publish` with `social: false`. No marker logic. Re-translates by design |
-| `catchup --post SLUG` | Social for an old post: reels + header → SFTP → N× `/reel` → `/publish` with `site: false` |
-| `adopt` | One-time: stamp `syndicated-at::` on all online posts (no webhooks) |
+| `redeploy --post SLUG` | Force site redeploy: site media + journeymap → SFTP → `/publish` with `redeploy: true`. No marker logic. Re-translates by design |
 | `check` | Kept, trimmed: config, ffmpeg, SFTP reachability, OPENAI_API_KEY |
 
-Modules **kept**: `extract.py`, `model.py`, `media_adapt.py` (+
-`prompts/crop_focus.md` — the crop-focus vision call keeps a local
-`OPENAI_API_KEY` dependency; center-crop fallback is acceptable if the owner
-ever wants zero local LLM), `journeymap.py` (writes to a scratch dir, not a
-site checkout), `watch.py`, `config.py` (slimmed), `siteurl.py` (URL
-computation only), `hugo_format.py` only if needed for slug/URL logic.
-
-Modules **deleted**: `hugo.py` (rendering moves to n8n), `translate.py`,
-`caption.py`, `social_plan.py`, `export.py`, `state.py`, `backlink.py`
-(replaced by tiny marker read/write), `publish_git.py`, `bootstrap.py`,
-`llm.py` (unless crop_focus keeps a slice of it), CLI commands
-`status/done/review/bootstrap/parity/run`.
-
-Config changes:
-
-- `config.local.yaml`: drop `sailingnomads_dir`, `hugo_posts_subdir`; add
-  `sftp: {host, port, user, key_file, base_dir}`,
-  `n8n: {publish_webhook_url, reel_webhook_url, webhook_secret}`.
-- `syndicator.yaml`: keep media specs (hugo 16:9 700×394; per-platform
-  `reel_video` **9:16 1080×1920 ≤90 s**; header/image crops: FB max-edge
-  2048, IG 4:5 1080×1350), `watch.debounce_seconds`, crop-focus model. Drop
-  caption/translate model config (moves into n8n nodes), `posts_per_week`,
-  channel `delivery` machinery, X/substack/medium channels.
-- No cross-machine lock anymore. Concurrent runs at worst duplicate drafts
-  (human deletes them in Postiz).
-
-Tests: keep/adapt extract + media_adapt + new webhook-client/payload tests;
-delete hugo-render/translate/caption/state/review golden tests.
 
 ## 6. n8n workflows
 
-Built via the **n8n MCP server** (validate → create → iterate; ask owner to
-enable Settings → Instance-level MCP and provide URL + token). All three
+Built via the **n8n MCP server** (validate → create → iterate). All 
 workflows get the error workflow assigned. Guardrails: process files
 **sequentially within each execution** (memory: base64 of a ~25 MB video is
 fine one at a time); separate `/reel` webhook executions may still run
@@ -230,8 +183,8 @@ concurrently under the n8n Cloud instance's concurrency limit. FTP node in
 SFTP mode.
 
 **publish** (webhook `/publish`):
-1. Check `X-Syndicator-Secret` (If node) → Respond `{"status":"accepted"}`.
-2. If `flags.site`: Code node renders the source-language `index.<lang>.md`
+1. Respond `{"status":"accepted"}`.
+2. Code node renders the source-language `index.<lang>.md`
    from `blocks` (port of old `hugo.py`: TOML front matter; media blocks →
    `![alt](bundle_filename)` / `{{< video src="…" >}}` / `{{< youtube ID >}}`).
 3. Translate into the other languages + pirate (OpenAI node per language,
@@ -242,24 +195,21 @@ SFTP mode.
    (base64, ≤100 MB/blob). Then one tree (`base_tree` = current `main` tree,
    entries for all `index.*.md` + media under `content/posts/<slug>/` +
    `static/journey-map.mp4`) → one commit → `PATCH refs/heads/main`.
-5. If `flags.social`: intro captions per platform (OpenAI; prompts derived
+5. If not `flags.redeploy = true`: intro captions per platform (OpenAI; prompts derived
    from `prompts/caption_facebook.md` / `caption_instagram.md`, reworked for
    "summary of the whole post, drive readers to the blog"; inline the
    `_human_voice.md` rules into each prompt — n8n has no includes).
-6. Upload header images to Postiz `/upload`, create **draft** posts
-   (FB + IG integrations) via Postiz `/posts`.
-7. FTP-delete consumed files.
+6. If not `flags.redeploy = true`: Upload header images to Postiz `/upload`, create **draft** posts (FB + IG integrations) via Postiz `/posts`.
 
 **reel** (webhook `/reel`):
-1. Secret check → respond.
-2. FTP download reel file(s) + cover.
+1. Respond `{"status":"accepted"}`.
+2. FTP download reel file + cover.
 3. Captions per platform (OpenAI vision: cover image + section text + post
    context; prompt derived from the old per-section caption prompts, goal =
    subscriber growth, relate to the video).
 4. Postiz `/upload` (once per distinct file), `/posts` type **draft**, FB +
    IG entries with platform settings (`__type: facebook` / `instagram`,
    `post_type` for reels — see spike).
-5. FTP-delete consumed files.
 
 **error**: Error Trigger → Mailgun SMTP mail (workflow name, error message,
 execution URL).
@@ -274,8 +224,7 @@ execution URL).
 2. **Postiz draft type**: confirm `type: "draft"` in `POST /public/v1/posts`
    and how drafts appear/schedule in the calendar. Rate limit: 30 req/h —
    fine (a post ≈ 2 uploads + a handful of creates).
-3. **n8n FTP node**: SFTP + private key against the staging server; download
-   + delete of a ~50 MB file.
+3. **n8n FTP node**: SFTP + private key against the staging server; download of a ~50 MB file.
 
 ## 7. Verified facts & constraints (do not re-research)
 
@@ -306,44 +255,21 @@ execution URL).
 
 1. SFTP user on the Linux server (chroot, key-only; commands were provided)
    → host, port, username, both keypairs.
-2. n8n: instance-level MCP enabled → URL + token.
 3. n8n credentials: OpenAI key · GitHub fine-grained PAT (`contents:
    read/write` on the sailingnomads repo) · Mailgun SMTP · SFTP (host +
    key) · Postiz API key.
 4. Postiz cloud account with FB page + IG account connected.
-5. Webhook secret: generate during implementation, store in n8n workflows +
-   `config.local.yaml`.
 
 ## 9. Implementation plan
 
 Delegate to cheap subagents where possible; the orchestrating session owns
 contracts and review.
 
-1. **Docs first** (repo rule): rewrite `docs/architecture.md` in its own
-   vocabulary (the concepts change: State shrinks to marker + external
-   surfaces; n8n workflows and Postiz become Edges; no Orchestrator
-   gating), update `README.md` (setup, 3+2 commands, new daily workflow,
-   troubleshooting), amend `AGENTS.md` hard rules (`syndicated-at::`,
-   review pages no longer written; "published posts are immutable" now means
-   "nothing publishes without human scheduling in Postiz; never regenerate
-   into published items").
-2. **Subagent A — local trim** (no external deps): deletions, SFTP client,
-   webhook client, marker, `adopt`, CLI rework, config slimming, tests,
-   `deploy/` systemd unit check. `uv run pytest -q` and `uv run ruff check`
-   must pass.
-3. **Spikes** (section 6) once credentials exist.
-4. **Subagents B/C — n8n workflows** via MCP (publish, reel+error), each
-   validated with `validate_workflow` + test executions against staging
-   files.
-5. **End-to-end**: one old post through `catchup` (owner reviews drafts in
-   Postiz, schedules one manually); then `update` on the same post; then
-   `adopt`, enable the new `watch` daemon, disable the old service.
-
 ## 10. Non-goals (explicitly rejected — do not add)
 
 - No workflow framework locally; no queues, cron publishers, Data Tables.
 - No completion callbacks from n8n to local (no state coupling); failure
-  handling = error mail + human reruns `update`/`catchup`.
+  handling = error mail .
 - No skip-if-unchanged logic in n8n (that's hashing through the back door).
 - No scheduling automation on top of Postiz (its calendar is the queue).
 - No Cloudinary, no X automation, no Meta developer app — all "maybe later".
