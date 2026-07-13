@@ -97,8 +97,9 @@ Responsibilities:
 - Server: owner's Linux server (public), dedicated chrooted key-only user
   (`syndicator-sftp`, `ForceCommand internal-sftp`). Two keypairs: one for
   local, one for the n8n FTP credential.
-- Layout: `staging/<slug>/<file>` — flat per-post directory, names carry
-  meaning only via the webhook manifest.
+- Layout: `staging/<slug>/...` — one per-post directory with `site/`,
+  `header/`, `reels/`, and `covers/` subdirectories as shown in the webhook
+  manifests; `journey-map.mp4` sits at the post-directory root.
 - Local uploads **resumably** (lftp or paramiko with offset resume; must work
   through `internal-sftp`, so no rsync) and **overwrites on retry** — uploads
   are idempotent.
@@ -121,7 +122,7 @@ do not repeat that mistake).
 {
   "slug": "2026-07-05_Titel",
   "meta": { "title": "…", "date": "2026-07-05", "language": "german",
-            "lang_code": "de", "summary": "…", "position": "…" },
+            "lang_code": "de", "author": "…", "summary": "…", "position": "…" },
   "post_url": "https://www.sailingnomads.ch/de/posts/2026-07-05_titel/",
   "blocks": [
     { "kind": "title", "raw": "## …", "heading_level": 2 },
@@ -133,6 +134,7 @@ do not repeat that mistake).
   "site_media": [
     { "sftp_path": "2026-07-05_Titel/site/x.jpg",  "bundle_filename": "x.jpg" },
     { "sftp_path": "2026-07-05_Titel/site/v1.mp4", "bundle_filename": "v1.mp4" },
+    { "sftp_path": "2026-07-05_Titel/site/featured.jpg", "bundle_filename": "featured.jpg" },
     { "sftp_path": "2026-07-05_Titel/journey-map.mp4", "repo_path": "static/journey-map.mp4" }
   ],
   "header": {
@@ -142,6 +144,10 @@ do not repeat that mistake).
   "flags": { "site": true, "social": true }   // update: social=false; catchup: site=false
 }
 ```
+
+When a post has a header image, `site_media` includes its Hugo bundle variant
+as `featured<ext>`; `header.facebook` and `header.instagram` are the separate
+social crops.
 
 **`POST /reel`** — one call per video in the post (independent of /publish):
 
@@ -218,8 +224,10 @@ delete hugo-render/translate/caption/state/review golden tests.
 Built via the **n8n MCP server** (validate → create → iterate; ask owner to
 enable Settings → Instance-level MCP and provide URL + token). All three
 workflows get the error workflow assigned. Guardrails: process files
-**sequentially** (memory: base64 of a ~25 MB video is fine one at a time on
-n8n Cloud, not five in parallel); FTP node in SFTP mode.
+**sequentially within each execution** (memory: base64 of a ~25 MB video is
+fine one at a time); separate `/reel` webhook executions may still run
+concurrently under the n8n Cloud instance's concurrency limit. FTP node in
+SFTP mode.
 
 **publish** (webhook `/publish`):
 1. Check `X-Syndicator-Secret` (If node) → Respond `{"status":"accepted"}`.
