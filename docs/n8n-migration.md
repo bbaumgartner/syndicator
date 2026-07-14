@@ -96,8 +96,10 @@ Responsibilities:
 ### 4.1 SFTP staging area
 
 - Server: owner's Linux server (public), dedicated chrooted key-only user
-  (`syndicator-sftp`, `ForceCommand internal-sftp`). Two keypairs: one for
-  local, one for the n8n FTP credential.
+  (`sftp`).
+- IP address 144.2.110.132 port 22
+- Local upload: Key for user sftp provided in .ssh, connect with sftp syncthing-central-sftp
+- n8n: SFTP credentials configured, see test workflow SFTP Test for an example
 - Local uploads **resumably** (lftp or paramiko with offset resume; must work
   through `internal-sftp`, so no rsync) and **overwrites on retry** — uploads
   are idempotent.
@@ -253,12 +255,9 @@ execution URL).
 
 ## 8. Prerequisites (owner provides)
 
-1. SFTP user on the Linux server (chroot, key-only; commands were provided)
-   → host, port, username, both keypairs.
-3. n8n credentials: OpenAI key · GitHub fine-grained PAT (`contents:
-   read/write` on the sailingnomads repo) · Mailgun SMTP · SFTP (host +
-   key) · Postiz API key.
-4. Postiz cloud account with FB page + IG account connected.
+1. n8n credentials: GitHub fine-grained PAT (`contents:
+   read/write` on the sailingnomads repo) · Postiz API key.
+2. Postiz cloud account with FB page + IG account connected.
 
 ## 9. Implementation plan
 
