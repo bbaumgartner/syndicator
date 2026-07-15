@@ -36,7 +36,8 @@ by hand for now.
 | Topic | Decision | Rejected alternatives (do not re-propose) |
 |---|---|---|
 | Workflow engine | n8n (Cloud today, must stay compatible with self-hosted later) | — |
-| Social publishing | **Postiz cloud** (~$30/mo): API + drafts + calendar UI; open-source exit hatch | Direct Meta Graph APIs (designed fully, kept as fallback: FB native scheduling + IG wait-node publish); Buffer (API closed/beta); Ayrshare ($149/mo); Blotato (closed source) |
+| Social publishing | **Postiz cloud** (~$30/mo): drafts + calendar UI; open-source exit hatch | Direct Meta Graph APIs (designed fully, kept as fallback: FB native scheduling + IG wait-node publish); Buffer (API closed/beta); Ayrshare ($149/mo); Blotato (closed source) |
+| Postiz in n8n | **Community node** [`n8n-nodes-postiz`](https://www.npmjs.com/package/n8n-nodes-postiz) (`n8n-nodes-postiz.postiz`): `uploadFile`, `createPost`, `getIntegrations` — thin wrapper over the public API, same limits | Raw HTTP Request to `/public/v1/*` (works but more boilerplate; no upload-size advantage) |
 | Review gate | Everything lands as **Postiz drafts**; human edits captions and schedules in Postiz calendar | Approval e-mails via n8n send-and-wait (works, not wanted); FB drafts in Meta planner; no gate |
 | Scheduling | Manual in Postiz calendar | n8n Data Table queue + cron publisher; per-platform slot counters in workflow static data; Wait-node until slot; caller-provided datetimes |
 | Media transport | **SFTP staging area on the owner's Linux server** (public IP); local uploads resumably, n8n FTP node downloads, deletes after success | Multipart webhook uploads (n8n Cloud ~200 MiB cap, no resume); Cloudinary (good fit but too big a change for now — possible later); committing reels to the site repo |
@@ -76,7 +77,7 @@ flowchart LR
     W --> WF1 & WF2
     WF1 & WF2 -->|"FTP node: download"| S
     WF1 -->|"Git Data API: 1 commit to main"| GH["GitHub -> site deploy"]
-    WF1 & WF2 -->|"upload + create drafts"| PZ["Postiz cloud"]
+    WF1 & WF2 -->|"Postiz node: upload + draft"| PZ["Postiz cloud"]
     PZ --> H["Human: edit captions,\nschedule in calendar"]
     H --> FB["Facebook"] & IG["Instagram"]
 ```
@@ -201,7 +202,10 @@ SFTP mode.
    from `prompts/caption_facebook.md` / `caption_instagram.md`, reworked for
    "summary of the whole post, drive readers to the blog"; inline the
    `_human_voice.md` rules into each prompt — n8n has no includes).
-6. If not `flags.redeploy = true`: Upload header images to Postiz `/upload`, create **draft** posts (FB + IG integrations) via Postiz `/posts`.
+6. If not `flags.redeploy = true`: per platform — SFTP download header
+   image → **Postiz `uploadFile`** → **Postiz `createPost`** (`type: draft`,
+   integration ID + caption + uploaded `id`/`path` in content `image` array,
+   settings `__type: facebook` / `instagram`).
 
 **reel** (webhook `/reel`):
 1. Respond `{"status":"accepted"}`.
@@ -209,23 +213,56 @@ SFTP mode.
 3. Captions per platform (OpenAI vision: cover image + section text + post
    context; prompt derived from the old per-section caption prompts, goal =
    subscriber growth, relate to the video).
-4. Postiz `/upload` (once per distinct file), `/posts` type **draft**, FB +
-   IG entries with platform settings (`__type: facebook` / `instagram`,
-   `post_type` for reels — see spike).
+4. **Postiz `uploadFile`** (once per distinct reel file; cover only if
+   needed as separate media) → **Postiz `createPost`** (`type: draft`, FB +
+   IG entries with platform settings via the node's settings key/value fields —
+   `__type`, `post_type`, `is_trial_reel` etc.; see spike). If settings
+   prove too awkward in the node UI, fall back to a Code node building the
+   JSON body + HTTP Request to `POST /public/v1/posts` for that step only.
 
 **error**: Error Trigger → Mailgun SMTP mail (workflow name, error message,
 execution URL).
 
+### Postiz node (verified 2026-07-15)
+
+Install via n8n Settings → Community Nodes → `n8n-nodes-postiz` (already
+installed; smoke-tested in workflow **Postiz Test**). Credential type
+`postizApi`: API key + host `https://api.postiz.com`.
+
+Operations used in production workflows:
+
+| Operation | Purpose |
+|---|---|
+| `getIntegrations` | List connected channels (smoke test / one-time ID lookup) |
+| `uploadFile` | Multipart upload from n8n binary (after SFTP download) |
+| `createPost` | Create draft (`type: draft`) with per-platform caption + media |
+
+Connected channel IDs (stable; hardcode in workflows or resolve once via
+`getIntegrations` filtered by `identifier`):
+
+| Platform | Name | Integration ID |
+|---|---|---|
+| Facebook | Sailing Nomads | `cmrmbindh050spg0ypnszg5ag` |
+| Instagram | Alexandra Fürst | `cmrmbjfkp00win60ybjz64sxw` |
+
+The node loads the full file into memory for upload — same constraint as
+HTTP Request. Process media sequentially (~25 MB reel is fine one at a
+time). Videos go in the content `image` array (Postiz API naming; the node
+labels the field "Images").
+
 ### Spikes before building (≤ 30 min total)
 
-1. **Postiz reel semantics**: upload a test video manually via API — does an
-   IG video draft become a proper Reel (`post_type`, `is_trial_reel`
-   fields exist in the API schema)? What does a FB video draft post as
-   (video vs. reel)? Fallback if FB reels unsupported: regular FB video
-   post now, direct FB `/video_reels` branch later.
-2. **Postiz draft type**: confirm `type: "draft"` in `POST /public/v1/posts`
-   and how drafts appear/schedule in the calendar. Rate limit: 30 req/h —
-   fine (a post ≈ 2 uploads + a handful of creates).
+1. **Postiz reel semantics**: extend **Postiz Test** — `uploadFile` a test
+   reel MP4, then `createPost` (`type: draft`) with video in the content
+   `image` array and platform settings (`__type`, `post_type`,
+   `is_trial_reel`). Does an IG video draft become a proper Reel? What does
+   a FB video draft post as (video vs. reel)? Fallback if FB reels
+   unsupported: regular FB video post now, direct FB `/video_reels` branch
+   later.
+2. **Postiz draft type**: same workflow — confirm `createPost` with
+   `type: draft` and how drafts appear/schedule in the Postiz calendar.
+   Rate limit: 30 req/h on create-post — fine (a post ≈ 2 uploads + a
+   handful of creates).
 3. **n8n FTP node**: SFTP + private key against the staging server; download of a ~50 MB file.
 
 ## 7. Verified facts & constraints (do not re-research)
@@ -238,12 +275,22 @@ execution URL).
   a **client** (FTP+SFTP); binary ops must be sequenced for memory.
 - **n8n MCP** (v2.13+, Cloud & self-hosted): `search/validate/create/update`
   workflow tools; workflows must be explicitly MCP-enabled in settings.
-- **Postiz public API**: `Authorization: <api-key>` header;
-  `POST /public/v1/upload` (multipart) → media id; `POST /public/v1/posts`
-  with `type` (`draft`/`schedule`/`now`), `posts[].integration.id`,
-  per-platform `settings.__type`; 30 requests/hour; cloud base
-  `https://api.postiz.com/public/v1`. Self-hosted Postiz would require an
-  own Meta app (that's why cloud, for now).
+- **Postiz n8n node** (`n8n-nodes-postiz.postiz`, v0.2.x): official
+  community package from Postiz ([gitroomhq/postiz-n8n](https://github.com/gitroomhq/postiz-n8n)).
+  Wraps the public API — no extra capabilities or upload-size headroom vs
+  HTTP Request. `uploadFile` → `POST /public/v1/upload`; `createPost` →
+  `POST /public/v1/posts`; `getIntegrations` → `GET /public/v1/integrations`.
+  Credential `postizApi` sets `Authorization: <api-key>` and host
+  `https://api.postiz.com`. `getIntegrations` verified working 2026-07-15;
+  `uploadFile` + `createPost` still pending spike.
+- **Postiz public API** (what the node calls under the hood): multipart
+  upload → media `id` + `path`; create post with `type`
+  (`draft`/`schedule`/`now`), `posts[].integration.id`, per-platform
+  `settings.__type`; accepted upload MIME includes `video/mp4`; post JSON
+  body limit 50 MB (always upload media separately); 30 create-post
+  requests/hour; cloud base `https://api.postiz.com/public/v1`.
+  Self-hosted Postiz would require an own Meta app (that's why cloud, for
+  now).
 - **Instagram** (via Postiz, but relevant to specs): reels ≤90 s via API,
   9:16; feed images 4:5 max portrait.
 - **Meta APIs direct** (fallback only): FB reels `/page/video_reels` with
@@ -255,9 +302,11 @@ execution URL).
 
 ## 8. Prerequisites (owner provides)
 
-1. n8n credentials: GitHub fine-grained PAT (`contents:
-   read/write` on the sailingnomads repo) · Postiz API key.
-2. Postiz cloud account with FB page + IG account connected.
+1. n8n: community node `n8n-nodes-postiz` installed · GitHub fine-grained
+   PAT (`contents: read/write` on the sailingnomads repo) · Postiz API
+   credential (`postizApi`: API key + host `https://api.postiz.com`).
+2. Postiz cloud account with FB page + IG account connected (verified;
+   integration IDs in §6).
 
 ## 9. Implementation plan
 
