@@ -180,6 +180,8 @@ Drop all other currently existing commands as well as the service demon support.
 
 ## 6. n8n workflows
 
+**Implement this by editing the existing n8n Workflow called 'Syndicator'. This Workflow is accessible through MCP**
+
 Built via the **n8n MCP server** (validate → create → iterate). All 
 workflows get the error workflow assigned. Guardrails: process files
 **sequentially within each execution** (memory: base64 of a ~25 MB video is
