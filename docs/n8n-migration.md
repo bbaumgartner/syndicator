@@ -21,15 +21,16 @@ Simultaneously the **social strategy changes**:
 
 - **1 intro post per blog post** (header image + platform-tailored summary,
   linking to the blog) per platform.
-- **1 reel per video** in the blog post (9:16, caption related to the video).
+- **1 reel per video** in the blog post.
 - **No more per-section posts**, no review pages in Logseq, no content
   hashing / change detection, no scheduled-slot automation.
+- New property on the blog property block: `syndicated-at:: <ISO datetime>`,
+  written by the local client after **all** webhooks for the post were
+  accepted.
 - Review and scheduling happen manually in the **Postiz calendar**. Nothing
   reaches a platform without the human scheduling it there.
 
-Platforms at launch: **Facebook page + Instagram business account**.
-X was dropped deliberately (little reach, risky API automation) and is done
-by hand for now.
+Platforms at launch: **Facebook page + Instagram business account + X**.
 
 ## 2. Decisions (including rejected alternatives)
 
@@ -42,7 +43,6 @@ by hand for now.
 | Scheduling | Manual in Postiz calendar | n8n Data Table queue + cron publisher; per-platform slot counters in workflow static data; Wait-node until slot; caller-provided datetimes |
 | Media transport | **SFTP staging area on the owner's Linux server** (public IP); local uploads resumably, n8n FTP node downloads, deletes after success | Multipart webhook uploads (n8n Cloud ~200 MiB cap, no resume); Cloudinary (good fit but too big a change for now — possible later); committing reels to the site repo |
 | Media adaptation | Stays **local** (existing `media_adapt`: ffmpeg + Pillow + crop-focus vision LLM). n8n Cloud cannot run ffmpeg | Cloudinary transformations |
-| Reel format | **9:16**, ≤ 90 s (IG API cap), per-platform variants possible; FB/IG share one file when specs are identical | 4:5 (that is the *feed video* spec, letterboxed in reel players) |
 | Reel captions | LLM caption from section text + post context + **cover frame image** (vision) | Cloudinary auto-tagging; text-only |
 | Hugo site publishing | In n8n: render bundle + translate ×6 + **one commit via GitHub Git Data API** (blobs → tree → commit → ref). Push to `main` triggers the existing deploy | git CLI (n8n Cloud has no shell/persistent clone; repo working tree is media-heavy); GitLab (site repo is on **GitHub**); per-file GitHub node commits (one deploy per file) |
 | Hugo markdown rendering | In n8n (Code node) from **structured blocks JSON** sent by the caller | Rendering `index.md` locally (explicitly rejected by owner) |
@@ -60,7 +60,7 @@ by hand for now.
 flowchart LR
     subgraph Local["Local (Mac + Linux server, same checkout)"]
         M["watch / update / catchup"] --> X["extract (Logseq edge)"]
-        X --> A["media_adapt (ffmpeg/Pillow):\nsite 16:9 + reels 9:16 + covers + header crops"]
+        X --> A["media_adapt (ffmpeg/Pillow):\nsite 16:9 + reels 9:16, 4:5 + covers + header crops"]
         X --> J["journeymap (Go tools) -> journey-map.mp4"]
         A & J --> U["SFTP upload, resumable\nstaging/&lt;slug&gt;/..."]
         U --> W["POST webhooks (small JSON, retries)"]
@@ -79,7 +79,7 @@ flowchart LR
     WF1 -->|"Git Data API: 1 commit to main"| GH["GitHub -> site deploy"]
     WF1 & WF2 -->|"Postiz node: upload + draft"| PZ["Postiz cloud"]
     PZ --> H["Human: edit captions,\nschedule in calendar"]
-    H --> FB["Facebook"] & IG["Instagram"]
+    H --> FB["Facebook"] & IG["Instagram"] & XP["X"]
 ```
 
 Responsibilities:
@@ -88,25 +88,30 @@ Responsibilities:
   `type:: blog` + `status:: online` branches ever leave the machine.
 - **n8n** is stateless; every execution starts, runs minutes, ends. No Wait
   nodes, no static data, no queues.
-- **Postiz** holds the Meta OAuth tokens (its cloud apps — no own Meta
-  developer app needed) and is the only thing that talks to the platforms.
+- **Postiz** holds the platform OAuth tokens (Meta and X, via its cloud
+  apps — no own developer apps needed) and is the only thing that talks to
+  the platforms.
 - **GitHub** push to `main` triggers the existing site deploy (unchanged).
 
 ## 4. Contracts
 
 ### 4.1 SFTP staging area
 
+Proof Of Concept: See n8n Workflow 'SFTP Test'
+
 - Server: owner's Linux server (public), dedicated chrooted key-only user
   (`sftp`).
 - IP address 144.2.110.132 port 22
 - Local upload: Key for user sftp provided in .ssh, connect with sftp syncthing-central-sftp
-- n8n: SFTP credentials configured, see test workflow SFTP Test for an example
+- n8n: SFTP credentials configured
 - Local uploads **resumably** (lftp or paramiko with offset resume; must work
   through `internal-sftp`, so no rsync) and **overwrites on retry** — uploads
   are idempotent.
 - Workflows download what the manifest names
 
 ### 4.2 Webhooks
+
+Proof Of Concept: See n8n Workflow 'Tagesbriefing'
 
 Both webhooks: `POST`, `Content-Type: application/json`. The workflow responds immediately with `{"status":"accepted"}` (respond-early node) and continues async.
 Local client: 3 retries with backoff.
@@ -134,7 +139,8 @@ Local client: 3 retries with backoff.
   ],
   "header": {
     "facebook":  { "sftp_path": "2026-07-05_Titel/header/facebook.jpg" },
-    "instagram": { "sftp_path": "2026-07-05_Titel/header/instagram.jpg" }
+    "instagram": { "sftp_path": "2026-07-05_Titel/header/instagram.jpg" },
+    "x":         { "sftp_path": "2026-07-05_Titel/header/x.jpg" }
   },
   "flags": { "redeploy": false }   // update: redeploy true otherwise false. If redeploy ony recreate hugo and deploy
 }
@@ -153,17 +159,12 @@ social crops.
   "video": { "index": 1, "section_title": "…", "section_text": "…", "alt": "dingy.mp4" },
   "files": {
     "reels": { "facebook": "2026-07-05_Titel/reels/1.mp4",
-               "instagram": "2026-07-05_Titel/reels/1.mp4" },   // same path = shared file
+               "instagram": "2026-07-05_Titel/reels/1.mp4",
+               "x": "2026-07-05_Titel/reels/1.mp4" },   // same path = shared file
     "cover": "2026-07-05_Titel/covers/1.jpg"
   }
 }
 ```
-
-### 4.3 Marker property (replaces all hashing)
-
-- New property on the blog property block: `syndicated-at:: <ISO datetime>`,
-  written by the local client after **all** webhooks for the post were
-  accepted.
 
 ## 5. Local CLI v2
 
@@ -171,9 +172,10 @@ Commands (Typer, as today):
 
 | Command | Behavior |
 |---|---|
-| `watch` | Daemon (existing watchdog + debounce). New online post without marker → full flow: adapt media → journeymap → SFTP upload → N× `/reel` → `/publish` (flags both true) → set marker |
+| `syndicate` | blog post with status online and without syndicated-at marker → full flow: adapt media → journeymap → SFTP upload → N× `/reel` → `/publish` (flags both true) → set marker |
 | `redeploy --post SLUG` | Force site redeploy: site media + journeymap → SFTP → `/publish` with `redeploy: true`. No marker logic. Re-translates by design |
-| `check` | Kept, trimmed: config, ffmpeg, SFTP reachability, OPENAI_API_KEY |
+
+Drop all other currently existing commands as well as the service demon support. It's currently not needed.
 
 
 ## 6. n8n workflows
@@ -200,12 +202,13 @@ SFTP mode.
    `static/journey-map.mp4`) → one commit → `PATCH refs/heads/main`.
 5. If not `flags.redeploy = true`: intro captions per platform (OpenAI; prompts derived
    from `prompts/caption_facebook.md` / `caption_instagram.md`, reworked for
-   "summary of the whole post, drive readers to the blog"; inline the
+   "summary of the whole post, drive readers to the blog"; a new X prompt in
+   the same style, respecting the X length limit; inline the
    `_human_voice.md` rules into each prompt — n8n has no includes).
 6. If not `flags.redeploy = true`: per platform — SFTP download header
    image → **Postiz `uploadFile`** → **Postiz `createPost`** (`type: draft`,
    integration ID + caption + uploaded `id`/`path` in content `image` array,
-   settings `__type: facebook` / `instagram`).
+   settings `__type: facebook` / `instagram` / `x`).
 
 **reel** (webhook `/reel`):
 1. Respond `{"status":"accepted"}`.
@@ -215,7 +218,7 @@ SFTP mode.
    subscriber growth, relate to the video).
 4. **Postiz `uploadFile`** (once per distinct reel file; cover only if
    needed as separate media) → **Postiz `createPost`** (`type: draft`, FB +
-   IG entries with platform settings via the node's settings key/value fields —
+   IG + X entries with platform settings via the node's settings key/value fields —
    `__type`, `post_type`, `is_trial_reel` etc.; see spike). If settings
    prove too awkward in the node UI, fall back to a Code node building the
    JSON body + HTTP Request to `POST /public/v1/posts` for that step only.
@@ -223,11 +226,9 @@ SFTP mode.
 **error**: Error Trigger → Mailgun SMTP mail (workflow name, error message,
 execution URL).
 
-### Postiz node (verified 2026-07-15)
+### Postiz node
 
-Install via n8n Settings → Community Nodes → `n8n-nodes-postiz` (already
-installed; smoke-tested in workflow **Postiz Test**). Credential type
-`postizApi`: API key + host `https://api.postiz.com`.
+Proof of Concept: n8n Workflow 'Postiz Test'
 
 Operations used in production workflows:
 
@@ -244,6 +245,7 @@ Connected channel IDs (stable; hardcode in workflows or resolve once via
 |---|---|---|
 | Facebook | Sailing Nomads | `cmrmbindh050spg0ypnszg5ag` |
 | Instagram | Alexandra Fürst | `cmrmbjfkp00win60ybjz64sxw` |
+| X | benno | `cmrmbk0b9050zpg0ytkz5uy0r` |
 
 The node loads the full file into memory for upload — same constraint as
 HTTP Request. Process media sequentially (~25 MB reel is fine one at a
@@ -291,8 +293,6 @@ labels the field "Images").
   requests/hour; cloud base `https://api.postiz.com/public/v1`.
   Self-hosted Postiz would require an own Meta app (that's why cloud, for
   now).
-- **Instagram** (via Postiz, but relevant to specs): reels ≤90 s via API,
-  9:16; feed images 4:5 max portrait.
 - **Meta APIs direct** (fallback only): FB reels `/page/video_reels` with
   `video_state=SCHEDULED` + `scheduled_publish_time` (10 min–29 d); IG has
   **no** native scheduling (publish-at-moment via container flow).
@@ -305,8 +305,6 @@ labels the field "Images").
 1. n8n: community node `n8n-nodes-postiz` installed · GitHub fine-grained
    PAT (`contents: read/write` on the sailingnomads repo) · Postiz API
    credential (`postizApi`: API key + host `https://api.postiz.com`).
-2. Postiz cloud account with FB page + IG account connected (verified;
-   integration IDs in §6).
 
 ## 9. Implementation plan
 
@@ -320,6 +318,7 @@ contracts and review.
   handling = error mail .
 - No skip-if-unchanged logic in n8n (that's hashing through the back door).
 - No scheduling automation on top of Postiz (its calendar is the queue).
-- No Cloudinary, no X automation, no Meta developer app — all "maybe later".
+- No Cloudinary, no Meta developer app — all "maybe later". (X posting *is*
+  in scope — but only through Postiz, never via the X API directly.)
 - Optional nicety (only if the owner asks): 3-node dead-man's-switch
   workflow (mail if no publish webhook for ~3 weeks).
