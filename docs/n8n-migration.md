@@ -220,8 +220,11 @@ SFTP mode.
    subscriber growth, relate to the video).
 4. **Postiz `uploadFile`** (once per distinct reel file; cover only if
    needed as separate media) → **Postiz `createPost`** (`type: draft`, FB +
-   IG + X entries with platform settings via the node's settings key/value fields —
-   `__type`, `post_type`, `is_trial_reel` etc.; see spike). If settings
+   IG + X entries with platform settings via the node's settings key/value fields.
+   For both FB and IG set `post_type: post`; for IG also set
+   `is_trial_reel: false`. The uploaded MP4 makes these video posts Reels —
+   `post_type: reel` is not a valid value. Include the matching `__type` for
+   every platform. If settings
    prove too awkward in the node UI, fall back to a Code node building the
    JSON body + HTTP Request to `POST /public/v1/posts` for that step only.
 
@@ -254,20 +257,35 @@ HTTP Request. Process media sequentially (~25 MB reel is fine one at a
 time). Videos go in the content `image` array (Postiz API naming; the node
 labels the field "Images").
 
-### Spikes before building (≤ 30 min total)
+### Spikes before building — all passed 2026-07-17, do not repeat
 
-1. **Postiz reel semantics**: extend **Postiz Test** — `uploadFile` a test
-   reel MP4, then `createPost` (`type: draft`) with video in the content
-   `image` array and platform settings (`__type`, `post_type`,
-   `is_trial_reel`). Does an IG video draft become a proper Reel? What does
-   a FB video draft post as (video vs. reel)? Fallback if FB reels
-   unsupported: regular FB video post now, direct FB `/video_reels` branch
-   later.
-2. **Postiz draft type**: same workflow — confirm `createPost` with
-   `type: draft` and how drafts appear/schedule in the Postiz calendar.
-   Rate limit: 30 req/h on create-post — fine (a post ≈ 2 uploads + a
+1. **Postiz reel semantics** — **passed.** The `Postiz Test` workflow
+   (SFTP download of a staged MP4 → `uploadFile` → `createPost` with
+   `type: draft`, video in the content `image` array) created FB and IG
+   drafts that appear as Reels in Postiz. Required settings:
+
+   - Facebook: `{"__type": "facebook", "post_type": "post"}`.
+   - Instagram: `{"__type": "instagram", "post_type": "post",
+     "is_trial_reel": false}`.
+
+   The media type, not a `post_type: reel` setting, selects Reel behavior —
+   `reel` is not a valid `post_type` value (`post` or `story` only).
+   Postiz accepts a Facebook draft without `post_type`, but the calendar
+   later rejects rescheduling it with `post_type must be one of ... post,
+   story`; therefore always include `post_type: post` when creating FB
+   drafts. The community node's `createPost` date field is required even for
+   drafts. No direct-Meta fallback needed.
+2. **Postiz draft type** — **passed.** `createPost` with `type: draft`
+   creates drafts (`state: DRAFT`, `creationMethod: API` via `getPosts`)
+   that show up in the Postiz calendar and can be edited/scheduled there.
+   Rate limit 30 req/h on create-post is fine (a post ≈ 2 uploads + a
    handful of creates).
-3. **n8n FTP node**: SFTP + private key against the staging server; download of a ~50 MB file.
+3. **n8n FTP node** — **passed.** SFTP + private key against the staging
+   server works (`FTP account` credential). Three 50 MB downloads completed
+   in 93–94 s and landed as filesystem-backed binary data (no memory
+   blowup). One run coincided with a brief n8n Cloud workspace/API 503; two
+   immediate repetitions remained reachable throughout, so the 503 was
+   transient rather than a consistent effect of the download.
 
 ## 7. Verified facts & constraints (do not re-research)
 
@@ -293,6 +311,11 @@ labels the field "Images").
   `settings.__type`; accepted upload MIME includes `video/mp4`; post JSON
   body limit 50 MB (always upload media separately); 30 create-post
   requests/hour; cloud base `https://api.postiz.com/public/v1`.
+  For FB and IG Reel drafts, set `settings.post_type` to `post` (not
+  `reel`); the MP4 determines Reel behavior. Also set
+  `settings.is_trial_reel: false` for normal IG Reels. FB draft creation may
+  appear to work without `post_type`, but rescheduling it in the Postiz
+  calendar fails, so the field is mandatory in practice.
   Self-hosted Postiz would require an own Meta app (that's why cloud, for
   now).
 - **Meta APIs direct** (fallback only): FB reels `/page/video_reels` with
