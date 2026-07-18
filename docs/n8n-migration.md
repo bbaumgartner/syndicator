@@ -41,25 +41,26 @@ Platforms at launch: **Facebook page + Instagram business account + X**.
 | Postiz in n8n | **Community node** [`n8n-nodes-postiz`](https://www.npmjs.com/package/n8n-nodes-postiz) (`n8n-nodes-postiz.postiz`): `uploadFile`, `createPost`, `getIntegrations` — thin wrapper over the public API, same limits | Raw HTTP Request to `/public/v1/*` (works but more boilerplate; no upload-size advantage) |
 | Review gate | Everything lands as **Postiz drafts**; human edits captions and schedules in Postiz calendar | Approval e-mails via n8n send-and-wait (works, not wanted); FB drafts in Meta planner; no gate |
 | Scheduling | Manual in Postiz calendar | n8n Data Table queue + cron publisher; per-platform slot counters in workflow static data; Wait-node until slot; caller-provided datetimes |
-| Media transport | **SFTP staging area on the owner's Linux server** (public IP); local uploads resumably, n8n FTP node downloads, deletes after success | Multipart webhook uploads (n8n Cloud ~200 MiB cap, no resume); Cloudinary (good fit but too big a change for now — possible later); committing reels to the site repo |
+| Media transport | **SFTP staging area on the owner's Linux server** (public IP); local uploads resumably, n8n FTP node downloads (never deletes) | Multipart webhook uploads (n8n Cloud ~200 MiB cap, no resume); Cloudinary (good fit but too big a change for now — possible later); committing reels to the site repo |
 | Media adaptation | Stays **local** (existing `media_adapt`: ffmpeg + Pillow + crop-focus vision LLM). n8n Cloud cannot run ffmpeg | Cloudinary transformations |
 | Reel captions | LLM caption from section text + post context + **cover frame image** (vision) | Cloudinary auto-tagging; text-only |
 | Hugo site publishing | In n8n: render bundle + translate ×6 + **one commit via GitHub Git Data API** (blobs → tree → commit → ref). Push to `main` triggers the existing deploy | git CLI (n8n Cloud has no shell/persistent clone; repo working tree is media-heavy); GitLab (site repo is on **GitHub**); per-file GitHub node commits (one deploy per file) |
 | Hugo markdown rendering | In n8n (Code node) from **structured blocks JSON** sent by the caller | Rendering `index.md` locally (explicitly rejected by owner) |
 | journey map | Generated **locally** (Go tools), only `journey-map.mp4` ships and is committed. `data/journey.json` is an intermediate artifact — the site never reads it (verified: only `layouts/index.html` references `/journey-map.mp4`) — so it is no longer committed | Running Go tools in n8n; committing journey.json |
-| Change detection | **None.** New-post marker property only; `update` re-runs everything (re-translates!) by design | hugo-hash / source-hash machinery (deleted) |
+| Change detection | **None.** New-post marker property only; `redeploy` re-runs the whole site build (re-translates!) by design | hugo-hash / source-hash machinery (deleted) |
 | State | Marker property on the blog post + Postiz calendar + git history. No lock file (worst case = duplicate drafts, human deletes them) | Review pages, cross-machine lock, n8n Data Tables |
 | Webhook auth |  URL-as-secret | Shared-secret header `X-Syndicator-Secret` checked as first node, n8n oauth |
 | Workflow versioning | None for now. n8n Cloud's built-in workflow history is enough | JSON exports in repo |
 | Workflow authoring | **n8n native MCP server** (v2.13+; `validate_workflow`, `create_workflow_from_code`, `update_workflow`; works on Cloud and self-hosted) | Hand-written JSON imports |
-| Clean up FTP files | User does it by hand | Delete after successful workflow run |
+| Prompts & models (cloud LLM steps) | Ported once from `prompts/` into the n8n OpenAI nodes; thereafter the **n8n copies are authoritative** for the cloud steps (translate, captions) — divergence from `prompts/` is accepted. `prompts/` + `syndicator.yaml` stay canonical only for LLM use that remains local (`media_adapt` crop-focus). Model names for cloud steps live on the n8n OpenAI nodes | Keep `prompts/`/`syndicator.yaml` canonical and sync into n8n (rejected: no include mechanism in n8n, constant drift) |
+| Clean up FTP files | **Nobody deletes automatically.** Re-runs overwrite in place (idempotent uploads); the owner purges the staging area periodically by hand (optionally a cron `find -mtime` purge) | Delete after successful workflow run (unsafe: `/publish` and `/reel` are separate executions sharing files under `<slug>/`) |
 
 ## 3. Target architecture
 
 ```mermaid
 flowchart LR
     subgraph Local["Local (Mac + Linux server, same checkout)"]
-        M["watch / update / catchup"] --> X["extract (Logseq edge)"]
+        M["syndicate / redeploy"] --> X["extract (Logseq edge)"]
         X --> A["media_adapt (ffmpeg/Pillow):\nsite 16:9 + reels 9:16, 4:5 + covers + header crops"]
         X --> J["journeymap (Go tools) -> journey-map.mp4"]
         A & J --> U["SFTP upload, resumable\nstaging/&lt;slug&gt;/..."]
@@ -69,9 +70,9 @@ flowchart LR
         S[("SFTP staging\nchrooted user")]
     end
     subgraph n8n["n8n (Cloud now, self-hosted later)"]
-        WF1["publish workflow"]
-        WF2["reel workflow"]
-        WFE["error workflow -> Mailgun mail"]
+        WF1["Blog Post Publish workflow"]
+        WF2["Reel Publish workflow"]
+        WFE["Syndicator Error workflow -> Mailgun mail"]
     end
     U -.-> S
     W --> WF1 & WF2
@@ -107,7 +108,9 @@ Proof Of Concept: See n8n Workflow 'SFTP Test'
 - Local uploads **resumably** (lftp or paramiko with offset resume; must work
   through `internal-sftp`, so no rsync) and **overwrites on retry** — uploads
   are idempotent.
-- Workflows download what the manifest names
+- Workflows download what the manifest names; they **never delete** from the
+  staging area (files are shared across the independent `/publish` and `/reel`
+  executions). Cleanup is manual/periodic on the server — see §2.
 
 ### 4.2 Webhooks
 
@@ -142,7 +145,7 @@ Local client: 3 retries with backoff.
     "instagram": { "sftp_path": "2026-07-05_Titel/header/instagram.jpg" },
     "x":         { "sftp_path": "2026-07-05_Titel/header/x.jpg" }
   },
-  "flags": { "redeploy": false }   // update: redeploy true otherwise false. If redeploy ony recreate hugo and deploy
+  "flags": { "redeploy": false }   // `redeploy` command sets true; `syndicate` sets false. If true: only re-render + commit the site (skip captions/drafts — see §6 steps 5-6)
 }
 ```
 
@@ -172,32 +175,46 @@ Commands (Typer, as today):
 
 | Command | Behavior |
 |---|---|
-| `syndicate` | blog post with status online and without syndicated-at marker → full flow: adapt media → journeymap → SFTP upload → N× `/reel` → `/publish` (flags both true) → set marker |
-| `redeploy --post SLUG` | Force site redeploy: site media + journeymap → SFTP → `/publish` with `redeploy: true`. No marker logic. Re-translates by design |
+| `syndicate [--post SLUG]` | No args: every `status:: online` blog post **without** a `syndicated-at` marker → full flow: adapt media → journeymap → SFTP upload → N× `/reel` → `/publish` (`redeploy: false` → site **and** intro drafts) → set marker. `--post SLUG`: only that post. Already-marked posts are skipped (immutability — re-running would create duplicate drafts) |
+| `redeploy --post SLUG` | Force site redeploy: site media + journeymap → SFTP → `/publish` with `redeploy: true`. No social, no marker logic. Re-translates by design |
 
-Drop all other currently existing commands as well as the service demon support. It's currently not needed.
+Drop **all** other current commands and the daemon: `watch`, `run`, `catchup`,
+`status`, `done`, `review`, `parity`, `check`, `bootstrap` and the systemd
+service support are removed. Only `syndicate` and `redeploy` remain.
 
 
 ## 6. n8n workflows
 
-**Implement this by editing the existing n8n Workflow called 'Syndicator'. This Workflow is accessible through MCP**
+**Create three new n8n workflows via the MCP server** (the old empty
+`Syndicator` workflow is deleted by the owner):
 
-Built via the **n8n MCP server** (validate → create → iterate). All 
-workflows get the error workflow assigned. Guardrails: process files
+| Workflow | Trigger | Role |
+|---|---|---|
+| `Blog Post Publish` | webhook `/publish` | render + translate + GitHub commit + intro drafts |
+| `Reel Publish` | webhook `/reel` | one reel → Postiz drafts |
+| `Syndicator Error` | Error Trigger | Mailgun failure mail; assigned to the other two |
+
+Built via the **n8n MCP server** (`validate_workflow` →
+`create_workflow_from_code` → iterate with `update_workflow`; each created
+workflow is MCP-enabled automatically). `Syndicator Error` must be **created
+and published first**, then assigned to the other two via each workflow's
+`settings.errorWorkflow` (n8n rejects the assignment if the target has no
+published version or no Error Trigger). Guardrails: process files
 **sequentially within each execution** (memory: base64 of a ~25 MB video is
 fine one at a time); separate `/reel` webhook executions may still run
 concurrently under the n8n Cloud instance's concurrency limit. FTP node in
 SFTP mode.
 
-**publish** (webhook `/publish`):
+**`Blog Post Publish`** (webhook `/publish`):
 1. Respond `{"status":"accepted"}`.
 2. Code node renders the source-language `index.<lang>.md`
    from `blocks` (port of old `hugo.py`: TOML front matter; media blocks →
    `![alt](bundle_filename)` / `{{< video src="…" >}}` / `{{< youtube ID >}}`).
 3. Translate into the other languages + pirate (OpenAI node per language,
-   prompts ported from `prompts/translate.md` / `translate_pirate.md`,
-   pirate derived from the English version; language list + disclaimers from
-   old `config.py::_BUILTIN_LANGUAGES`).
+   prompts ported from `prompts/translate.md` / `translate_pirate.md` — once
+   ported, the n8n copies are authoritative, see §2; pirate derived from the
+   English version; language list + disclaimers from old
+   `config.py::_BUILTIN_LANGUAGES`).
 4. Loop `site_media` sequentially: FTP download → GitHub `POST /git/blobs`
    (base64, ≤100 MB/blob). Then one tree (`base_tree` = current `main` tree,
    entries for all `index.*.md` + media under `content/posts/<slug>/` +
@@ -210,9 +227,11 @@ SFTP mode.
 6. If not `flags.redeploy = true`: per platform — SFTP download header
    image → **Postiz `uploadFile`** → **Postiz `createPost`** (`type: draft`,
    integration ID + caption + uploaded `id`/`path` in content `image` array,
-   settings `__type: facebook` / `instagram` / `x`).
+   settings `__type: facebook` / `instagram` / `x`). For **X** also set
+   `who_can_reply_post: everyone` (mandatory — see spike 4); for FB set
+   `post_type: post`.
 
-**reel** (webhook `/reel`):
+**`Reel Publish`** (webhook `/reel`):
 1. Respond `{"status":"accepted"}`.
 2. FTP download reel file + cover.
 3. Captions per platform (OpenAI vision: cover image + section text + post
@@ -221,19 +240,24 @@ SFTP mode.
 4. **Postiz `uploadFile`** (once per distinct reel file; cover only if
    needed as separate media) → **Postiz `createPost`** (`type: draft`, FB +
    IG + X entries with platform settings via the node's settings key/value fields.
-   For both FB and IG set `post_type: post`; for IG also set
-   `is_trial_reel: false`. The uploaded MP4 makes these video posts Reels —
+   For both FB and IG set `post_type: post`; for    IG also set
+   `is_trial_reel: false`; for X set `who_can_reply_post: everyone`
+   (mandatory — see spike 4). The uploaded MP4 makes these video posts Reels —
    `post_type: reel` is not a valid value. Include the matching `__type` for
    every platform. If settings
    prove too awkward in the node UI, fall back to a Code node building the
    JSON body + HTTP Request to `POST /public/v1/posts` for that step only.
 
-**error**: Error Trigger → Mailgun SMTP mail (workflow name, error message,
-execution URL).
+**`Syndicator Error`**: Error Trigger → Mailgun SMTP mail (workflow name,
+error message, execution URL). Created and **published** first, then set as
+`settings.errorWorkflow` on `Blog Post Publish` and `Reel Publish`. Note: the
+assigned error workflow fires only for **production** executions (not manual
+MCP test runs).
 
 ### Postiz node
 
-Proof of Concept: n8n Workflow 'Postiz Test'
+Proof of Concept: n8n Workflows 'Postiz Test' (FB + IG reels) and
+'Postiz X Spike' (X image + X video drafts)
 
 Operations used in production workflows:
 
@@ -257,7 +281,7 @@ HTTP Request. Process media sequentially (~25 MB reel is fine one at a
 time). Videos go in the content `image` array (Postiz API naming; the node
 labels the field "Images").
 
-### Spikes before building — all passed 2026-07-17, do not repeat
+### Spikes before building — all passed (do not repeat)
 
 1. **Postiz reel semantics** — **passed.** The `Postiz Test` workflow
    (SFTP download of a staged MP4 → `uploadFile` → `createPost` with
@@ -286,6 +310,20 @@ labels the field "Images").
    blowup). One run coincided with a brief n8n Cloud workspace/API 503; two
    immediate repetitions remained reachable throughout, so the 503 was
    transient rather than a consistent effect of the download.
+4. **X (Twitter) Postiz drafts** — **passed 2026-07-18.** The `Postiz X
+   Spike` workflow (SFTP download → `uploadFile` → `createPost type: draft`)
+   created both an **image** draft (the `/publish` intro path) and a **video**
+   draft (the `/reel` path) on the X channel. Required settings:
+
+   - X: `{"__type": "x", "who_can_reply_post": "everyone"}`.
+
+   `who_can_reply_post` is **mandatory for X** (allowed values `everyone`,
+   `following`, `mentionedUsers`, `subscribers`, `verified`); omitting it
+   fails with HTTP 400 `who_can_reply_post must be one of ...`. FB and IG do
+   not need it. `uploadFile` returns the media `id` + a public `path`
+   (`https://uploads.postiz.com/…`); pass both in the content `image` array.
+   Both image and video use the same `image` array — media type is
+   irrelevant to the request shape.
 
 ## 7. Verified facts & constraints (do not re-research)
 
@@ -303,8 +341,9 @@ labels the field "Images").
   HTTP Request. `uploadFile` → `POST /public/v1/upload`; `createPost` →
   `POST /public/v1/posts`; `getIntegrations` → `GET /public/v1/integrations`.
   Credential `postizApi` sets `Authorization: <api-key>` and host
-  `https://api.postiz.com`. `getIntegrations` verified working 2026-07-15;
-  `uploadFile` + `createPost` still pending spike.
+  `https://api.postiz.com`. `getIntegrations` verified 2026-07-15;
+  `uploadFile` + `createPost` verified 2026-07-17 (FB + IG video/reel drafts)
+  and 2026-07-18 (X image + X video drafts) — see spikes 1 and 4 in §6.
 - **Postiz public API** (what the node calls under the hood): multipart
   upload → media `id` + `path`; create post with `type`
   (`draft`/`schedule`/`now`), `posts[].integration.id`, per-platform
@@ -335,6 +374,22 @@ labels the field "Images").
 
 Delegate to cheap subagents where possible; the orchestrating session owns
 contracts and review.
+
+**Documentation is part of the refactoring** (update at any point, but the work
+is not done until these are done):
+
+- **`docs/architecture.md`** — rewrite for v2. The local side becomes a thin
+  trigger; **n8n**, the **SFTP staging area** and **Postiz** are new *edges*;
+  the daemon is gone; the State model changes from review-pages + content
+  hashing + lock file to `syndicated-at::` marker + Postiz calendar + git
+  history. Keep the arc42 framing: describe the new pieces as edges the local
+  core hands off to, not as new local concepts.
+- **`README.md`** — rewrite operating instructions: only `syndicate` /
+  `redeploy`; n8n / Postiz / SFTP setup; the new daily workflow (review and
+  schedule in the Postiz calendar, not in Logseq); updated troubleshooting.
+- **`AGENTS.md` / `CLAUDE.md`** — removed by the owner. Their hard rules
+  ("no workflow framework", "all LLM access through `llm.py`", the
+  `hugo-hash::` owned-target) no longer hold in v2 and must not be reasserted.
 
 ## 10. Non-goals (explicitly rejected — do not add)
 
