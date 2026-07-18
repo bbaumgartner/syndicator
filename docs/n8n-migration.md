@@ -26,7 +26,8 @@ Simultaneously the **social strategy changes**:
   hashing / change detection, no scheduled-slot automation.
 - New property on the blog property block: `syndicated-at:: <ISO datetime>`,
   written by the local client after **all** webhooks for the post were
-  accepted.
+  accepted. This marks **handoff, not completion** (the workflows respond
+  early and run async) — see §6 *Failure & recovery*.
 - Review and scheduling happen manually in the **Postiz calendar**. Nothing
   reaches a platform without the human scheduling it there.
 
@@ -46,10 +47,10 @@ Platforms at launch: **Facebook page + Instagram business account + X**.
 | Reel captions | LLM caption from section text + post context + **cover frame image** (vision) | Cloudinary auto-tagging; text-only |
 | Hugo site publishing | In n8n: render bundle + translate ×6 + **one commit via GitHub Git Data API** (blobs → tree → commit → ref). Push to `main` triggers the existing deploy | git CLI (n8n Cloud has no shell/persistent clone; repo working tree is media-heavy); GitLab (site repo is on **GitHub**); per-file GitHub node commits (one deploy per file) |
 | Hugo markdown rendering | In n8n (Code node) from **structured blocks JSON** sent by the caller | Rendering `index.md` locally (explicitly rejected by owner) |
-| journey map | Generated **locally** (Go tools), only `journey-map.mp4` ships and is committed. `data/journey.json` is an intermediate artifact — the site never reads it (verified: only `layouts/index.html` references `/journey-map.mp4`) — so it is no longer committed | Running Go tools in n8n; committing journey.json |
+| journey map | Generated **locally** (Go tools), only `journey-map.mp4` ships and is committed. Global (whole trip), so generated **once per invocation** and referenced in each `/publish`'s `site_media`. The render is **deterministic** (frames from Go with no rand/time; fixed ffmpeg `libx264 -crf 23`, no `creation_time`) → byte-identical output when travel is unchanged, so git content-addressing dedupes the blob and re-committing it every publish causes **no repo bloat**; a new blob appears only when positions change. `data/journey.json` is an intermediate artifact — the site never reads it (verified: only `layouts/index.html` references `/journey-map.mp4`) — so it is no longer committed. Do not add change-detection state around it — determinism already makes it free | Running Go tools in n8n; committing journey.json; hashing to skip regeneration |
 | Change detection | **None.** New-post marker property only; `redeploy` re-runs the whole site build (re-translates!) by design | hugo-hash / source-hash machinery (deleted) |
 | State | Marker property on the blog post + Postiz calendar + git history. No lock file (worst case = duplicate drafts, human deletes them) | Review pages, cross-machine lock, n8n Data Tables |
-| Webhook auth |  URL-as-secret | Shared-secret header `X-Syndicator-Secret` checked as first node, n8n oauth |
+| Webhook auth | URL-as-secret | Shared-secret header `X-Syndicator-Secret` checked as first node, n8n oauth |
 | Workflow versioning | None for now. n8n Cloud's built-in workflow history is enough | JSON exports in repo |
 | Workflow authoring | **n8n native MCP server** (v2.13+; `validate_workflow`, `create_workflow_from_code`, `update_workflow`; works on Cloud and self-hosted) | Hand-written JSON imports |
 | Prompts & models (cloud LLM steps) | Ported once from `prompts/` into the n8n OpenAI nodes; thereafter the **n8n copies are authoritative** for the cloud steps (translate, captions) — divergence from `prompts/` is accepted. `prompts/` + `syndicator.yaml` stay canonical only for LLM use that remains local (`media_adapt` crop-focus). Model names for cloud steps live on the n8n OpenAI nodes | Keep `prompts/`/`syndicator.yaml` canonical and sync into n8n (rejected: no include mechanism in n8n, constant drift) |
@@ -63,7 +64,7 @@ flowchart LR
         M["syndicate / redeploy"] --> X["extract (Logseq edge)"]
         X --> A["media_adapt (ffmpeg/Pillow):\nsite 16:9 + reels 9:16, 4:5 + covers + header crops"]
         X --> J["journeymap (Go tools) -> journey-map.mp4"]
-        A & J --> U["SFTP upload, resumable\nstaging/&lt;slug&gt;/..."]
+        A & J --> U["SFTP upload, resumable\n/syndicator/&lt;slug&gt;/... + /syndicator/journey-map.mp4"]
         U --> W["POST webhooks (small JSON, retries)"]
     end
     subgraph Server["Owner's server"]
@@ -105,6 +106,21 @@ Proof Of Concept: See n8n Workflow 'SFTP Test'
 - IP address 144.2.110.132 port 22
 - Local upload: Key for user sftp provided in .ssh, connect with sftp syncthing-central-sftp
 - n8n: SFTP credentials configured
+- **Base directory `/syndicator/`** inside the chroot (create once). Every
+  `sftp_path` in the webhook contracts is **chroot-absolute and passed
+  verbatim** to both the local uploader and the n8n FTP node — no prefixing
+  logic anywhere. Per-post layout:
+
+  ```
+  /syndicator/
+    journey-map.mp4    global map, uploaded once per invocation, shared by every post
+    <slug>/
+      site/            site bundle media (images, videos, featured<ext>)
+      header/          social header crops (facebook.jpg, instagram.jpg, x.jpg)
+      reels/           reel videos (1.mp4, 2.mp4, …)
+      covers/          reel cover frames (1.jpg, …)
+  ```
+
 - Local uploads **resumably** (lftp or paramiko with offset resume; must work
   through `internal-sftp`, so no rsync) and **overwrites on retry** — uploads
   are idempotent.
@@ -131,27 +147,64 @@ Local client: 3 retries with backoff.
     { "kind": "title", "raw": "## …", "heading_level": 2 },
     { "kind": "text",  "raw": "…" },
     { "kind": "media", "media": { "kind": "image", "bundle_filename": "x.jpg",
-                                   "sftp_path": "2026-07-05_Titel/site/x.jpg", "alt": "…" } },
+                                   "sftp_path": "/syndicator/2026-07-05_Titel/site/x.jpg", "alt": "…" } },
+    { "kind": "media", "media": { "kind": "video", "bundle_filename": "v1.mp4",
+                                   "sftp_path": "/syndicator/2026-07-05_Titel/site/v1.mp4", "alt": "…" } },
     { "kind": "youtube", "media": { "kind": "youtube", "youtube_id": "…" } }
   ],
   "site_media": [
-    { "sftp_path": "2026-07-05_Titel/site/x.jpg",  "bundle_filename": "x.jpg" },
-    { "sftp_path": "2026-07-05_Titel/site/v1.mp4", "bundle_filename": "v1.mp4" },
-    { "sftp_path": "2026-07-05_Titel/site/featured.jpg", "bundle_filename": "featured.jpg" },
-    { "sftp_path": "2026-07-05_Titel/journey-map.mp4", "repo_path": "static/journey-map.mp4" }
+    { "sftp_path": "/syndicator/2026-07-05_Titel/site/x.jpg",  "bundle_filename": "x.jpg" },
+    { "sftp_path": "/syndicator/2026-07-05_Titel/site/v1.mp4", "bundle_filename": "v1.mp4" },
+    { "sftp_path": "/syndicator/2026-07-05_Titel/site/featured.jpg", "bundle_filename": "featured.jpg" },
+    { "sftp_path": "/syndicator/journey-map.mp4", "repo_path": "static/journey-map.mp4" }
   ],
   "header": {
-    "facebook":  { "sftp_path": "2026-07-05_Titel/header/facebook.jpg" },
-    "instagram": { "sftp_path": "2026-07-05_Titel/header/instagram.jpg" },
-    "x":         { "sftp_path": "2026-07-05_Titel/header/x.jpg" }
+    "facebook":  { "sftp_path": "/syndicator/2026-07-05_Titel/header/facebook.jpg" },
+    "instagram": { "sftp_path": "/syndicator/2026-07-05_Titel/header/instagram.jpg" },
+    "x":         { "sftp_path": "/syndicator/2026-07-05_Titel/header/x.jpg" }
   },
   "flags": { "redeploy": false }   // `redeploy` command sets true; `syndicate` sets false. If true: only re-render + commit the site (skip captions/drafts — see §6 steps 5-6)
 }
 ```
 
 When a post has a header image, `site_media` includes its Hugo bundle variant
-as `featured<ext>`; `header.facebook` and `header.instagram` are the separate
-social crops.
+as `featured<ext>`; `header.facebook`, `header.instagram` and `header.x` are
+the separate social crops.
+
+**Block rendering (verified against the `sailingnomads` repo, 2026-07-18).**
+The local side ships **Hugo-ready** content: `raw` for `title`/`text` blocks is
+already clean markdown with all Logseq asset references rewritten to bundle
+basenames (the `hugo.py::transform_content` logic — `../assets/…` → flattened
+name, adapted filenames, `{{video}}` → shortcode — stays **local**). The n8n
+Code node is a thin emitter that does **no** Logseq parsing:
+
+| Block | Emits | Confirmed by |
+|---|---|---|
+| `title` / `text` | `raw` verbatim | production `index.*.md` |
+| `media` `image` | `![alt](bundle_filename)` | `layouts/_default/_markup/render-image.html` resolves the basename via `Page.Resources.GetMatch` |
+| `media` `video` | `{{< video src="bundle_filename" >}}` | custom `layouts/shortcodes/video.html` |
+| `youtube` | `{{< youtube youtube_id >}}` | Hugo built-in (no override) |
+
+Front matter is the TOML `+++` block built from `meta` exactly as
+`hugo.py::front_matter` does today (`date`, `lastmod=date`, `draft=false`,
+`title`, `summary`, `[params] author`). Inline media embedded *inside* a `text`
+paragraph stays inline in that block's (pre-cleaned) `raw`; its file is still
+listed in `site_media` so it is downloaded and committed — `site_media` is the
+authoritative media manifest for the commit, independent of `blocks`. Media
+lives once in the leaf bundle (`content/posts/<slug>/`) and every language
+`index.*.md` shares those resources (the video shortcode resolves relative to
+the default-language page).
+
+**Featured image is mandatory.** The site build **errors** if a post bundle
+has no `featured*`/`cover*` image resource and no `params.featured_image`
+(`layouts/_partials/func/GetFeaturedImageMeta.html` +
+`layouts/page.postcontent.xml`). So `site_media` must always include a
+`featured<ext>` variant, and a post with no `header::` also has no intro
+social post (the intro is built from the header crops). Therefore the local
+client **enforces a header up front**: a `status:: online` post without a
+`header::` image is refused before any media adaptation, upload or webhook —
+no marker is set. In batch `syndicate` the offending post is reported and
+skipped; the others continue. The author adds a header and re-runs.
 
 **`POST /reel`** — one call per video in the post (independent of /publish):
 
@@ -161,10 +214,10 @@ social crops.
   "post": { "title": "…", "url": "https://…", "summary": "…", "lang_code": "de" },
   "video": { "index": 1, "section_title": "…", "section_text": "…", "alt": "dingy.mp4" },
   "files": {
-    "reels": { "facebook": "2026-07-05_Titel/reels/1.mp4",
-               "instagram": "2026-07-05_Titel/reels/1.mp4",
-               "x": "2026-07-05_Titel/reels/1.mp4" },   // same path = shared file
-    "cover": "2026-07-05_Titel/covers/1.jpg"
+    "reels": { "facebook": "/syndicator/2026-07-05_Titel/reels/1.mp4",
+               "instagram": "/syndicator/2026-07-05_Titel/reels/1.mp4",
+               "x": "/syndicator/2026-07-05_Titel/reels/1.mp4" },   // same path = shared file
+    "cover": "/syndicator/2026-07-05_Titel/covers/1.jpg"
   }
 }
 ```
@@ -175,7 +228,7 @@ Commands (Typer, as today):
 
 | Command | Behavior |
 |---|---|
-| `syndicate [--post SLUG]` | No args: every `status:: online` blog post **without** a `syndicated-at` marker → full flow: adapt media → journeymap → SFTP upload → N× `/reel` → `/publish` (`redeploy: false` → site **and** intro drafts) → set marker. `--post SLUG`: only that post. Already-marked posts are skipped (immutability — re-running would create duplicate drafts) |
+| `syndicate [--post SLUG]` | No args: every `status:: online` blog post **without** a `syndicated-at` marker. The global journey map is generated + uploaded **once per invocation** (not per post); then per post: adapt media → SFTP upload → N× `/reel` → `/publish` (`redeploy: false` → site **and** intro drafts; each `/publish`'s `site_media` references the shared `journey-map.mp4`) → set marker. `--post SLUG`: only that post. Already-marked posts are skipped (immutability — re-running would create duplicate drafts). **Precondition: a `header::` image is required** — a post without one is refused before any work (no marker); in batch mode it is reported and skipped, others continue |
 | `redeploy --post SLUG` | Force site redeploy: site media + journeymap → SFTP → `/publish` with `redeploy: true`. No social, no marker logic. Re-translates by design |
 
 Drop **all** other current commands and the daemon: `watch`, `run`, `catchup`,
@@ -205,11 +258,22 @@ fine one at a time); separate `/reel` webhook executions may still run
 concurrently under the n8n Cloud instance's concurrency limit. FTP node in
 SFTP mode.
 
+**Postiz create budget.** Each operation creates **one independent
+single-channel draft per platform** (so each can be scheduled/edited on its
+own), i.e. 3 `createPost` calls per operation. A post with V videos therefore
+costs `3 × (V + 1)` creates (intro + reels); e.g. 5 videos → 18. `uploadFile`
+is separate from the 30-creates/hour limit. **Accepted as-is for now** — fine
+for a single post; a large first batch `syndicate` across many pending posts
+could exceed 30/h. If that happens the 429 surfaces via the error mail and the
+owner re-runs; raising the limit (or adding node-level retry/backoff) is a
+future step, not built now.
+
 **`Blog Post Publish`** (webhook `/publish`):
 1. Respond `{"status":"accepted"}`.
-2. Code node renders the source-language `index.<lang>.md`
-   from `blocks` (port of old `hugo.py`: TOML front matter; media blocks →
-   `![alt](bundle_filename)` / `{{< video src="…" >}}` / `{{< youtube ID >}}`).
+2. Code node assembles the source-language `index.<lang>.md` from `blocks` —
+   a thin emitter (front matter + verbatim `raw` + structured media), **no
+   Logseq parsing**; the `hugo.py` media-rewriting stays local. Exact rules and
+   the sailingnomads verification are in §4.2 *Block rendering*.
 3. Translate into the other languages + pirate (OpenAI node per language,
    prompts ported from `prompts/translate.md` / `translate_pirate.md` — once
    ported, the n8n copies are authoritative, see §2; pirate derived from the
@@ -219,17 +283,28 @@ SFTP mode.
    (base64, ≤100 MB/blob). Then one tree (`base_tree` = current `main` tree,
    entries for all `index.*.md` + media under `content/posts/<slug>/` +
    `static/journey-map.mp4`) → one commit → `PATCH refs/heads/main`.
+   **Orphans accepted (matches v1):** `base_tree` only adds/overwrites, never
+   deletes, so a removed/renamed/re-extensioned asset or a dropped language
+   leaves a stale file in the bundle. These never reach the live site (Hugo
+   only publishes *referenced* bundle resources) — they only bloat the repo.
+   Known edge case: if a header image's *extension* changes, both
+   `featured.<old>` and `featured.<new>` coexist and `GetMatch
+   "**{feature,cover}*"` may pick either; avoid by keeping the header
+   extension stable (or clean the bundle by hand).
 5. If not `flags.redeploy = true`: intro captions per platform (OpenAI; prompts derived
    from `prompts/caption_facebook.md` / `caption_instagram.md`, reworked for
    "summary of the whole post, drive readers to the blog"; a new X prompt in
    the same style, respecting the X length limit; inline the
    `_human_voice.md` rules into each prompt — n8n has no includes).
-6. If not `flags.redeploy = true`: per platform — SFTP download header
-   image → **Postiz `uploadFile`** → **Postiz `createPost`** (`type: draft`,
-   integration ID + caption + uploaded `id`/`path` in content `image` array,
-   settings `__type: facebook` / `instagram` / `x`). For **X** also set
-   `who_can_reply_post: everyone` (mandatory — see spike 4); for FB set
-   `post_type: post`.
+6. If not `flags.redeploy = true`: **one independent draft per platform** —
+   for each of FB / IG / X: SFTP download that platform's header crop →
+   **Postiz `uploadFile`** → **one single-channel Postiz `createPost`**
+   (`type: draft`, one `posts.post[]` entry: that integration ID + caption +
+   uploaded `id`/`path` in content `image` array, `settings.__type:
+   facebook` / `instagram` / `x`). Separate calls (not one grouped
+   multi-channel post) so each platform is its own draft to schedule/edit.
+   For **X** also set `who_can_reply_post: everyone` (mandatory — see spike 4);
+   for FB set `post_type: post`. → 3 uploads + **3 creates**.
 
 **`Reel Publish`** (webhook `/reel`):
 1. Respond `{"status":"accepted"}`.
@@ -237,22 +312,48 @@ SFTP mode.
 3. Captions per platform (OpenAI vision: cover image + section text + post
    context; prompt derived from the old per-section caption prompts, goal =
    subscriber growth, relate to the video).
-4. **Postiz `uploadFile`** (once per distinct reel file; cover only if
-   needed as separate media) → **Postiz `createPost`** (`type: draft`, FB +
-   IG + X entries with platform settings via the node's settings key/value fields.
-   For both FB and IG set `post_type: post`; for    IG also set
-   `is_trial_reel: false`; for X set `who_can_reply_post: everyone`
-   (mandatory — see spike 4). The uploaded MP4 makes these video posts Reels —
-   `post_type: reel` is not a valid value. Include the matching `__type` for
-   every platform. If settings
-   prove too awkward in the node UI, fall back to a Code node building the
-   JSON body + HTTP Request to `POST /public/v1/posts` for that step only.
+4. **Postiz `uploadFile`** once for the shared reel file (cover only if needed
+   as separate media) → **one single-channel Postiz `createPost` per platform**
+   (FB, IG, X) referencing that same uploaded `id`/`path`. Separate calls (not
+   one grouped multi-channel post) so each platform is its own draft to
+   schedule/edit. Per-platform `settings`: for both FB and IG set
+   `post_type: post`; for IG also set `is_trial_reel: false`; for X set
+   `who_can_reply_post: everyone` (mandatory — see spike 4). The uploaded MP4
+   makes these video posts Reels — `post_type: reel` is not a valid value.
+   Include the matching `__type` for every platform. → 1 upload + **3 creates**.
+   If settings prove too awkward in the node UI, fall back to a Code node
+   building the JSON body + HTTP Request to `POST /public/v1/posts` for that
+   step only.
 
 **`Syndicator Error`**: Error Trigger → Mailgun SMTP mail (workflow name,
-error message, execution URL). Created and **published** first, then set as
-`settings.errorWorkflow` on `Blog Post Publish` and `Reel Publish`. Note: the
-assigned error workflow fires only for **production** executions (not manual
-MCP test runs).
+error message, execution URL — intentionally minimal). Created and
+**published** first, then set as `settings.errorWorkflow` on `Blog Post
+Publish` and `Reel Publish`. Note: the assigned error workflow fires only for
+**production** executions (not manual MCP test runs).
+
+### Failure & recovery
+
+The `syndicated-at` marker means **handed off**, not **published**: the local
+client writes it once all webhooks returned `{"status":"accepted"}`. Because
+the workflows respond early and run async — and there are no completion
+callbacks (§10) — a workflow that fails *after* acceptance leaves the post
+marked. Recovery is out-of-band, by failure class:
+
+- **Handoff failure** (a webhook never returns accepted after the local 3
+  retries): the marker is *not* written, so the next `syndicate` re-runs the
+  whole post. Duplicates are harmless (site commit is idempotent; duplicate
+  drafts are deleted by hand).
+- **Site async failure** (`Blog Post Publish` render / translate / commit):
+  run `redeploy --post SLUG` — it ignores the marker and re-runs the site
+  only.
+- **Social async failure** (Postiz drafts, in `/publish` step 6 or
+  `Reel Publish`): **no CLI path by design.** The owner re-runs the failed
+  execution in n8n (the error mail's execution URL → the execution's input
+  payload names the slug) or fixes the draft directly in Postiz. `redeploy`
+  will not help (site-only) and `syndicate` skips the marked post.
+
+The execution URL in the error mail is the entry point for all manual
+recovery.
 
 ### Postiz node
 
@@ -302,8 +403,8 @@ labels the field "Images").
 2. **Postiz draft type** — **passed.** `createPost` with `type: draft`
    creates drafts (`state: DRAFT`, `creationMethod: API` via `getPosts`)
    that show up in the Postiz calendar and can be edited/scheduled there.
-   Rate limit 30 req/h on create-post is fine (a post ≈ 2 uploads + a
-   handful of creates).
+   Rate limit is 30 create-post req/h (a post costs `3 × (V+1)` creates with
+   one draft per platform — see §6 *Postiz create budget*; accepted for now).
 3. **n8n FTP node** — **passed.** SFTP + private key against the staging
    server works (`FTP account` credential). Three 50 MB downloads completed
    in 93–94 s and landed as filesystem-backed binary data (no memory
@@ -368,7 +469,22 @@ labels the field "Images").
 
 1. n8n: community node `n8n-nodes-postiz` installed · GitHub fine-grained
    PAT (`contents: read/write` on the sailingnomads repo) · Postiz API
-   credential (`postizApi`: API key + host `https://api.postiz.com`).
+   credential (`postizApi`: API key + host `https://api.postiz.com`) · OpenAI
+   credential (translate + captions) · Mailgun credential (error mail).
+2. SFTP staging base dir — **done (verified 2026-07-18):**
+   `/srv/sftp/sftp/syndicator` exists, owned `sftp:sftponly`, and a
+   put/overwrite/delete round-trip through the chrooted `sftp` user succeeded.
+   The `sftp` user is chrooted to `/srv/sftp/sftp` (root-owned, so the user
+   can't create top-level dirs itself); to recreate the base on a rebuilt /
+   self-hosted server, run as root:
+
+   ```bash
+   sudo install -d -o sftp -g sftponly -m 755 /srv/sftp/sftp/syndicator
+   ```
+
+   Inside the chroot this is `/syndicator/`; that host path ↔ chroot mapping is
+   the only place the real path appears — everything else uses the
+   chroot-absolute `sftp_path`.
 
 ## 9. Implementation plan
 
@@ -390,15 +506,22 @@ is not done until these are done):
 - **`AGENTS.md` / `CLAUDE.md`** — removed by the owner. Their hard rules
   ("no workflow framework", "all LLM access through `llm.py`", the
   `hugo-hash::` owned-target) no longer hold in v2 and must not be reasserted.
+- **`syndicator.yaml`** — trimmed to what the thin local client still needs
+  (`media_adapt` channel specs, SFTP target, webhook URLs). Drop the
+  `substack` / `medium` article channels (see §10) and anything that moved to
+  n8n (cloud prompts + model names).
 
 ## 10. Non-goals (explicitly rejected — do not add)
 
 - No workflow framework locally; no queues, cron publishers, Data Tables.
 - No completion callbacks from n8n to local (no state coupling); failure
-  handling = error mail .
+  handling = error mail + manual recovery (see §6 *Failure & recovery*).
 - No skip-if-unchanged logic in n8n (that's hashing through the back door).
 - No scheduling automation on top of Postiz (its calendar is the queue).
 - No Cloudinary, no Meta developer app — all "maybe later". (X posting *is*
   in scope — but only through Postiz, never via the X API directly.)
+- No article channels. `substack` / `medium` are dropped from config and
+  design: v2 has no article workflow and no per-channel state to track them.
+  Any article posting is fully manual and untracked, outside the system.
 - Optional nicety (only if the owner asks): 3-node dead-man's-switch
   workflow (mail if no publish webhook for ~3 weeks).
