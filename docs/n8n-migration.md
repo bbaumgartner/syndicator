@@ -19,17 +19,25 @@ Replace the ~3,800-line Python pipeline with:
 
 Simultaneously the **social strategy changes**:
 
-- **1 intro post per blog post** (header image + platform-tailored summary,
-  linking to the blog) per platform.
-- **1 reel per video** in the blog post.
+- **1 intro post per blog post** (header image + platform-tailored English
+  summary) per platform.
+- **1 reel per video** in the blog post (captions in English too).
+- **Link placement:** Facebook captions include the blog URL. Instagram and
+  X do **not** — IG cannot put clickable links in the post; X omits links
+  because they reduce reach. Both use a bio CTA instead (same idea as today's
+  IG `link_mode: bio`).
 - **No more per-section posts**, no review pages in Logseq, no content
   hashing / change detection, no scheduled-slot automation.
 - New property on the blog property block: `syndicated-at:: <ISO datetime>`,
   written by the local client after **all** webhooks for the post were
   accepted. This marks **handoff, not completion** (the workflows respond
-  early and run async) — see §6 *Failure & recovery*.
+  early and run async) — see §6 *Failure & recovery*. Existing online posts
+  are **seeded by hand** before the first batch `syndicate` (no automated
+  backfill).
 - Review and scheduling happen manually in the **Postiz calendar**. Nothing
   reaches a platform without the human scheduling it there.
+- Local CLI runs on **Mac first**; must stay **Linux-compatible** (same
+  checkout/tools on the server later).
 
 Platforms at launch: **Facebook page + Instagram business account + X**.
 
@@ -43,7 +51,7 @@ Platforms at launch: **Facebook page + Instagram business account + X**.
 | Review gate | Everything lands as **Postiz drafts**; human edits captions and schedules in Postiz calendar | Approval e-mails via n8n send-and-wait (works, not wanted); FB drafts in Meta planner; no gate |
 | Scheduling | Manual in Postiz calendar | n8n Data Table queue + cron publisher; per-platform slot counters in workflow static data; Wait-node until slot; caller-provided datetimes |
 | Media transport | **SFTP staging area on the owner's Linux server** (public IP); local uploads resumably, n8n FTP node downloads (never deletes) | Multipart webhook uploads (n8n Cloud ~200 MiB cap, no resume); Cloudinary (good fit but too big a change for now — possible later); committing reels to the site repo |
-| Media adaptation | Stays **local** (existing `media_adapt`: ffmpeg + Pillow + crop-focus vision LLM). n8n Cloud cannot run ffmpeg. **Reel (and header) specs stay per-channel** in `syndicator.yaml` (`reel_video` / `image`); at launch FB + IG + X all use today's **4:5** `1080×1350` reel spec (X gains a `reel_video` block for the v2 path). The `/reel` contract always carries **per-platform** `sftp_path`s so a later platform (e.g. TikTok 9:16) can diverge without contract changes — when specs match, local may point several platforms at the same uploaded file | One global reel aspect for all platforms; Cloudinary transformations |
+| Media adaptation | Stays **local** (existing `media_adapt`: ffmpeg + Pillow + crop-focus vision LLM). n8n Cloud cannot run ffmpeg. **Reel (and header) specs stay per-channel** in `syndicator.yaml` (`reel_video` / `image`); at launch FB + IG + X all use **4:5** `1080×1350` (X gains a `reel_video` block). Sharing is by **full `VideoSpec` equality** (aspect, size, `max_seconds`, …), not aspect alone: if the source is short enough that every platform's adapt would be identical, one file and repeated `sftp_path`s; if e.g. the source is longer than IG's 90 s but within FB's 240 s, local produces a separate trimmed IG reel and only IG's path points at it. The `/reel` contract always carries **per-platform** `sftp_path`s so a later platform (e.g. TikTok 9:16) can diverge without contract changes | One global reel aspect for all platforms; Cloudinary transformations |
 | Reel captions | LLM caption from section text + post context + **cover frame image** (vision) | Cloudinary auto-tagging; text-only |
 | Hugo site publishing | In n8n: render source-language index + translate into the **other** languages (6 codes: `en`/`de`/`es`/`fr`/`it`/`arrr`) + **one commit via GitHub Git Data API** (blobs → tree → commit → ref). Push to `main` triggers the existing deploy. **English is translated at most once** and reused for both `index.en.md` and as the sole input to pirate (`arrr`); never a second source→en pass for pirate | git CLI (n8n Cloud has no shell/persistent clone; repo working tree is media-heavy); GitLab (site repo is on **GitHub**); per-file GitHub node commits (one deploy per file); six LLM translates including the source; separate English translate just for pirate |
 | Hugo markdown rendering | In n8n (Code node) from **structured blocks JSON** sent by the caller | Rendering `index.md` locally (explicitly rejected by owner) |
@@ -52,7 +60,7 @@ Platforms at launch: **Facebook page + Instagram business account + X**.
 | State | Marker property on the blog post + Postiz calendar + git history. No lock file (worst case = duplicate drafts, human deletes them) | Review pages, cross-machine lock, n8n Data Tables |
 | Webhook auth | URL-as-secret | Shared-secret header `X-Syndicator-Secret` checked as first node, n8n oauth |
 | Workflow versioning | None for now. n8n Cloud's built-in workflow history is enough | JSON exports in repo |
-| Workflow authoring | **n8n native MCP server** (v2.13+; `validate_workflow`, `create_workflow_from_code`, `update_workflow`; works on Cloud and self-hosted) | Hand-written JSON imports |
+| Workflow authoring | **n8n native MCP server** (v2.13+; `validate_workflow`, `create_workflow_from_code`, `update_workflow`; works on Cloud and self-hosted). Workflows **created via MCP are MCP-enabled automatically**; workflows created in the UI must be MCP-enabled manually in settings | Hand-written JSON imports |
 | Prompts & models (cloud LLM steps) | Ported once from `prompts/` into the n8n OpenAI nodes; thereafter the **n8n copies are authoritative** for the cloud steps (translate, captions) — divergence from `prompts/` is accepted. `prompts/` + `syndicator.yaml` stay canonical only for LLM use that remains local (`media_adapt` crop-focus). Model names for cloud steps live on the n8n OpenAI nodes | Keep `prompts/`/`syndicator.yaml` canonical and sync into n8n (rejected: no include mechanism in n8n, constant drift) |
 | Clean up FTP files | **Nobody deletes automatically.** Re-runs overwrite in place (idempotent uploads); the owner purges the staging area periodically by hand (optionally a cron `find -mtime` purge) | Delete after successful workflow run (unsafe: `/publish` and `/reel` are separate executions sharing files under `<slug>/`) |
 
@@ -123,13 +131,19 @@ Proof Of Concept: See n8n Workflow 'SFTP Test'
   ```
 
   Reels and covers are **keyed by platform in the webhook**, because channel
-  `reel_video` (aspect, size, max_seconds) is per channel in
-  `syndicator.yaml`. At launch FB + IG + X all use today's **4:5
-  1080×1350**, so local adapts once, uploads once (e.g.
-  `reels/4x5/1.mp4`), and sets every platform's `sftp_path` to that same
-  path. A future channel with a different spec (e.g. TikTok 9:16) gets its
-  own file; only that platform's path changes. Webhook paths are
-  authoritative — the directory names above are a local convention.
+  `reel_video` is a full per-channel `VideoSpec` in `syndicator.yaml`
+  (aspect, size, `max_seconds`, …). Local adapts **once per distinct
+  effective spec** and may reuse one uploaded file across platforms only
+  when those adapts would be identical. At launch all three use **4:5
+  1080×1350**, but IG's `max_seconds` is **90** while FB's is **240** (X
+  gets its own `reel_video` with its limit). So: source ≤ 90 s → one file
+  (e.g. `reels/4x5/1.mp4`) and the same `sftp_path` for every platform;
+  source > 90 s → a separate IG-trimmed file (and matching cover) with only
+  `files.reels.instagram` / `files.covers.instagram` pointing at it; FB/X
+  keep the longer adapt when their specs allow. A future channel with a
+  different aspect (e.g. TikTok 9:16) is the same rule — own file, own
+  path. Webhook paths are authoritative — the directory names above are a
+  local convention.
 
 - Local uploads **resumably** (lftp or paramiko with offset resume; must work
   through `internal-sftp`, so no rsync) and **overwrites on retry** — uploads
@@ -218,9 +232,9 @@ skipped; the others continue. The author adds a header and re-runs.
 
 **`POST /reel`** — one call per video in the post (independent of /publish).
 `files.reels` and `files.covers` are **always keyed by platform**. Identical
-path strings mean a shared file (allowed and expected when channel specs
-match); different paths mean per-platform adapts. At launch all three point
-at the same 4:5 file + cover:
+path strings mean a shared file (allowed when full `VideoSpec` adapts
+coincide — e.g. source ≤ 90 s); different paths mean distinct adapts (e.g.
+IG 90 s trim vs longer FB). Example when all three share:
 
 ```jsonc
 {
@@ -246,12 +260,15 @@ Commands (Typer, as today):
 
 | Command | Behavior |
 |---|---|
-| `syndicate [--post SLUG]` | No args: every `status:: online` blog post **without** a `syndicated-at` marker. The global journey map is generated + uploaded **once per invocation** (not per post); then per post: adapt media → SFTP upload → N× `/reel` → `/publish` (`redeploy: false` → site **and** intro drafts; each `/publish`'s `site_media` references the shared `journey-map.mp4`) → set marker. `--post SLUG`: only that post. Already-marked posts are skipped (immutability — re-running would create duplicate drafts). **Precondition: a `header::` image is required** — a post without one is refused before any work (no marker); in batch mode it is reported and skipped, others continue |
+| `syndicate [--post SLUG]` | No args: every `status:: online` blog post **without** a `syndicated-at` marker. The global journey map is generated + uploaded **once per invocation** (not per post); then per post: adapt media → SFTP upload → N× `/reel` → `/publish` (`redeploy: false` → site **and** intro drafts; each `/publish`'s `site_media` references the shared `journey-map.mp4`) → set marker. `--post SLUG`: only that post. Already-marked posts are skipped (immutability — re-running would create duplicate drafts). **Precondition: a `header::` image is required** — a post without one is refused before any work (no marker); in batch mode it is reported and skipped, others continue. **Cutover:** the owner hand-seeds `syndicated-at::` on already-published online posts before the first batch run |
 | `redeploy --post SLUG` | Force site redeploy: site media + journeymap → SFTP → `/publish` with `redeploy: true`. No social, no marker logic. Re-translates by design |
 
 Drop **all** other current commands and the daemon: `watch`, `run`, `catchup`,
 `status`, `done`, `review`, `parity`, `check`, `bootstrap` and the systemd
 service support are removed. Only `syndicate` and `redeploy` remain.
+
+Runs on **Mac initially**; implementation must stay **Linux-compatible** (same
+Python/ffmpeg/Go/SFTP toolchain) so the server can run it later.
 
 
 ## 6. n8n workflows
@@ -265,11 +282,12 @@ service support are removed. Only `syndicate` and `redeploy` remain.
 | `Syndicator Error` | Error Trigger | Mailgun failure mail; assigned to the other two |
 
 Built via the **n8n MCP server** (`validate_workflow` →
-`create_workflow_from_code` → iterate with `update_workflow`; each created
-workflow is MCP-enabled automatically). `Syndicator Error` must be **created
-and published first**, then assigned to the other two via each workflow's
-`settings.errorWorkflow` (n8n rejects the assignment if the target has no
-published version or no Error Trigger). Guardrails: process files
+`create_workflow_from_code` → iterate with `update_workflow`). Workflows
+**created by MCP are MCP-enabled automatically**; any workflow created in the
+n8n UI must be MCP-enabled manually in settings. `Syndicator Error` must be
+**created and published first**, then assigned to the other two via each
+workflow's `settings.errorWorkflow` (n8n rejects the assignment if the target
+has no published version or no Error Trigger). Guardrails: process files
 **sequentially within each execution** (memory: base64 of a ~25 MB video is
 fine one at a time); separate `/reel` webhook executions may still run
 concurrently under the n8n Cloud instance's concurrency limit. FTP node in
@@ -320,17 +338,22 @@ future step, not built now.
    `featured.<old>` and `featured.<new>` coexist and `GetMatch
    "**{feature,cover}*"` may pick either; avoid by keeping the header
    extension stable (or clean the bundle by hand).
-5. If not `flags.redeploy = true`: intro captions per platform (OpenAI; prompts derived
-   from `prompts/caption_facebook.md` / `caption_instagram.md`, reworked for
-   "summary of the whole post, drive readers to the blog"; a new X prompt in
-   the same style, respecting the X length limit; inline the
+5. If not `flags.redeploy = true`: intro captions per platform (OpenAI;
+   **always English**; prompts derived from `prompts/caption_facebook.md` /
+   `caption_instagram.md`, reworked for "summary of the whole post"; a new X
+   prompt in the same style, respecting the X length limit; inline the
    `_human_voice.md` rules into each prompt — n8n has no includes).
+   **Link rules:** Facebook caption includes `post_url`. Instagram and X
+   captions do **not** include a URL — bio CTA only (IG cannot link; X links
+   hurt reach).
 6. If not `flags.redeploy = true`: **one independent draft per platform** —
    for each of FB / IG / X: SFTP download that platform's header crop →
    **Postiz `uploadFile`** → **one single-channel Postiz `createPost`**
    (`type: draft`, one `posts.post[]` entry: that integration ID + caption +
    uploaded `id`/`path` in content `image` array, `settings.__type:
-   facebook` / `instagram` / `x`). Separate calls (not one grouped
+   facebook` / `instagram` / `x`). The node's date field is required even for
+   drafts — set it to **tomorrow** (UTC date of `now + 1 day`); the human
+   reschedules in the Postiz calendar. Separate calls (not one grouped
    multi-channel post) so each platform is its own draft to schedule/edit.
    For **X** also set `who_can_reply_post: everyone` (mandatory — see spike 4);
    for FB set `post_type: post`. → 3 uploads + **3 creates**.
@@ -338,17 +361,20 @@ future step, not built now.
 **`Reel Publish`** (webhook `/reel`):
 1. Respond `{"status":"accepted"}`.
 2. For each distinct `files.reels.*` / `files.covers.*` path: FTP download
-   once (dedupe by path — at launch all three platforms share one reel +
-   one cover).
+   once (dedupe by path — shared when full-spec adapts coincide; separate
+   when e.g. IG is the 90 s trim).
 3. Captions per platform (OpenAI vision: that platform's cover image +
-   section text + post context; prompt derived from the old per-section
-   caption prompts, goal = subscriber growth, relate to the video).
+   section text + post context; **English**; prompt derived from the old
+   per-section caption prompts, goal = subscriber growth, relate to the
+   video). Same link rules as intro: no URL on IG/X; FB may include
+   `post.url` if the prompt calls for it.
 4. For each platform: **Postiz `uploadFile`** of that platform's reel
    (reuse a prior upload `id`/`path` when another platform already uploaded
    the same SFTP file in this execution; cover only if needed as separate
-   media) → **one single-channel Postiz `createPost`** (FB, IG, X). Separate
-   calls (not one grouped multi-channel post) so each platform is its own
-   draft to schedule/edit. Per-platform `settings`: for both FB and IG set
+   media) → **one single-channel Postiz `createPost`** (FB, IG, X). Draft
+   date = **tomorrow** (same as `/publish` intros). Separate calls (not one
+   grouped multi-channel post) so each platform is its own draft to
+   schedule/edit. Per-platform `settings`: for both FB and IG set
    `post_type: post`; for IG also set `is_trial_reel: false`; for X set
    `who_can_reply_post: everyone` (mandatory — see spike 4). The uploaded MP4
    makes these video posts Reels — `post_type: reel` is not a valid value.
@@ -432,7 +458,9 @@ labels the field "Images").
    later rejects rescheduling it with `post_type must be one of ... post,
    story`; therefore always include `post_type: post` when creating FB
    drafts. The community node's `createPost` date field is required even for
-   drafts. No direct-Meta fallback needed.
+   drafts — production workflows set it to **tomorrow** (UTC `now + 1 day`);
+   the human picks the real slot in the calendar. No direct-Meta fallback
+   needed.
 2. **Postiz draft type** — **passed.** `createPost` with `type: draft`
    creates drafts (`state: DRAFT`, `creationMethod: API` via `getPosts`)
    that show up in the Postiz calendar and can be edited/scheduled there.
@@ -468,7 +496,8 @@ labels the field "Images").
   disk; webhook multipart limit ~200 MiB total (moot with SFTP); FTP node is
   a **client** (FTP+SFTP); binary ops must be sequenced for memory.
 - **n8n MCP** (v2.13+, Cloud & self-hosted): `search/validate/create/update`
-  workflow tools; workflows must be explicitly MCP-enabled in settings.
+  workflow tools. MCP-created workflows are MCP-enabled automatically;
+  UI-created workflows must be MCP-enabled manually in settings.
 - **Postiz n8n node** (`n8n-nodes-postiz.postiz`, v0.2.x): official
   community package from Postiz ([gitroomhq/postiz-n8n](https://github.com/gitroomhq/postiz-n8n)).
   Wraps the public API — no extra capabilities or upload-size headroom vs
@@ -554,12 +583,16 @@ the new CLI.
 Greenfield relative to today's export packages:
 
 - Per-channel adapt into the staging layout (`site/`, `header/`,
-  `reels/<spec>/`, `covers/<spec>/`); shared path when specs match (§4.1).
+  `reels/<spec>/`, `covers/<spec>/`); shared path only when full
+  `VideoSpec` adapts coincide (§4.1) — e.g. separate IG 90 s reel when the
+  source is longer.
 - Cover-frame extraction for reel vision captions.
-- X `reel_video` (4:5) in `syndicator.yaml`.
+- X `reel_video` (4:5) in `syndicator.yaml` (set `max_seconds` with the
+  other channel limits).
 - Resumable SFTP uploader (idempotent overwrite).
 - Journey map: generate once per invocation; upload `journey-map.mp4` only
   (stop committing `journey.json`).
+- Mac-first, Linux-compatible local toolchain.
 
 ### Phase 3 — Local CLI + contracts (replace the pipeline)
 
@@ -574,10 +607,12 @@ Greenfield relative to today's export packages:
 
 ### Phase 4 — End-to-end + cutover
 
-1. One real post: adapt → SFTP → webhooks → site on `main` + Postiz drafts.
-2. Exercise `redeploy --post` (site only, no new drafts).
-3. Exercise a deliberate failure (confirm error mail + recovery paths in §6).
-4. Stop using the old daemon/commands on both machines.
+1. **Hand-seed** `syndicated-at::` on every already-published `status:: online`
+   post so batch `syndicate` does not re-draft them.
+2. One real post: adapt → SFTP → webhooks → site on `main` + Postiz drafts.
+3. Exercise `redeploy --post` (site only, no new drafts).
+4. Exercise a deliberate failure (confirm error mail + recovery paths in §6).
+5. Stop using the old daemon/commands on both machines.
 
 ### Phase 5 — Documentation (required to finish)
 
