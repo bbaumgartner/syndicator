@@ -1,74 +1,45 @@
 # Shared configuration, committed to git and identical on both machines.
 # Machine-specific paths live in config.local.yaml (see config.local.yaml.example).
+#
+# v2 (n8n migration): the local client only extracts the diary, adapts media,
+# uploads over SFTP and fires the n8n webhooks. Translation, captions, the Hugo
+# render and the site commit all live in n8n now, so their prompts/models are no
+# longer configured here.
 
 site:
   title: "Sailing Nomads"
   base_url: "https://www.sailingnomads.ch"
-  # Language served at the site root; all others live under /<lang>/.
+  # Language served at the site root; all others live under /<lang>/. Only used
+  # locally to build the post_url that ships in the webhook payloads.
   default_language: en
-  deploy_check:
-    timeout_seconds: 900
-    poll_seconds: 30
-
-languages:
-  supported:
-    - code: en
-      name: English
-      disclaimer: |-
-        ---
-
-        *This blog post has been automatically translated by a Large Language Model.
-    - code: de
-      name: German
-      disclaimer: |-
-        ---
-
-        *Dieser Blogbeitrag wurde automatisch von einem Large Language Model übersetzt.
-    - code: es
-      name: Spanish
-      disclaimer: |-
-        ---
-
-        *Esta publicación de blog ha sido traducida automáticamente por un Large Language Model.
-    - code: fr
-      name: French
-      disclaimer: |-
-        ---
-
-        *Cet article de blog a été traduit automatiquement par un Large Language Model.
-    - code: it
-      name: Italian
-      disclaimer: |-
-        ---
-
-        *Questo post del blog è stato tradotto automaticamente da un Large Language Model.
-    - code: arrr
-      name: Pirate Speak
-      disclaimer: |-
-        ---
-
-        *Arrr, this here blog post be rewritten in the tongue o' pirates by a Large Language Model, ye scallywag!*
-
-translate:
-  model: gpt-4.1
-  temperature: 0.3
-  pirate_temperature: 0.9
-  max_retries: 3
-
-social:
-  # Suggested manual posting cadence; used to compute suggested dates in exports.
-  posts_per_week: 7
-
-watch:
-  # Run the pipeline once no file event arrived for this long (edits and
-  # Syncthing transfers come in bursts).
-  debounce_seconds: 900
 
 media:
+  # Local crop-focus vision LLM used by media_adapt (the only LLM step that
+  # stays local). See prompts/crop_focus.md.
   crop_focus:
     enabled: true
     model: gpt-5.4-mini
 
+# SFTP staging area on the owner's server. base_dir is the chroot-absolute base
+# under which every <slug>/ and journey-map.mp4 live; every sftp_path in the
+# webhook contracts is chroot-absolute and passed verbatim.
+sftp:
+  host: 144.2.110.132
+  port: 22
+  user: sftp
+  base_dir: /syndicator
+
+# n8n production webhook URLs. Filled in after the Phase 1 workflows are created
+# and their production webhooks activated.
+webhooks:
+  publish_url: ""
+  reel_url: ""
+
+# Per-channel media specs. hugo = the site bundle; facebook/instagram/x = social
+# reels + header crops. Reel/header specs are per channel so a later platform can
+# diverge without contract changes. At launch all three social channels use 4:5
+# 1080x1350 reels; only max_seconds differs (IG 90 vs FB/X longer), so a short
+# source shares one reel file across platforms.
 channels:
   hugo:
     kind: site
@@ -78,46 +49,18 @@ channels:
   facebook:
     kind: social
     enabled: true
-    delivery: export
-    language: en
-    link_mode: inline
-    max_media_per_post: 10
-    caption_model: gpt-5.5
-    supports_location: true
     image: { mode: convert, max_edge: 2048, format: jpeg, quality: 90 }
     video: { max_seconds: 240 }
     reel_video: { aspect: "4:5", width: 1080, height: 1350, max_seconds: 240, pad_mode: crop }
   instagram:
     kind: social
     enabled: true
-    delivery: export
-    language: en
-    link_mode: bio
-    max_media_per_post: 10
-    caption_model: gpt-5.5
-    fallback_to_header: true
-    supports_location: true
     image: { mode: convert, aspect: "4:5", width: 1080, height: 1350, format: jpeg, quality: 90 }
     video: { aspect: "4:5", width: 1080, height: 1350, max_seconds: 90, pad_mode: crop }
-    # 4:5 (not 9:16): manual upload via instagram.com rejects taller ratios with
-    # "4:5 bis 16:9". Mobile Reels tab prefers 9:16, but our export workflow is desktop.
     reel_video: { aspect: "4:5", width: 1080, height: 1350, max_seconds: 90, pad_mode: crop }
   x:
     kind: social
     enabled: true
-    delivery: export
-    language: en
-    link_mode: inline
-    max_media_per_post: 4
-    max_chars: 280
-    caption_model: gpt-5.5
-    label: X
-    video_exclusive: true
     image: { mode: convert, max_edge: 2048, format: jpeg, quality: 90 }
     video: { max_seconds: 140 }
-  substack:
-    kind: article
-    enabled: false # tracked in state; publishing stays manual (Narrareach) for now
-  medium:
-    kind: article
-    enabled: false
+    reel_video: { aspect: "4:5", width: 1080, height: 1350, max_seconds: 140, pad_mode: crop }

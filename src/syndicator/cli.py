@@ -1,4 +1,8 @@
-"""Syndicator command line interface."""
+"""Syndicator command line interface (v2).
+
+Only two commands remain after the n8n migration: ``syndicate`` and
+``redeploy`` (§5). The daemon and all review/state commands are gone.
+"""
 
 from __future__ import annotations
 
@@ -10,13 +14,12 @@ from . import __version__
 
 app = typer.Typer(
     name="syndicator",
-    help="Logseq publish pipeline: Hugo site, translations, journey map and social post review pages in Logseq.",
+    help="Thin local trigger: extract the Logseq diary, adapt media, upload over "
+    "SFTP and fire the n8n publish/reel webhooks.",
     no_args_is_help=True,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-
-STATUS_SYMBOLS = {"pending": ".", "draft": "o", "published": "x"}
 
 
 @app.command()
@@ -26,231 +29,49 @@ def version() -> None:
 
 
 @app.command()
-def bootstrap() -> None:
-    """Create review pages with initial state for all existing posts."""
-    from .config import load_config
-    from .pipeline import run_bootstrap
-
-    cfg = load_config()
-    result = run_bootstrap(cfg)
-    typer.echo(f"Bootstrapped {result.posts} posts -> review pages in {cfg.pages_dir}")
-    typer.echo(f"  hugo in sync: {len(result.hugo_in_sync)}")
-    if result.hugo_stale:
-        typer.echo(f"  hugo stale (will regenerate on first run): {', '.join(result.hugo_stale)}")
-
-
-@app.command()
-def status() -> None:
-    """Show per-channel status and the catch-up backlog."""
-    from .config import load_config
-    from .state import ReviewStore
-
-    cfg = load_config()
-    states = ReviewStore(cfg.pages_dir).all()
-    if not states:
-        typer.echo("No review pages yet — run `syndicator bootstrap` first.")
-        raise typer.Exit(1)
-
-    channels = list(cfg.social_channels())
-    header = f"{'slug':44s} " + " ".join(f"{c[:4]:>4s}" for c in channels)
-    typer.echo(header)
-    typer.echo("-" * len(header))
-    states.sort(key=lambda s: (s.date, s.slug))
-    for st in states:
-        row = " ".join(f"{STATUS_SYMBOLS.get(st.channel_state(c), '?'):>4s}" for c in channels)
-        typer.echo(f"{st.slug:44s} {row}")
-
-    typer.echo("\nbacklog (pending):")
-    for c in channels:
-        pending = [s.slug for s in states if s.channel_state(c) == "pending"]
-        typer.echo(f"  {c:10s} {len(pending):3d}")
-    typer.echo("\nlegend: x published, o draft, . pending")
-
-
-@app.command()
-def done(
-    slug: str = typer.Argument(..., help="Post slug, e.g. 2026-05-19_Charly_Superstar"),
-    channel: list[str] = typer.Option(
-        None, "--channel", "-c", help="Channels to mark (default: all current drafts)."
-    ),
+def syndicate(
+    post: str = typer.Option(None, "--post", help="Only this post slug (default: all new online posts)."),
 ) -> None:
-    """Mark channels of a post as published after manual posting.
+    """Syndicate new online posts: adapt media, upload, fire /reel + /publish, mark done.
 
-    Convenience wrapper: the same effect as flipping ``status:: draft`` to
-    ``published`` on the review page blocks directly in Logseq.
+    With no ``--post``: every ``status:: online`` blog post without a
+    ``syndicated-at::`` marker. Already-marked posts are skipped (re-running would
+    create duplicate drafts). A post without a ``header::`` image is refused
+    (reported and skipped in batch, others continue).
     """
     from .config import load_config
-    from .pipeline import mark_channels_published
+    from .pipeline import syndicate as run_syndicate
 
     cfg = load_config()
-    try:
-        targets = mark_channels_published(cfg, slug, channel)
-    except ValueError as exc:
-        typer.echo(str(exc))
-        raise typer.Exit(1) from exc
-    for c in targets:
-        typer.echo(f"  {slug} {c} -> published")
+    report = run_syndicate(cfg, slug=post)
 
-
-@app.command()
-def catchup(
-    post: str = typer.Option(None, "--post", help="Slug to process (default: oldest pending)."),
-    force: bool = typer.Option(False, "--force", help="Re-export drafts even when the source is unchanged (published stays immutable)."),
-    no_verify_links: bool = typer.Option(False, "--no-verify-links", help="Skip live URL verification."),
-) -> None:
-    """Generate social post blocks for the oldest pending post (catch-up backlog)."""
-    from .config import load_config
-    from .pipeline import find_post, next_catchup_post, run_social_for_post
-    from .state import ReviewStore, page_name
-
-    cfg = load_config()
-    if post:
-        blog_post = find_post(cfg, post)
-    else:
-        blog_post = next_catchup_post(cfg, ReviewStore(cfg.pages_dir))
-        if blog_post is None:
-            typer.echo("Catch-up backlog is empty — nothing to do.")
-            raise typer.Exit(0)
-
-    typer.echo(f"Processing {blog_post.slug} ...")
-    page = run_social_for_post(
-        cfg, blog_post, force=force, verify_links=not no_verify_links
-    )
-    if page is None:
-        raise typer.Exit(0)
-    typer.echo(f"\nReview page: {page}")
-    typer.echo(f"Open [[{page_name(blog_post.slug)}]] in Logseq  (syndicator review {blog_post.slug})")
-
-
-@app.command()
-def run(
-    post: list[str] = typer.Option(None, "--post", help="Limit to specific slugs."),
-    try_run: bool = typer.Option(
-        False, "--try-run",
-        help="Do everything for real (incl. LLM calls and social exports) but skip the "
-             "final git commit/push; nothing goes live, blog links in the social "
-             "packages resolve only after a real run pushes the site.",
-    ),
-    force: bool = typer.Option(False, "--force", help="Re-process even unchanged posts."),
-    site_only: bool = typer.Option(False, "--site-only", help="Skip social exports."),
-    social_only: bool = typer.Option(False, "--social-only", help="Skip the website pipeline."),
-) -> None:
-    """Full pipeline for new/changed posts: hugo, translate, journey map, push, social."""
-    from .config import load_config
-    from .pipeline import run_all
-
-    cfg = load_config()
-    run_all(
-        cfg,
-        slugs=post or None,
-        try_run=try_run,
-        force=force,
-        site_only=site_only,
-        social_only=social_only,
-    )
-
-
-@app.command()
-def watch() -> None:
-    """Daemon mode: watch the Logseq graph and run the pipeline on changes."""
-    from .config import load_config
-    from .watch import watch as run_watch
-    from .pipeline import run_all
-
-    cfg = load_config()
-    run_watch(cfg, lambda: run_all(cfg))
-
-
-@app.command()
-def parity() -> None:
-    """Compare freshly rendered source-language bundles against the live site repo."""
-    from .config import load_config
-    from .pipeline import run_parity
-
-    cfg = load_config()
-    checks = run_parity(cfg)
-    diffs = 0
-    for check in checks:
-        if check.status == "missing":
-            typer.echo(f"  MISSING {check.slug} ({check.index_name})")
-            diffs += 1
-        elif check.status == "diff":
-            typer.echo(f"  DIFF    {check.slug} (source changed since last conversion)")
-            diffs += 1
-        else:
-            typer.echo(f"  OK      {check.slug}")
-    typer.echo(f"\n{len(checks) - diffs}/{len(checks)} bundles identical to a fresh render.")
-
-
-@app.command()
-def review(
-    slug: str = typer.Argument(None, help="Post slug (default: most recently generated)."),
-) -> None:
-    """Open the review page of a post in Logseq."""
-    import subprocess
-    import sys
-    from urllib.parse import quote
-
-    from .config import load_config
-    from .state import ReviewStore, page_name
-
-    cfg = load_config()
-    store = ReviewStore(cfg.pages_dir)
-    if slug:
-        if not store.exists(slug):
-            typer.echo(f"No review page for {slug} at {store.path_for(slug)}")
-            raise typer.Exit(1)
-    else:
-        states = [s for s in store.all() if s.posts]
-        if not states:
-            typer.echo("No review pages with social posts yet — run `syndicator catchup` first.")
-            raise typer.Exit(1)
-        states.sort(key=lambda s: s.slug)
-        slug = states[-1].slug
-
-    graph = cfg.local.saillog_dir.name
-    url = f"logseq://graph/{graph}?page={quote(page_name(slug), safe='')}"
-    typer.echo(f"Opening {url}")
-    opener = "open" if sys.platform == "darwin" else "xdg-open"
-    subprocess.run([opener, url], check=False)
-
-
-@app.command()
-def check() -> None:
-    """Validate configuration and required tools."""
-    import shutil
-
-    from .config import load_config
-
-    cfg = load_config()
-    problems: list[str] = []
-
-    for label, path in [
-        ("saillog_dir", cfg.local.saillog_dir),
-        ("journals", cfg.journals_dir),
-        ("pages", cfg.pages_dir),
-        ("sailingnomads_dir", cfg.local.sailingnomads_dir),
-        ("hugo posts dir", cfg.hugo_posts_dir),
-    ]:
-        status = "ok" if path.exists() else "MISSING"
-        if not path.exists():
-            problems.append(label)
-        typer.echo(f"  {label:20s} {status:8s} {path}")
-
-    for tool in ["ffmpeg", "git"]:
-        found = shutil.which(tool)
-        if not found:
-            problems.append(tool)
-        typer.echo(f"  {tool:20s} {'ok' if found else 'MISSING'}")
-
-    import os
-
-    typer.echo(f"  {'OPENAI_API_KEY':20s} {'ok' if os.environ.get('OPENAI_API_KEY') else 'MISSING'}")
-
-    if problems:
-        typer.echo(f"\nProblems: {', '.join(problems)}")
+    for slug in report.done:
+        typer.echo(f"  done      {slug}")
+    for slug in report.skipped_marked:
+        typer.echo(f"  skipped   {slug} (already syndicated)")
+    for slug in report.skipped_no_header:
+        typer.echo(f"  no-header {slug} (add a header:: image)")
+    for slug, reason in report.failed:
+        typer.echo(f"  FAILED    {slug}: {reason}")
+    if report.failed:
         raise typer.Exit(1)
-    typer.echo("\nAll good.")
+
+
+@app.command()
+def redeploy(
+    post: str = typer.Option(..., "--post", help="Post slug to redeploy (site only)."),
+) -> None:
+    """Force a site-only redeploy of one post (re-render + re-translate + commit).
+
+    No social drafts, no marker changes. Use this to recover from a site async
+    failure or to push a site-only content edit.
+    """
+    from .config import load_config
+    from .pipeline import redeploy as run_redeploy
+
+    cfg = load_config()
+    run_redeploy(cfg, slug=post)
+    typer.echo(f"  redeploy  {post} (site rebuild handed off)")
 
 
 if __name__ == "__main__":

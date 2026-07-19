@@ -15,8 +15,6 @@ parity by joining blocks with blank lines.
 
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 import re
 from pathlib import Path
@@ -208,16 +206,6 @@ def extract_posts(source_path: Path) -> list[BlogPost]:
         posts.append(BlogPost(meta=_parse_meta(meta_lines), blocks=blocks, source_path=source_path))
 
     return posts
-
-
-def source_hash(post: BlogPost) -> str:
-    """Content hash of a post; stable across files and runs."""
-    payload = {
-        "meta": post.meta.model_dump(),
-        "blocks": [b.raw for b in post.blocks],
-    }
-    digest = hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
-    return f"sha256:{digest}"
 
 
 def scan_blog_posts(journals_dir: Path, pages_dir: Path, online_only: bool = True) -> list[BlogPost]:

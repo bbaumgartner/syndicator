@@ -1,9 +1,15 @@
 """journeymap node: wrap the proven Go tools from logseq-to-hugo-converter.
 
-``cmd/journeymap`` scans journals for current-position:: entries and writes
-data/journey.json; ``cmd/animatemap`` renders static/journey-map.mp4. Both
-are deterministic and battle-tested — we build them once and call them as
+``cmd/journeymap`` scans journals for current-position:: entries and writes a
+``journey.json``; ``cmd/animatemap`` renders ``journey-map.mp4``. Both are
+deterministic and battle-tested — we build them once and call them as
 subprocesses instead of porting them.
+
+v2 (n8n migration): the map is generated **once per invocation** into the
+staging work dir and uploaded over SFTP; n8n commits it. ``journey.json`` is an
+intermediate artifact (the site never reads it) and is written to a temp dir, no
+longer committed. The render is deterministic, so re-committing the byte-identical
+``journey-map.mp4`` every publish causes no repo bloat.
 """
 
 from __future__ import annotations
@@ -11,6 +17,7 @@ from __future__ import annotations
 import logging
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from ..config import Config
@@ -54,34 +61,36 @@ def _resolve_binary(cfg: Config, name: str, configured: str) -> list[str] | None
     return None
 
 
-def generate_journey_map(cfg: Config) -> bool:
-    """Regenerate data/journey.json and static/journey-map.mp4 in the site repo."""
-    journey_json = cfg.local.sailingnomads_dir / "data" / "journey.json"
-    journey_mp4 = cfg.local.sailingnomads_dir / "static" / "journey-map.mp4"
+def generate_journey_map(cfg: Config, out_mp4: Path) -> bool:
+    """Render journey-map.mp4 to ``out_mp4``. Returns True when the file exists.
 
+    ``journey.json`` is written to a temp dir (intermediate only). When no
+    journey positions are found, no mp4 is produced and this returns False.
+    """
     jm = _resolve_binary(cfg, "journeymap", cfg.local.journeymap_bin)
     am = _resolve_binary(cfg, "animatemap", cfg.local.animatemap_bin)
     if jm is None or am is None:
         return False
 
     cwd = cfg.local.converter_repo_dir if jm[0] == "go" or am[0] == "go" else None
+    out_mp4.parent.mkdir(parents=True, exist_ok=True)
     try:
-        journey_json.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(
-            jm + [str(cfg.journals_dir), str(journey_json)],
-            check=True, capture_output=True, text=True, cwd=cwd,
-        )
-        if not journey_json.exists():
-            log.info("no journey positions found — skipping animation")
-            return True
-        journey_mp4.parent.mkdir(parents=True, exist_ok=True)
-        result = subprocess.run(
-            am + [str(journey_json), str(journey_mp4)],
-            check=True, capture_output=True, text=True, cwd=cwd,
-        )
-        if result.stdout.strip():
-            log.info("animatemap: %s", result.stdout.strip().splitlines()[-1])
-        return True
+        with tempfile.TemporaryDirectory() as tmp:
+            journey_json = Path(tmp) / "journey.json"
+            subprocess.run(
+                jm + [str(cfg.journals_dir), str(journey_json)],
+                check=True, capture_output=True, text=True, cwd=cwd,
+            )
+            if not journey_json.exists():
+                log.info("no journey positions found — skipping animation")
+                return False
+            result = subprocess.run(
+                am + [str(journey_json), str(out_mp4)],
+                check=True, capture_output=True, text=True, cwd=cwd,
+            )
+            if result.stdout.strip():
+                log.info("animatemap: %s", result.stdout.strip().splitlines()[-1])
+        return out_mp4.exists()
     except subprocess.CalledProcessError as err:
         log.error("journey map generation failed: %s\n%s", err, err.stderr)
         return False

@@ -1,6 +1,17 @@
 # Syndicator v2 — n8n Migration Design
 
-**Status:** approved design, not yet implemented. Agreed 2026-07-13.
+**Status:** implementation in progress. Agreed 2026-07-13. As of 2026-07-18:
+Phases 1–3 and 5 are done — the local trigger (`syndicate`/`redeploy`), the
+media/transport/contract code and the docs are on the `n8n-migration` branch,
+and the three n8n workflows (`Syndicator Error`, `Blog Post Publish`,
+`Reel Publish`) are **created inactive** via the MCP server. **Owner still to
+do (Phase 4 + wiring):** publish `Syndicator Error` and set it as
+`settings.errorWorkflow` on the other two; select the `GitHub account`
+credential on the six GitHub HTTP Request nodes in `Blog Post Publish` (not
+auto-assigned); smoke-test each workflow; activate the production webhooks and
+copy their URLs into `syndicator.yaml`; hand-seed `syndicated-at::` on existing
+online posts; then run the first real batch. Mark this doc *implemented* once
+that is done in production.
 **Audience:** the implementing LLM session / developer. This document is
 self-contained: all decisions are final unless marked as a *spike*, and the
 rejected alternatives are listed so they are not re-proposed.

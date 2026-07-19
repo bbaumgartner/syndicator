@@ -147,29 +147,13 @@ class BlogPost(BaseModel):
         header = self.header_media
         return ([header] if header else []) + media
 
+    def videos(self) -> list[MediaRef]:
+        """Content videos in document order (one /reel per video)."""
+        return [b.media for b in self.blocks if b.media is not None and b.media.kind == "video"]
 
-# --- social models ---------------------------------------------------------
-
-
-PostFormat = Literal["single", "reel", "carousel"]
-
-
-class PostIntent(BaseModel):
-    """One planned social media post (before caption generation)."""
-
-    channel: str
-    index: int  # order within the campaign for this channel
-    kind: Literal["intro", "section"]
-    format: PostFormat = "single"  # reel/carousel when a section yields multiple posts
-    section_index: int | None = None  # index into BlogPost.sections
-    section_title: str | None = None
-    media: list[MediaRef] = []
-    suggested_date: str = ""  # ISO date suggestion for manual posting
-
-
-class SocialDraft(BaseModel):
-    """LLM-generated caption for one PostIntent."""
-
-    text: str
-    hashtags: list[str] = []
-    location: str = ""  # Facebook location tag suggestion; empty when unknown
+    def section_for_block(self, media: MediaRef) -> Section | None:
+        """The derived section a given media reference belongs to."""
+        for section in self.sections:
+            if media in section.media:
+                return section
+        return None

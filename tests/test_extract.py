@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from syndicator.nodes.extract import extract_posts, scan_blog_posts, source_hash
+from syndicator.nodes.extract import extract_posts, scan_blog_posts
 
 FIXTURES = Path(__file__).parent / "fixtures"
 JOURNALS = FIXTURES / "journals"
@@ -130,14 +130,6 @@ def test_header_media_resolution():
     header = post.header_media
     assert header is not None
     assert header.filename == "alex-lachen_1781168210193_0.jpg"
-
-
-def test_source_hash_stability_and_sensitivity():
-    a = post_by_slug("2026-05-19_Charly_Superstar")
-    b = post_by_slug("2026-05-19_Charly_Superstar")
-    assert source_hash(a) == source_hash(b)
-    b.blocks[0].raw += " geändert"
-    assert source_hash(a) != source_hash(b)
 
 
 def test_scan_skips_posts_without_date_or_title(tmp_path: Path):

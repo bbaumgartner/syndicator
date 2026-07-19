@@ -227,6 +227,22 @@ def probe_video(path: Path) -> dict:
     }
 
 
+def extract_cover_frame(video: Path, out_path: Path) -> Path:
+    """Write the opening frame of a video as a JPEG cover (reel vision caption)."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-v", "error",
+            "-i", str(video),
+            "-frames:v", "1", "-q:v", "2",
+            str(out_path),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return out_path
+
+
 def adapt_video(
     src: Path,
     spec: VideoSpec,

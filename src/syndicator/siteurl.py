@@ -1,22 +1,17 @@
-"""Compute and verify live post URLs on the Hugo site.
+"""Compute post URLs on the Hugo site.
 
 Hugo lowercases and sanitizes bundle directory names into URL paths
-(MakePathSanitized). We approximate that rule, verify with a HEAD request
-and fall back to scanning the RSS feed when the guess is wrong.
+(MakePathSanitized). We approximate that rule to build the ``post_url`` that
+ships in the webhook payloads. v2 does not verify liveness locally (there is no
+review gate any more); the URL is computed and trusted.
 """
 
 from __future__ import annotations
 
-import logging
-import re
 import unicodedata
-from urllib.parse import quote, unquote
-
-import httpx
+from urllib.parse import quote
 
 from .config import Config
-
-log = logging.getLogger(__name__)
 
 _KEEP_CATEGORIES = ("L", "N", "M")  # letters, numbers, marks (e.g. U+FE0F)
 _KEEP_CHARS = set("-._")
@@ -38,49 +33,3 @@ def lang_prefix(cfg: Config, lang: str) -> str:
 def post_url(cfg: Config, slug: str, lang: str) -> str:
     segment = quote(hugo_path_segment(slug))
     return f"{cfg.shared.site.base_url}{lang_prefix(cfg, lang)}/posts/{segment}/"
-
-
-def _rss_lookup(cfg: Config, slug: str, lang: str) -> str | None:
-    feed_url = f"{cfg.shared.site.base_url}{lang_prefix(cfg, lang)}/index.xml"
-    try:
-        resp = httpx.get(feed_url, timeout=20, follow_redirects=True)
-        resp.raise_for_status()
-    except httpx.HTTPError as err:
-        log.warning("RSS lookup failed (%s): %s", feed_url, err)
-        return None
-
-    links = re.findall(r"<link>([^<]+)</link>", resp.text)
-
-    # Exact match on the sanitized slug segment first: a date-prefix match
-    # alone would pick an arbitrary post when several share the same date.
-    expected = f"/posts/{hugo_path_segment(slug)}"
-    for link in links:
-        if unquote(link).lower().rstrip("/").endswith(expected):
-            return link
-
-    date_part = slug.split("_", 1)[0]
-    for link in links:
-        if f"/posts/{date_part}_" in unquote(link) or f"/posts/{date_part}_" in link:
-            return link
-    return None
-
-
-def url_is_live(url: str) -> bool:
-    try:
-        resp = httpx.head(url, timeout=20, follow_redirects=True)
-        return resp.status_code == 200
-    except httpx.HTTPError:
-        return False
-
-
-def resolve_post_url(cfg: Config, slug: str, lang: str, verify: bool = True) -> str:
-    candidate = post_url(cfg, slug, lang)
-    if not verify:
-        return candidate
-    if url_is_live(candidate):
-        return candidate
-    from_rss = _rss_lookup(cfg, slug, lang)
-    if from_rss:
-        return from_rss
-    log.warning("could not verify live URL for %s (%s) — using computed URL", slug, candidate)
-    return candidate

@@ -4,7 +4,6 @@ from pathlib import Path
 
 from syndicator.config import Config, LocalConfig, SharedConfig
 from syndicator.llm import LLMClient
-from syndicator.model import SocialDraft
 
 FIXTURES = Path(__file__).parent / "fixtures"
 REEL_VIDEO_45 = {"aspect": "4:5", "width": 1080, "height": 1350, "max_seconds": 90, "pad_mode": "crop"}
@@ -23,14 +22,11 @@ class FakeLLM(LLMClient):
 
     def complete_structured(self, node, model, system, user_content, schema, temperature=None):
         self.calls += 1
-        if schema is SocialDraft:
-            location = "Corfu, Greece" if node in ("caption_facebook", "caption_instagram") else ""
-            return SocialDraft(text=f"[fake {node}]", hashtags=["#sailing"], location=location)
-        return schema()
+        return schema()  # e.g. CropFocus() -> centered focus
 
 
 def make_cfg(tmp_path: Path) -> Config:
-    """Config with a temp saillog (populated from fixtures) and a temp Hugo site."""
+    """Config with a temp saillog (populated from fixtures)."""
     saillog = tmp_path / "saillog"
     (saillog / "journals").mkdir(parents=True)
     (saillog / "pages").mkdir(parents=True)
@@ -39,40 +35,42 @@ def make_cfg(tmp_path: Path) -> Config:
     for f in (FIXTURES / "pages").glob("*.md"):
         (saillog / "pages" / f.name).write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
 
-    site = tmp_path / "site"
-    (site / "content" / "posts").mkdir(parents=True)
-
     shared = SharedConfig.model_validate(
         {
-            "site": {"base_url": "https://example.org"},
+            "site": {"base_url": "https://example.org", "default_language": "en"},
+            "sftp": {"host": "staging.example", "port": 22, "user": "sftp", "base_dir": "/syndicator"},
+            "webhooks": {
+                "publish_url": "https://n8n.example/webhook/publish",
+                "reel_url": "https://n8n.example/webhook/reel",
+            },
             "channels": {
                 "hugo": {
                     "kind": "site",
                     "image": {"mode": "copy"},
                     "video": {"aspect": "16:9", "width": 1920, "height": 1080, "pad_mode": "crop"},
                 },
-                "facebook": {"kind": "social", "reel_video": REEL_VIDEO_45, "supports_location": True},
+                "facebook": {
+                    "kind": "social",
+                    "image": {"mode": "convert", "max_edge": 2048},
+                    "video": {"max_seconds": 240},
+                    "reel_video": {"aspect": "4:5", "width": 1080, "height": 1350, "max_seconds": 240, "pad_mode": "crop"},
+                },
                 "instagram": {
                     "kind": "social",
-                    "link_mode": "bio",
                     "image": {"mode": "convert", "aspect": "4:5", "width": 1080, "height": 1350},
                     "video": {"aspect": "4:5", "width": 1080, "height": 1350, "max_seconds": 90, "pad_mode": "crop"},
                     "reel_video": REEL_VIDEO_45,
-                    "fallback_to_header": True,
-                    "supports_location": True,
                 },
                 "x": {
                     "kind": "social",
-                    "max_media_per_post": 4,
-                    "max_chars": 280,
-                    "video_exclusive": True,
+                    "image": {"mode": "convert", "max_edge": 2048},
+                    "video": {"max_seconds": 140},
+                    "reel_video": {"aspect": "4:5", "width": 1080, "height": 1350, "max_seconds": 140, "pad_mode": "crop"},
                 },
-                "substack": {"kind": "article", "enabled": False},
-                "medium": {"kind": "article", "enabled": False},
             },
         }
     )
-    local = LocalConfig(saillog_dir=saillog, sailingnomads_dir=site)
+    local = LocalConfig(saillog_dir=saillog, sftp_key=tmp_path / "sftp_key")
     return Config(shared=shared, local=local, repo_root=tmp_path)
 
 
