@@ -150,7 +150,7 @@ def stage_reels(
             index=index,
             alt=video.alt or (video.source_path.name if video.source_path else ""),
             section_title=(section.title or "") if section else "",
-            section_text="\n\n".join(section.texts) if section else "",
+            section_text=post.section_text_for_video(video),
         )
         try:
             duration = probe_video(video.source_path)["duration"]

@@ -242,7 +242,12 @@ no marker is set. In batch `syndicate` the offending post is reported and
 skipped; the others continue. The author adds a header and re-runs.
 
 **`POST /reel`** — one call per video in the post (independent of /publish).
-`files.reels` and `files.covers` are **always keyed by platform**. Identical
+`video.section_text` is the prose surrounding the clip (the run of text
+paragraphs directly above **and** below it, bounded by any title or other
+media), with a `[VIDEO]` marker inserted where the video sits — the describing
+sentence may be written above *or* below the clip, so the LLM is given both plus
+its position rather than guessing. `files.reels` and `files.covers` are
+**always keyed by platform**. Identical
 path strings mean a shared file (allowed when full `VideoSpec` adapts
 coincide — e.g. source ≤ 90 s); different paths mean distinct adapts (e.g.
 IG 90 s trim vs longer FB). Example when all three share:
