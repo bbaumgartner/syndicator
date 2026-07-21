@@ -6,13 +6,17 @@ Publish pipeline for [sailingnomads.ch](https://www.sailingnomads.ch).
 only component that reads the private [Logseq](https://logseq.com) diary. It
 extracts `type:: blog` + `status:: online` posts, adapts their media locally
 (ffmpeg + Pillow), uploads everything to an SFTP staging area, and fires two
-n8n webhooks. Everything else — translation, the Hugo render, the multilingual
-GitHub commit, captions and the social drafts — runs in **three stateless n8n
-workflows**. Social posts land as **Postiz drafts**; the human edits captions
-and schedules them in the Postiz calendar.
+n8n webhooks. Translation, the Hugo render, captions and the social drafts run
+in **three stateless n8n workflows**. Hugo-ready output mirrors the repository
+under `/syndicator/sailingnomads/`, from where the owner fetches it into the
+site checkout and commits by hand (the push deploys the site). Social posts land
+as **Postiz drafts**; the human edits captions and schedules them in the
+Postiz calendar.
 
 ```
-Logseq  →  syndicate (local)  →  SFTP staging  →  n8n  →  GitHub (site) + Postiz (drafts)
+Logseq  →  syndicate (local)  →  SFTP staging  →  n8n  →  Postiz (drafts)
+                                       ↓ /sailingnomads/
+                               fetch + git push  →  GitHub (site deploy)
 ```
 
 - **1 intro post per blog post** per platform (header image + English summary).
@@ -43,6 +47,8 @@ Requirements:
 - `ffmpeg` and `go` (the journeymap/animatemap tools are built/run from the
   converter repo referenced in `config.local.yaml`).
 - The Syncthing-synced Logseq graph (`saillog_dir`).
+- A local clone of the Hugo site repo with push access — the site commit is a
+  manual step in that checkout.
 - An SSH key for the chrooted `sftp` staging user (`sftp_key`), reachable at
   the host in `syndicator.yaml` (`sftp.host`).
 - The two n8n production webhook URLs, filled into `syndicator.yaml`
@@ -72,7 +78,25 @@ Already-marked posts are skipped (re-running would create duplicate drafts). A
 featured image and the intro posts are built from the header crops.
 
 `redeploy` ignores the marker and re-runs the site only (`flags.redeploy: true`
-→ n8n re-renders, re-translates and commits, but creates no drafts).
+→ n8n overwrites the Hugo files in the mirrored staging tree, but creates no
+drafts).
+
+The second half of a publish is **manual by design**. The complete Hugo tree is
+already laid out on SFTP like the repository:
+
+```text
+/syndicator/sailingnomads/
+├── content/posts/<slug>/
+│   ├── index.de.md
+│   ├── index.en.md
+│   ├── …
+│   └── <all post media>
+└── static/journey-map.mp4
+```
+
+Fetch `/syndicator/sailingnomads/` recursively into the existing
+`/Users/benno/git/sailingnomads/` checkout, review `git diff`, then commit and
+push. There is no manifest or rearranging step.
 
 ## Daily workflow
 
@@ -80,8 +104,10 @@ featured image and the intro posts are built from the header crops.
 
 1. Write in Logseq as usual, add a `header::` image, set `status:: online`.
 2. Run `uv run syndicator syndicate` (optionally `--post <slug>`).
-3. The site goes live via the GitHub push; intro + reel **drafts** appear in
-   the **Postiz calendar**.
+3. Once n8n has finished (a few minutes), fetch
+   `/syndicator/sailingnomads/` into the local `sailingnomads` checkout,
+   review, commit and push — that takes the site live. Intro + reel **drafts**
+   appear in the **Postiz calendar**.
 4. In Postiz: edit captions if needed, tag locations, and **schedule** each
    draft. Nothing reaches a platform until you schedule it there.
 
@@ -97,10 +123,11 @@ workflows respond early and run async). Recovery depends on the failure class:
 
 - **Handoff failure** (a webhook never returns `accepted` after 3 local
   retries): no marker is written, so the next `syndicate` re-runs the post.
-  Duplicates are harmless (the site commit is idempotent; delete duplicate
+  Duplicates are harmless (the site staging is idempotent; delete duplicate
   drafts by hand).
-- **Site async failure** (render / translate / commit in n8n): run
-  `redeploy --post <slug>` — it ignores the marker and rebuilds the site only.
+- **Site async failure** (render / translate in n8n): run
+  `redeploy --post <slug>` — it ignores the marker and overwrites that post in
+  the mirrored Hugo staging tree.
 - **Social async failure** (Postiz drafts): no CLI path by design. Re-run the
   failed execution in n8n (the failure email carries the execution URL) or fix
   the draft directly in Postiz.

@@ -28,8 +28,9 @@ Syndicator picks these up and produces everything "publishing" means for this
 blog:
 
 - a **multilingual Hugo site** (`en`/`de`/`es`/`fr`/`it` + pirate), rendered
-  and translated **in n8n** and pushed as **one commit** to GitHub `main`
-  (which triggers the existing deploy);
+  and translated **in n8n**, staged back to the SFTP area, and committed to
+  GitHub `main` **by hand** from the owner's site checkout (the push triggers
+  the existing deploy);
 - an animated **journey map** (generated **locally** by Go tools, shipped as
   `journey-map.mp4`);
 - **social drafts** — one intro post per blog post and one reel per video, per
@@ -40,8 +41,9 @@ reaches a platform until scheduled there. There is no Logseq review page, no
 content hashing, no scheduled-slot automation.
 
 The system is operated through **one driver**: a CLI with two commands,
-`syndicate` and `redeploy`. The daemon and all review/state commands were
-removed.
+`syndicate` and `redeploy` — plus one deliberate manual step: fetching the
+staged site output from SFTP and committing it to the site repo. The daemon
+and all review/state commands were removed.
 
 ### 1.2 Quality Goals
 
@@ -66,9 +68,9 @@ removed.
 | Constraint | Consequence |
 |---|---|
 | n8n Cloud today, self-hostable later | No env vars, no shell/ffmpeg, no persistent disk; the FTP node is a client; binary ops must be sequenced for memory. Workflows must not rely on Cloud-only features. |
-| Media transport via SFTP staging | n8n downloads media the local side staged; nobody deletes automatically (files are shared across independent executions). |
+| Media transport via SFTP staging | The Hugo output mirrors the repository below `/syndicator/sailingnomads/`; social-only files stay below `/syndicator/<slug>/`. Nobody deletes automatically. |
 | Local media adaptation | ffmpeg/Pillow (and the crop-focus vision model) stay local; n8n cannot run ffmpeg. |
-| One commit per publish | The Hugo site is committed via the GitHub Git Data API (blobs → tree → commit → ref) so a publish is a single deploy. |
+| One commit per publish | The owner fetches the staged post from SFTP into the site checkout and commits/pushes by hand, so a publish is a single deploy. n8n has no GitHub access and never touches a site binary. |
 | URL-as-secret webhooks | The two webhook URLs are the only auth; keep them out of the public. |
 | Runs from a checkout | Local prompts, shared config and tool binaries are resolved relative to the repo; run via `uv run syndicator …`. Mac-first, Linux-compatible. |
 
@@ -83,7 +85,7 @@ owns the remaining edges.
 
 ```mermaid
 flowchart LR
-    Author["Author\n(writes; reviews in Postiz)"]
+    Author["Author\n(writes; reviews in Postiz;\ncommits the site)"]
     Graph[("Logseq graph\n(content source — an Edge)")]
     SYN["Local trigger\n(extract · media_adapt · journeymap · SFTP · webhooks)"]
     S[("SFTP staging\n(owner's server)")]
@@ -96,8 +98,9 @@ flowchart LR
     Graph --> SYN
     SYN -->|upload| S
     SYN -->|POST /publish, /reel| N8N
-    N8N -->|FTP download| S
-    N8N -->|Git Data API| GH
+    N8N -->|FTP download headers/covers,\nwrite Hugo indexes| S
+    S -->|"manual fetch"| Author
+    Author -->|"git commit + push"| GH
     N8N -->|upload + draft| PZ
     PZ --> Author
     Author -->|schedule| Platforms
@@ -130,14 +133,21 @@ outputs*, all deterministic except the crop-focus vision assist:
 - `webhook` — POSTs with retries; expects `{"status":"accepted"}`.
 - `marker` — writes `syndicated-at::` after all webhooks were accepted.
 
+The last leg — SFTP staging → site repo — is a **manual step by design**: the
+owner recursively fetches `/syndicator/sailingnomads/` into the existing site
+checkout, reviews the diff, commits and pushes. The SFTP subtree already has
+the exact Hugo layout, so no manifest or file rearranging is needed.
+
 **n8n (three stateless workflows).**
 
 - **Blog Post Publish** (`/publish`): respond early → emit the source-language
   Hugo `index` from the structured `blocks` (a thin emitter; no Logseq
   parsing) → translate into every other language (English once, pirate off
-  English, others in parallel) → SFTP-download the media, build **one** commit
-  via the GitHub Git Data API → unless `flags.redeploy`, one Postiz intro
-  draft per platform from the header crops.
+  English, others in parallel) → write the `index.<lang>.md` files directly
+  to `/syndicator/sailingnomads/content/posts/<slug>/` beside the media the
+  local trigger already uploaded → unless `flags.redeploy`, one Postiz intro
+  draft per platform from the header crops. The workflow never downloads or
+  uploads a site binary and has no GitHub access.
 - **Reel Publish** (`/reel`): respond early → per platform SFTP-download the
   cover, write an English vision caption, download the reel, upload to Postiz,
   create one single-channel draft.
@@ -161,6 +171,7 @@ verbatim on both sides, and two small JSON webhook bodies (see
 | Domain model | `model.py` — `BlogPost`, `Section`, `MediaRef`, `Block`, `Meta` |
 | Local nodes | `nodes/` — `extract`, `media_adapt`, `journeymap`, `hugo` (media-rewriting helpers only) |
 | Transport & contracts | `staging.py`, `sftp_upload.py`, `payload.py`, `webhook.py` |
+| Site commit | manual: recursively fetch `/syndicator/sailingnomads/` into the site checkout, then git commit/push |
 | Hand-off state | `marker.py` — the `syndicated-at::` property |
 | Local edge helpers | `siteurl.py` (builds `post_url`) |
 | Configuration | `config.py`: `syndicator.yaml` (shared) + `config.local.yaml` (machine paths, `sftp_key`) |
@@ -168,8 +179,8 @@ verbatim on both sides, and two small JSON webhook bodies (see
 
 ### 5.2 What moved to n8n
 
-Translation, captioning, the Hugo front-matter/render, the site commit and the
-social-plan/export all moved to n8n. The corresponding local modules
+Translation, captioning and the Hugo front-matter/render moved to n8n; the site
+commit is now manual. The corresponding local modules
 (`translate`, `caption`, `social_plan`, `export`, `publish_git`, `backlink`,
 `bootstrap`, `state`, `watch`, `hugo_format`) and the daemon unit were deleted.
 `hugo.py` keeps only the media-rewriting helpers whose output the emitter and
@@ -196,14 +207,19 @@ crop-focus model).
 3. Each workflow responds `{"status":"accepted"}` immediately and continues
    async. Once every webhook for a post was accepted, the trigger writes
    `syndicated-at::`.
-4. n8n commits the site (one GitHub commit → deploy) and creates the Postiz
-   drafts. The author reviews and schedules them in the Postiz calendar.
+4. n8n renders + translates the index files directly into the mirrored Hugo
+   tree and creates the Postiz drafts. The author reviews and schedules the
+   drafts in the Postiz calendar.
+5. The author recursively fetches `/syndicator/sailingnomads/` into the site
+   checkout, reviews the diff, commits and pushes — the push triggers the
+   deploy.
 
 ### 6.2 Redeploy (`redeploy --post`)
 
 Site only: adapt site media + journey map → SFTP → `/publish` with
-`flags.redeploy: true`. n8n re-renders, re-translates and commits; no drafts,
-no marker change.
+`flags.redeploy: true`. n8n re-renders and re-translates directly into the
+mirrored Hugo tree; no drafts, no marker change. The manual fetch + commit
+ships it.
 
 ### 6.3 Failure & recovery
 
@@ -213,7 +229,8 @@ failure class:
 
 - **Handoff failure** — webhook never accepted after 3 retries: no marker, the
   next `syndicate` re-runs the whole post (duplicates are harmless).
-- **Site async failure** — `redeploy --post` rebuilds the site only.
+- **Site async failure** — render/translate failed in n8n:
+  `redeploy --post` re-runs and overwrites that post's staged Hugo files.
 - **Social async failure** — re-run the failed n8n execution (URL in the error
   mail) or fix the draft in Postiz; `syndicate` skips the marked post.
 
@@ -236,8 +253,8 @@ flowchart LR
     C --- G
     C -->|upload| S
     C -->|webhooks| WF
-    WF -->|FTP| S
-    WF -->|Git Data API| GH[("GitHub → deploy")]
+    WF -->|"FTP (read social media, write Hugo indexes)"| S
+    S -->|"manual fetch → git push"| GH[("GitHub → deploy")]
     WF -->|Postiz| PZ["Postiz cloud"]
 ```
 
@@ -255,11 +272,11 @@ flowchart LR
 **Privacy boundary.** Only `type:: blog` + `status:: online` branches leave the
 machine; the local `extract` node is the single enforcement point.
 
-**Idempotency.** SFTP uploads overwrite in place; the GitHub tree uses
-`base_tree` (add/overwrite, never delete) so re-runs converge. The journey map
-render is deterministic, so re-committing it every publish causes no repo bloat.
-Accepted trade-off: orphaned/renamed assets accumulate in the repo (never on
-the live site, which only publishes referenced resources).
+**Idempotency.** SFTP uploads and n8n index writes overwrite the mirrored Hugo
+paths in place, so re-running a publish converges. The journey map render is
+deterministic, so re-committing it every publish causes no repo bloat. Since
+the site commit is a normal git commit in the local checkout, renames and
+deletions are handled like any other site change.
 
 **No change detection.** There is deliberately no hashing. `redeploy` re-runs
 the whole site build (re-translates) by design; the only state is the new-post
@@ -283,7 +300,7 @@ local.
 | 1 | Thin local trigger + n8n workflows | Move heavy lifting off the two-machine Python core; keep only the private diary edge and media adaptation local. |
 | 2 | Postiz cloud for social | Drafts + calendar UI as the human review/schedule surface; open-source exit hatch; no own Meta/X developer apps. |
 | 3 | SFTP staging as media transport | Resumable, no Cloud upload-size cap; n8n downloads, never deletes. |
-| 4 | One GitHub commit via the Git Data API | A publish is one deploy; no shell/clone needed in Cloud. |
+| 4 | Site commit is a manual local step (supersedes: Git Data API commit in n8n) | The SFTP subtree mirrors the Hugo repo: local media uploads and n8n index writes meet under `/syndicator/sailingnomads/`, which can be fetched into the checkout in one operation. Removes the base64-in-RAM blob round-trip and GitHub credential in n8n, and adds a pre-deploy `git diff` gate — at the cost of one manual step. |
 | 5 | Marker = hand-off, not completion | Workflows respond early; out-of-band recovery beats brittle completion callbacks. |
 | 6 | n8n copies of prompts/models are authoritative | No include mechanism in n8n; avoid constant drift with `prompts/`. |
 
@@ -301,9 +318,11 @@ alternatives.
 - **Postiz create budget:** a post costs `3 × (V+1)` `createPost` calls; a
   large first batch can exceed 30/h. The 429 surfaces via the error mail; the
   owner re-runs. Raising limits / node-level backoff is a later step.
-- **Repo bloat from orphans:** `base_tree` never deletes; stale bundle files
-  accumulate (never served). Cleaned by hand if needed.
-- **Staging area growth:** nobody deletes automatically; periodic manual purge.
+- **Publish needs a manual step:** the site is live only after the owner
+  fetches the staged output and pushes. Accepted deliberately — it doubles as
+  the review gate.
+- **Staging area growth:** nobody deletes automatically; periodic manual
+  purge.
 - **Cloud lock-in surface:** kept small (FTP client, HTTP, community Postiz
   node) so a self-hosted n8n move stays feasible.
 
@@ -315,7 +334,7 @@ alternatives.
 |---|---|
 | **Local trigger** | The Python CLI that reads the diary, adapts media, uploads over SFTP and fires the webhooks. The only diary reader. |
 | **Workflow** | One stateless n8n execution graph (Blog Post Publish, Reel Publish, Syndicator Error). |
-| **Staging area** | The chrooted `/syndicator/` SFTP tree; media transport between local and n8n. |
+| **Staging area** | The chrooted `/syndicator/` SFTP tree. `/syndicator/sailingnomads/` mirrors the Hugo checkout; `/syndicator/<slug>/` contains social-only headers, reels and covers. |
 | **`sftp_path`** | A chroot-absolute path passed verbatim to both the uploader and the n8n FTP node. |
 | **Marker** | The `syndicated-at::` property; records hand-off (all webhooks accepted), not completion. |
 | **Intro post** | One per blog post per platform: header crop + English summary caption. |

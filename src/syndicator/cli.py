@@ -61,10 +61,10 @@ def syndicate(
 def redeploy(
     post: str = typer.Option(..., "--post", help="Post slug to redeploy (site only)."),
 ) -> None:
-    """Force a site-only redeploy of one post (re-render + re-translate + commit).
+    """Force a site-only rebuild of one post in the mirrored SFTP tree.
 
     No social drafts, no marker changes. Use this to recover from a site async
-    failure or to push a site-only content edit.
+    failure or to stage a site-only content edit before the manual commit.
     """
     from .config import load_config
     from .pipeline import redeploy as run_redeploy

@@ -17,6 +17,7 @@ from .siteurl import post_url
 
 JOURNEY_MAP_FILENAME = "journey-map.mp4"
 JOURNEY_MAP_REPO_PATH = "static/journey-map.mp4"
+SITE_STAGING_DIR = "sailingnomads"
 
 
 def _base(cfg: Config) -> str:
@@ -24,11 +25,11 @@ def _base(cfg: Config) -> str:
 
 
 def journey_map_remote(cfg: Config) -> str:
-    return f"{_base(cfg)}/{JOURNEY_MAP_FILENAME}"
+    return f"{_base(cfg)}/{SITE_STAGING_DIR}/{JOURNEY_MAP_REPO_PATH}"
 
 
 def site_remote(cfg: Config, slug: str, name: str) -> str:
-    return f"{_base(cfg)}/{slug}/site/{name}"
+    return f"{_base(cfg)}/{SITE_STAGING_DIR}/content/posts/{slug}/{name}"
 
 
 def header_remote(cfg: Config, slug: str, platform: str) -> str:
@@ -92,7 +93,13 @@ def build_site_media(post: BlogPost, cfg: Config, *, include_journey_map: bool =
     slug = post.slug
     out: list[dict] = []
     for _src, dest in bundle_media_plan(post, cfg):
-        out.append({"sftp_path": site_remote(cfg, slug, dest), "bundle_filename": dest})
+        out.append(
+            {
+                "sftp_path": site_remote(cfg, slug, dest),
+                "repo_path": f"content/posts/{slug}/{dest}",
+                "bundle_filename": dest,
+            }
+        )
     if include_journey_map:
         out.append({"sftp_path": journey_map_remote(cfg), "repo_path": JOURNEY_MAP_REPO_PATH})
     return out

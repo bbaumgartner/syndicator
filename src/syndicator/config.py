@@ -7,10 +7,10 @@ Two layers:
 The repo root is located by walking up from this file, so the CLI works from
 any working directory.
 
-v2 (n8n migration): translation, captions, the Hugo render and the site commit
-moved to n8n, so their models/prompts are no longer configured here. What stays
-local: media specs (adaptation), the crop-focus vision model, the SFTP staging
-target and the n8n webhook URLs.
+v2 (n8n migration): translation, captions and the Hugo render moved to n8n;
+the final site commit is manual. Their models/prompts are no longer configured
+here. What stays local: media specs (adaptation), the crop-focus vision model,
+the SFTP staging target and the n8n webhook URLs.
 """
 
 from __future__ import annotations

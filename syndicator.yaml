@@ -2,9 +2,9 @@
 # Machine-specific paths live in config.local.yaml (see config.local.yaml.example).
 #
 # v2 (n8n migration): the local client only extracts the diary, adapts media,
-# uploads over SFTP and fires the n8n webhooks. Translation, captions, the Hugo
-# render and the site commit all live in n8n now, so their prompts/models are no
-# longer configured here.
+# uploads over SFTP and fires the n8n webhooks. Translation, captions and the
+# Hugo render live in n8n; the final site commit is a manual local step. Their
+# prompts/models are no longer configured here.
 
 site:
   title: "Sailing Nomads"
@@ -20,8 +20,9 @@ media:
     enabled: true
     model: gpt-5.4-mini
 
-# SFTP staging area on the owner's server. base_dir is the chroot-absolute base
-# under which every <slug>/ and journey-map.mp4 live; every sftp_path in the
+# SFTP staging area on the owner's server. Hugo-ready output mirrors the site
+# checkout below <base_dir>/sailingnomads/ (content/posts/<slug>/ + static/);
+# social-only files remain below <base_dir>/<slug>/. Every sftp_path in the
 # webhook contracts is chroot-absolute and passed verbatim.
 sftp:
   host: 144.2.110.132

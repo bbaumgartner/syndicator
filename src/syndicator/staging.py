@@ -4,12 +4,15 @@ Adapts a post's media locally into a work directory laid out as the staging
 area expects, and returns the list of (local, remote) uploads plus the
 structured info the payload builders need.
 
-Staging layout under ``<base>/<slug>/``::
+Staging layout::
 
-    site/            site bundle media (images, videos, featured<ext>)
-    header/          social header crops (facebook.jpg, instagram.jpg, x.jpg)
-    reels/<spec>/    reel videos, one dir per distinct effective adapt
-    covers/<spec>/   matching cover frames (same dir naming as reels)
+    <base>/sailingnomads/
+        content/posts/<slug>/   Hugo index files + all bundle media
+        static/journey-map.mp4
+    <base>/<slug>/
+        header/                 social header crops
+        reels/<spec>/           reel videos
+        covers/<spec>/          matching cover frames
 
 Reels/covers are keyed by platform. Local adapts **once per distinct effective
 spec** and reuses one uploaded file across platforms when the adapts coincide

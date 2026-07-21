@@ -2,8 +2,8 @@
 
 The local client is a thin trigger (§3): it extracts the diary, adapts media,
 uploads it over SFTP and fires the n8n webhooks. It holds no state beyond the
-``syndicated-at::`` marker; all heavy lifting (translate, render, commit,
-captions, drafts) happens in n8n.
+``syndicated-at::`` marker; translation, rendering, captions and drafts happen
+in n8n, while the final site commit is manual.
 
 ``syndicate``: for every ``status:: online`` post without a marker (or one
 ``--post``): the global journey map is generated + uploaded once per invocation;
@@ -144,7 +144,7 @@ def _syndicate_one(
 
 
 def redeploy(cfg: Config, slug: str) -> None:
-    """Force a site-only redeploy of one post (re-render + re-translate + commit)."""
+    """Force a site-only rebuild of one post in the mirrored SFTP tree."""
     _check_webhooks(cfg, need_reel=False)
     llm = LLMClient()
     posts = {p.slug: p for p in _scan_online(cfg)}

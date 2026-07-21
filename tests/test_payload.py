@@ -112,7 +112,9 @@ def test_build_blocks_media_sftp_path(tmp_path):
     assert media
     for b in media:
         m = b["media"]
-        assert m["sftp_path"] == f"/syndicator/{post.slug}/site/{m['bundle_filename']}"
+        assert m["sftp_path"] == (
+            f"/syndicator/sailingnomads/content/posts/{post.slug}/{m['bundle_filename']}"
+        )
 
 
 def test_build_site_media_includes_featured_and_journey_map(tmp_path):
@@ -123,11 +125,14 @@ def test_build_site_media_includes_featured_and_journey_map(tmp_path):
     names = [e.get("bundle_filename") for e in site_media]
     assert any(n and n.startswith("featured") for n in names)
     assert site_media[-1] == {
-        "sftp_path": "/syndicator/journey-map.mp4",
+        "sftp_path": "/syndicator/sailingnomads/static/journey-map.mp4",
         "repo_path": "static/journey-map.mp4",
     }
     # Without journey map, the last entry is a real bundle file.
-    assert all(e.get("repo_path") is None for e in build_site_media(post, cfg, include_journey_map=False))
+    assert all(
+        e["sftp_path"] == f"/syndicator/sailingnomads/{e['repo_path']}"
+        for e in build_site_media(post, cfg, include_journey_map=False)
+    )
 
 
 def test_build_publish_payload_shape(tmp_path):

@@ -1,11 +1,11 @@
 """hugo node (v2): the local media-rewriting helpers.
 
-In v2 the Hugo *render* (front matter + index assembly + translation + commit)
-happens in n8n. What stays local is the media rewriting: turning the raw Logseq
-block text into Hugo-ready markdown (flattened bundle basenames, video/youtube
-shortcodes) and computing the bundle media manifest that gets uploaded and
-committed. This module keeps exactly that logic — the ``hugo`` channel is the
-site bundle spec.
+In v2 the Hugo *render* (front matter + index assembly + translation) happens
+in n8n; the final site commit is manual. What stays local is the media
+rewriting: turning raw Logseq block text into Hugo-ready markdown (flattened
+bundle basenames, video/youtube shortcodes) and computing the bundle media
+manifest that gets uploaded. This module keeps exactly that logic — the
+``hugo`` channel is the site bundle spec.
 """
 
 from __future__ import annotations
