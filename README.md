@@ -27,8 +27,7 @@ Logseq  →  syndicate (local)  →  SFTP staging  →  n8n  →  Postiz (drafts
 - Platforms at launch: **Facebook page + Instagram + X**, all via Postiz.
 
 The concepts and boundaries are described in
-[docs/architecture.md](docs/architecture.md); the full migration design and all
-decisions are in [docs/n8n-migration.md](docs/n8n-migration.md). This README
+[docs/architecture.md](docs/architecture.md). This README
 covers operating the local trigger.
 
 ## Setup (local trigger)
