@@ -31,6 +31,11 @@ VIDEO_EXTENSIONS = {
     ".mp4", ".mov", ".avi", ".wmv", ".flv", ".webm", ".mkv", ".m4v", ".mpg", ".mpeg",
 }
 
+# Placeholder inserted into a reel's ``section_text`` at the video's position, so
+# the LLM knows where the clip sits in the surrounding prose — the describing
+# sentence may be written above *or* below the video.
+REEL_VIDEO_MARKER = "[VIDEO]"
+
 MediaKind = Literal["image", "video", "youtube"]
 BlockKind = Literal["title", "media", "youtube", "text"]
 
@@ -147,29 +152,42 @@ class BlogPost(BaseModel):
         header = self.header_media
         return ([header] if header else []) + media
 
+    def videos(self) -> list[MediaRef]:
+        """Content videos in document order (one /reel per video)."""
+        return [b.media for b in self.blocks if b.media is not None and b.media.kind == "video"]
 
-# --- social models ---------------------------------------------------------
+    def section_for_block(self, media: MediaRef) -> Section | None:
+        """The derived section a given media reference belongs to."""
+        for section in self.sections:
+            if media in section.media:
+                return section
+        return None
 
+    def section_text_for_video(
+        self, video: MediaRef, marker: str = REEL_VIDEO_MARKER
+    ) -> str:
+        """Surrounding prose for a video, with ``marker`` at its position.
 
-PostFormat = Literal["single", "reel", "carousel"]
-
-
-class PostIntent(BaseModel):
-    """One planned social media post (before caption generation)."""
-
-    channel: str
-    index: int  # order within the campaign for this channel
-    kind: Literal["intro", "section"]
-    format: PostFormat = "single"  # reel/carousel when a section yields multiple posts
-    section_index: int | None = None  # index into BlogPost.sections
-    section_title: str | None = None
-    media: list[MediaRef] = []
-    suggested_date: str = ""  # ISO date suggestion for manual posting
-
-
-class SocialDraft(BaseModel):
-    """LLM-generated caption for one PostIntent."""
-
-    text: str
-    hashtags: list[str] = []
-    location: str = ""  # Facebook location tag suggestion; empty when unknown
+        Collects the video block together with the run of text blocks directly
+        adjacent to it (above *and* below), bounded by any title or other media
+        block, and renders them in document order with ``marker`` where the
+        video sits. Unlike ``section_for_block(...).texts`` — which only ever
+        captures the paragraph *after* the video — this keeps the describing
+        sentence whether the author wrote it above or below the clip. The intro
+        block is treated as a boundary (it already ships as the post summary).
+        """
+        blocks = self.blocks
+        start = 1 if (blocks and blocks[0].kind == "text") else 0
+        idx = next(
+            (i for i in range(start, len(blocks)) if blocks[i].media is video), None
+        )
+        if idx is None:
+            return marker
+        lo = idx
+        while lo - 1 >= start and blocks[lo - 1].kind == "text":
+            lo -= 1
+        hi = idx
+        while hi + 1 < len(blocks) and blocks[hi + 1].kind == "text":
+            hi += 1
+        parts = [marker if i == idx else blocks[i].raw for i in range(lo, hi + 1)]
+        return "\n\n".join(parts)

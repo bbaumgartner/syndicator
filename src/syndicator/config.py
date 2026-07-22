@@ -6,6 +6,11 @@ Two layers:
 
 The repo root is located by walking up from this file, so the CLI works from
 any working directory.
+
+v2 (n8n migration): translation, captions and the Hugo render moved to n8n;
+the final site commit is manual. Their models/prompts are no longer configured
+here. What stays local: media specs (adaptation), the crop-focus vision model,
+the SFTP staging target and the n8n webhook URLs.
 """
 
 from __future__ import annotations
@@ -14,38 +19,17 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 ChannelKind = Literal["site", "social", "article"]
 
 
-class DeployCheck(BaseModel):
-    timeout_seconds: int = 900
-    poll_seconds: int = 30
-
-
 class SiteConfig(BaseModel):
     title: str = "Sailing Nomads"
     base_url: str
     default_language: str = "en"
-    deploy_check: DeployCheck = DeployCheck()
-
-
-class TranslateConfig(BaseModel):
-    model: str = "gpt-4.1"
-    temperature: float = 0.3
-    pirate_temperature: float = 0.9
-    max_retries: int = 3
-
-
-class SocialConfig(BaseModel):
-    posts_per_week: int = 3
-
-
-class WatchConfig(BaseModel):
-    debounce_seconds: int = 900
 
 
 class CropFocusConfig(BaseModel):
@@ -55,6 +39,18 @@ class CropFocusConfig(BaseModel):
 
 class MediaConfig(BaseModel):
     crop_focus: CropFocusConfig = CropFocusConfig()
+
+
+class SftpConfig(BaseModel):
+    host: str
+    port: int = 22
+    user: str = "sftp"
+    base_dir: str = "/syndicator"
+
+
+class WebhooksConfig(BaseModel):
+    publish_url: str = ""
+    reel_url: str = ""
 
 
 class ImageSpec(BaseModel):
@@ -78,99 +74,25 @@ class VideoSpec(BaseModel):
 class ChannelConfig(BaseModel):
     kind: ChannelKind
     enabled: bool = True
-    delivery: Literal["export", "api", "manual"] = "export"
-    language: str = "en"
-    link_mode: Literal["inline", "bio"] = "inline"
-    max_media_per_post: int = 10
-    max_chars: int | None = None
-    caption_model: str = "gpt-5.5"
     image: ImageSpec = ImageSpec()
     video: VideoSpec = VideoSpec()
-    reel_video: VideoSpec | None = None  # e.g. 4:5 crop for reel-format posts
-    label: str = ""  # review-page display label; empty means capitalize the channel name
-    video_exclusive: bool = False  # a post carries one video (wins) or images only, never mixed
-    fallback_to_header: bool = False  # fall back to the post header image when a part has no media
-    supports_location: bool = False  # export a location:: suggestion on review blocks
-
-
-class LanguageConfig(BaseModel):
-    code: str
-    name: str  # English display name used in prompts, e.g. "Spanish"
-    disclaimer: str  # full translated-by-LLM notice appended to each translation
-
-
-_BUILTIN_LANGUAGES: list[LanguageConfig] = [
-    LanguageConfig(
-        code="en",
-        name="English",
-        disclaimer="---\n\n*This blog post has been automatically translated by a Large Language Model.",
-    ),
-    LanguageConfig(
-        code="de",
-        name="German",
-        disclaimer="---\n\n*Dieser Blogbeitrag wurde automatisch von einem Large Language Model übersetzt.",
-    ),
-    LanguageConfig(
-        code="es",
-        name="Spanish",
-        disclaimer="---\n\n*Esta publicación de blog ha sido traducida automáticamente por un Large Language Model.",
-    ),
-    LanguageConfig(
-        code="fr",
-        name="French",
-        disclaimer="---\n\n*Cet article de blog a été traduit automatiquement par un Large Language Model.",
-    ),
-    LanguageConfig(
-        code="it",
-        name="Italian",
-        disclaimer="---\n\n*Questo post del blog è stato tradotto automaticamente da un Large Language Model.",
-    ),
-    LanguageConfig(
-        code="arrr",
-        name="Pirate Speak",
-        disclaimer="---\n\n*Arrr, this here blog post be rewritten in the tongue o' pirates by a Large Language Model, ye scallywag!*",
-    ),
-]
-
-
-class LanguagesConfig(BaseModel):
-    supported: list[LanguageConfig] = Field(default_factory=lambda: list(_BUILTIN_LANGUAGES))
-
-    def codes(self) -> list[str]:
-        return [lang.code for lang in self.supported]
-
-    def name_for(self, code: str) -> str:
-        """Return the English display name for a language code, falling back to the code itself."""
-        for lang in self.supported:
-            if lang.code == code:
-                return lang.name
-        return code
-
-    def disclaimer_for(self, code: str) -> str:
-        """Return the disclaimer for a language code, falling back to the 'en' entry."""
-        for lang in self.supported:
-            if lang.code == code:
-                return lang.disclaimer
-        for lang in self.supported:
-            if lang.code == "en":
-                return lang.disclaimer
-        return self.supported[0].disclaimer if self.supported else ""
+    reel_video: VideoSpec | None = None  # 4:5 crop for reel-format posts
 
 
 class SharedConfig(BaseModel):
     site: SiteConfig
-    languages: LanguagesConfig = LanguagesConfig()
-    translate: TranslateConfig = TranslateConfig()
-    social: SocialConfig = SocialConfig()
     media: MediaConfig = MediaConfig()
-    watch: WatchConfig = WatchConfig()
+    sftp: SftpConfig
+    webhooks: WebhooksConfig = WebhooksConfig()
     channels: dict[str, ChannelConfig]
 
 
 class LocalConfig(BaseModel):
+    # Logseq graph, synced between machines via Syncthing.
     saillog_dir: Path
-    sailingnomads_dir: Path
-    hugo_posts_subdir: str = "content/posts"
+    # Private key for the chrooted SFTP staging user.
+    sftp_key: Path
+    # Old converter repo: source for the journeymap/animatemap Go tools.
     converter_repo_dir: Path | None = None
     journeymap_bin: str = ""
     animatemap_bin: str = ""
@@ -179,19 +101,9 @@ class LocalConfig(BaseModel):
 class Config(BaseModel):
     shared: SharedConfig
     local: LocalConfig
-    repo_root: Path = Field(default=REPO_ROOT)
+    repo_root: Path = REPO_ROOT
 
     # --- derived paths -------------------------------------------------
-
-    @property
-    def social_assets_dir(self) -> Path:
-        """Adapted social media files, visible to Logseq and synced."""
-        return self.local.saillog_dir / "assets" / "syndicator"
-
-    @property
-    def lock_path(self) -> Path:
-        """Cross-machine pipeline lock (dotfile: synced, ignored by the watcher)."""
-        return self.local.saillog_dir / ".syndicator-lock.json"
 
     @property
     def journals_dir(self) -> Path:
@@ -201,11 +113,8 @@ class Config(BaseModel):
     def pages_dir(self) -> Path:
         return self.local.saillog_dir / "pages"
 
-    @property
-    def hugo_posts_dir(self) -> Path:
-        return self.local.sailingnomads_dir / self.local.hugo_posts_subdir
-
     def social_channels(self) -> dict[str, ChannelConfig]:
+        """Enabled social channels, in YAML order (pyyaml preserves it)."""
         return {
             name: ch
             for name, ch in self.shared.channels.items()
@@ -226,5 +135,8 @@ def load_config(repo_root: Path | None = None) -> Config:
         )
 
     shared = SharedConfig.model_validate(yaml.safe_load(shared_path.read_text()))
-    local = LocalConfig.model_validate(yaml.safe_load(local_path.read_text()))
+    local_raw = yaml.safe_load(local_path.read_text()) or {}
+    if isinstance(local_raw.get("sftp_key"), str):
+        local_raw["sftp_key"] = str(Path(local_raw["sftp_key"]).expanduser())
+    local = LocalConfig.model_validate(local_raw)
     return Config(shared=shared, local=local, repo_root=root)

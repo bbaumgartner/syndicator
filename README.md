@@ -1,123 +1,149 @@
 # Syndicator
 
-Publish pipeline for [sailingnomads.ch](https://www.sailingnomads.ch):
-converts blog posts written in a [Logseq](https://logseq.com) diary into
+Publish pipeline for [sailingnomads.ch](https://www.sailingnomads.ch).
 
-- **Hugo page bundles**, LLM-translated into en/de/es/fr/it + pirate speak,
-- the animated **journey map** on the homepage,
-- **social media posts** (Facebook, Instagram, X): one per blog *section*,
-  with platform-tailored AI captions and platform-adapted media.
+**v2 (n8n migration).** Syndicator is now a **thin local trigger**. It is the
+only component that reads the private [Logseq](https://logseq.com) diary. It
+extracts `type:: blog` + `status:: online` posts, adapts their media locally
+(ffmpeg + Pillow), uploads everything to an SFTP staging area, and fires two
+n8n webhooks. Translation, the Hugo render, captions and the social drafts run
+in **three stateless n8n workflows**. Hugo-ready output mirrors the repository
+under `/syndicator/sailingnomads/`, from where the owner fetches it into the
+site checkout and commits by hand (the push deploys the site). Social posts land
+as **Postiz drafts**; the human edits captions and schedules them in the
+Postiz calendar.
 
-Social posts are reviewed **inside Logseq**: the pipeline generates one review
-page per blog post listing every social post with caption and media. Post
-manually, then flip the block property `status:: draft` to `published` (or run
-`syndicator done`). API posting and an agent mode are later phases.
+```
+Logseq  →  syndicate (local)  →  SFTP staging  →  n8n  →  Postiz (drafts)
+                                       ↓ /sailingnomads/
+                               fetch + git push  →  GitHub (site deploy)
+```
 
-The architecture — pipelines composed of nodes, an orchestrator, CLI and
-daemon drivers, state, Logseq as a replaceable edge — is described in
-[docs/architecture.md](docs/architecture.md). Read it before extending the
-code; this README covers operating the system.
+- **1 intro post per blog post** per platform (header image + English summary).
+- **1 reel per video** in the post (English caption from the cover frame).
+- **Link placement:** Facebook captions include the blog URL; Instagram and X
+  do not (IG can't link in-post, X links hurt reach) — bio CTA instead.
+- Languages on the site: `en` / `de` / `es` / `fr` / `it` + pirate (`arrr`).
+- Platforms at launch: **Facebook page + Instagram + X**, all via Postiz.
 
-## Setup
+The concepts and boundaries are described in
+[docs/architecture.md](docs/architecture.md); the full migration design and all
+decisions are in [docs/n8n-migration.md](docs/n8n-migration.md). This README
+covers operating the local trigger.
 
-One-time, per machine:
+## Setup (local trigger)
+
+One-time, per machine (Mac first; stays Linux-compatible for the server later):
 
 ```bash
-git clone <syndicator-repo> ~/git/syndicator && cd ~/git/syndicator
+git clone git@github.com:bbaumgartner/syndicator.git ~/git/syndicator && cd ~/git/syndicator
 curl -LsSf https://astral.sh/uv/install.sh | sh     # if uv is missing
 uv sync
-cp config.local.yaml.example config.local.yaml      # adjust paths!
-export OPENAI_API_KEY=sk-...
-uv run syndicator check
+cp config.local.yaml.example config.local.yaml      # adjust paths + sftp_key!
 ```
 
-Requirements: `ffmpeg`, `git` (push rights for the sailingnomads clone: SSH
-deploy key or credential helper that works non-interactively), `go` (builds
-the journeymap binaries once into `bin/`), and the Syncthing-synced saillog
-folder.
+Requirements:
 
-On the Ubuntu server, which runs the watch daemon, additionally:
+- `ffmpeg` and `go` (the journeymap/animatemap tools are built/run from the
+  converter repo referenced in `config.local.yaml`).
+- The Syncthing-synced Logseq graph (`saillog_dir`).
+- A local clone of the Hugo site repo with push access — the site commit is a
+  manual step in that checkout.
+- An SSH key for the chrooted `sftp` staging user (`sftp_key`), reachable at
+  the host in `syndicator.yaml` (`sftp.host`).
+- The two n8n production webhook URLs, filled into `syndicator.yaml`
+  (`webhooks.publish_url` / `webhooks.reel_url`) once the workflows are active.
 
-```bash
-echo 'OPENAI_API_KEY=sk-...' > ~/.config/syndicator.env && chmod 600 ~/.config/syndicator.env
-sudo cp deploy/syndicator-watch.service /etc/systemd/system/   # adjust User/paths first
-sudo systemctl daemon-reload
-sudo systemctl enable --now syndicator-watch.service
-```
+No `OPENAI_API_KEY` is needed locally except for the crop-focus vision model
+used by media adaptation (`media.crop_focus`); translation and captions now run
+in n8n with the OpenAI credential stored there.
 
 ## Commands
 
-```bash
-uv run syndicator check                  # validate config, paths and tools
-uv run syndicator status                 # backlog per channel
-uv run syndicator bootstrap              # create review pages for existing posts
-uv run syndicator run [--post SLUG]      # full pipeline for new/changed posts
-uv run syndicator catchup [--post SLUG]  # social posts for the oldest pending post
-uv run syndicator done SLUG [--channel]  # mark as published (same as editing the page)
-uv run syndicator review [SLUG]          # open the review page in Logseq
-uv run syndicator watch                  # daemon mode (normally on the server)
-uv run syndicator parity                 # fresh render vs live repo
-```
-
-Useful variants:
+Only two commands remain:
 
 ```bash
-uv run syndicator run --post <slug> --force      # re-run one post end to end (re-translates)
-uv run syndicator run --site-only                # website only, no social
-uv run syndicator run --try-run                  # everything except commit/push
-uv run syndicator catchup --force --post <slug>  # redo drafts (published stays untouched)
+uv run syndicator syndicate                 # all new online posts (no marker yet)
+uv run syndicator syndicate --post <slug>   # only that post
+uv run syndicator redeploy --post <slug>    # site-only rebuild (re-translates), no drafts
+uv run syndicator version
 ```
 
-## Daily workflows
+`syndicate` per invocation: generate + upload the global journey map once, then
+per post adapt media → SFTP upload → one `/reel` per video → `/publish` → write
+the `syndicated-at::` marker once every webhook returned `{"status":"accepted"}`.
+Already-marked posts are skipped (re-running would create duplicate drafts). A
+`status:: online` post **without a `header::` image is refused** before any work
+(reported and skipped in batch; the others continue) — the site build requires a
+featured image and the intro posts are built from the header crops.
+
+`redeploy` ignores the marker and re-runs the site only (`flags.redeploy: true`
+→ n8n overwrites the Hugo files in the mirrored staging tree, but creates no
+drafts).
+
+The second half of a publish is **manual by design**. The complete Hugo tree is
+already laid out on SFTP like the repository:
+
+```text
+/syndicator/sailingnomads/
+├── content/posts/<slug>/
+│   ├── index.de.md
+│   ├── index.en.md
+│   ├── …
+│   └── <all post media>
+└── static/journey-map.mp4
+```
+
+Fetch `/syndicator/sailingnomads/` recursively into the existing
+`/Users/benno/git/sailingnomads/` checkout, review `git diff`, then commit and
+push. There is no manifest or rearranging step.
+
+## Daily workflow
 
 ### New blog post
 
-Write in Logseq as usual, set `status:: online`. The server daemon picks it
-up (15 min debounce), publishes the site, waits for the Netlify deploy, then
-generates the social post blocks. Review on the Mac in Logseq:
+1. Write in Logseq as usual, add a `header::` image, set `status:: online`.
+2. Run `uv run syndicator syndicate` (optionally `--post <slug>`).
+3. Once n8n has finished (a few minutes), fetch
+   `/syndicator/sailingnomads/` into the local `sailingnomads` checkout,
+   review, commit and push — that takes the site live. Intro + reel **drafts**
+   appear in the **Postiz calendar**.
+4. In Postiz: edit captions if needed, tag locations, and **schedule** each
+   draft. Nothing reaches a platform until you schedule it there.
 
-1. Open the blog post and follow the `syndication::` link (or run
-   `uv run syndicator review`).
-2. Per social post block: copy the caption from the code fence (hover →
-   copy), post manually with the embedded media files
-   (`assets/syndicator/<slug>/...`), ideally around the `publishing-date::`.
-   For Facebook and Instagram, also tag the location shown in `location::`
-   on the block (if present).
-3. Flip `status:: draft` to `published` on the block — that's it. The
-   pipeline reads it on its next run; fully published channels become
-   immutable.
+### Cutover (once)
 
-### Catch-up (old posts, over the next weeks/months)
+Before the first batch `syndicate`, **hand-seed** `syndicated-at::` on every
+already-published `status:: online` post so they are not re-drafted.
 
-```bash
-uv run syndicator status            # backlog per channel
-uv run syndicator catchup           # oldest pending post → review page
-uv run syndicator review <slug>     # open the page in Logseq
-# post manually over the suggested dates, flip status:: per block
-```
+## Failure & recovery
+
+The `syndicated-at::` marker means **handed off**, not **published** (the n8n
+workflows respond early and run async). Recovery depends on the failure class:
+
+- **Handoff failure** (a webhook never returns `accepted` after 3 local
+  retries): no marker is written, so the next `syndicate` re-runs the post.
+  Duplicates are harmless (the site staging is idempotent; delete duplicate
+  drafts by hand).
+- **Site async failure** (render / translate in n8n): run
+  `redeploy --post <slug>` — it ignores the marker and overwrites that post in
+  the mirrored Hugo staging tree.
+- **Social async failure** (Postiz drafts): no CLI path by design. Re-run the
+  failed execution in n8n (the failure email carries the execution URL) or fix
+  the draft directly in Postiz.
+
+The `Syndicator Error` n8n workflow emails every production failure (workflow
+name, error, execution URL); that URL is the entry point for manual recovery.
 
 ## Troubleshooting
 
-- **"pipeline lock held by another machine"**: a run is active on the other
-  machine, or it crashed. The lock expires after 1 h; to clear immediately,
-  delete `<saillog>/.syndicator-lock.json`.
-- **Syncthing conflict files** (`*.sync-conflict-*`) on review pages: rare,
-  but possible when a status edit on the Mac races a pipeline rewrite on the
-  server. Keep the newer file, delete the conflict copy; worst case re-run
-  `syndicator bootstrap` and re-mark the published blocks.
-- **Edited a caption on the review page?** Fine — it survives pipeline runs
-  as long as the blog source does not change. If the source changes, draft
-  blocks are regenerated (your edits are replaced); published blocks are
-  never touched.
-- **Manual notes on a review page** outside the generated blocks can be lost
-  on the next rewrite — treat the page as generated output (status edits and
-  caption tweaks inside the blocks are preserved).
-- **Caption quality/model**: per-channel `caption_model` in
-  `syndicator.yaml`; prompts live in `prompts/caption_*.md`.
-- **Watcher loops or never triggers**: check `journalctl -u syndicator-watch`.
-  It ignores its own write targets (`syndicator___*` pages,
-  `assets/syndicator/`), `.stversions/`, `logseq/bak/` and Syncthing temp
-  files by design.
-- **git push fails from systemd**: the service user needs non-interactive
-  auth for the sailingnomads remote (SSH key without passphrase or
-  credential helper).
+- **Webhook not accepted / timeouts:** check the n8n workflow is active and the
+  URL in `syndicator.yaml` matches the production webhook.
+- **SFTP upload fails:** verify `sftp_key`, `sftp.host`/`sftp.user`, and that
+  the `/syndicator/` base dir exists in the chroot (see the migration doc §8).
+- **Post refused for missing header:** add a `header::` image and re-run.
+- **Caption/model or translation quality:** the cloud prompts and model names
+  live on the n8n OpenAI nodes (authoritative for the cloud steps); the local
+  `prompts/` + `syndicator.yaml` only cover the local crop-focus model.
+- **Staging area fills up:** nobody deletes automatically; purge the SFTP
+  `/syndicator/` tree periodically by hand (e.g. a cron `find -mtime` job).

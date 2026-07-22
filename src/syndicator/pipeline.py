@@ -1,485 +1,187 @@
-"""Pipeline orchestration: wire nodes together, gate and record state.
+"""Pipeline orchestration for the two v2 commands: ``syndicate`` and ``redeploy``.
 
-The orchestrator composes the social pipeline as plain code here:
-``plan -> caption -> media/package -> page write``. It loads the review
-state, plans with the ``social_plan`` node, decides per block what is frozen
-(published content is immutable) versus regenerated, captions with the
-``caption`` node, and hands each intent to the ``export`` node — the
-Logseq-edge writer that adapts media into a package and assembles the review
-block. All conditional logic (channel selection, freezing) lives here, none
-in the nodes.
+The local client is a thin trigger (§3): it extracts the diary, adapts media,
+uploads it over SFTP and fires the n8n webhooks. It holds no state beyond the
+``syndicated-at::`` marker; translation, rendering, captions and drafts happen
+in n8n, while the final site commit is manual.
 
-The social pipeline runs independently of the site pipeline (translate ->
-hugo -> journeymap -> git push). This module also composes the bootstrap and
-parity pipelines as plain orchestrator code. All state lives on the per-post
-review pages inside the Logseq graph (see state.py); the review itself happens
-in Logseq.
+``syndicate``: for every ``status:: online`` post without a marker (or one
+``--post``): the global journey map is generated + uploaded once per invocation;
+then per post — enforce a header, adapt media, SFTP upload, N× ``/reel``,
+``/publish`` (redeploy=false), set the marker once all webhooks are accepted.
 
-All mutating entry points (``run_all``, ``run_social_for_post``,
-``run_bootstrap``, ``mark_channels_published``) serialize on the cross-machine
-lock via the reentrant ``_locked`` wrapper so that, e.g., a ``catchup`` on the
-Mac cannot race the server daemon's ``run_all``.
+``redeploy --post``: site-only re-render (site media + journey map → SFTP →
+``/publish`` with redeploy=true). No social, no marker.
 """
 
 from __future__ import annotations
 
 import logging
-from contextlib import contextmanager
-from datetime import date
+import tempfile
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from .config import Config
 from .llm import LLMClient
-from .model import BlogPost, PostIntent
-from .nodes.backlink import ensure_syndication_link, read_hugo_hash, set_hugo_hash
-from .nodes.caption import compose_post_text, generate_caption, youtube_links
-from .nodes.export import build_post_block, cleanup_channel_assets, package_intent_media
-from .nodes.extract import scan_blog_posts, source_hash
-from .nodes.social_plan import plan_social
-from .siteurl import resolve_post_url
-from .state import PipelineLock, ReviewState, ReviewStore, SocialPostState, short_hash
-
-_FROZEN_STATUSES = ("approved", "scheduled", "published")
+from .marker import is_syndicated, set_syndicated_at
+from .model import BlogPost
+from .nodes.extract import scan_blog_posts
+from .nodes.journeymap import generate_journey_map
+from .payload import (
+    build_publish_payload,
+    build_reel_payload,
+    build_site_media,
+    journey_map_remote,
+)
+from .sftp_upload import SftpUploader, sftp_session
+from .staging import StagedPost, stage_post
+from .webhook import WebhookError, post_webhook
 
 log = logging.getLogger(__name__)
 
-# Module-level reentrant lock depth counter. The process is single-threaded —
-# CLI commands and the watch daemon both run pipelines sequentially — so a plain
-# int is sufficient; no threading.Lock needed.
-_lock_depth: int = 0
-_active_lock: PipelineLock | None = None
-
-
-@contextmanager
-def _locked(cfg: Config):
-    """Reentrant context manager that serializes all mutating pipeline entry points.
-
-    Depth 0 → 1 acquires ``PipelineLock(cfg.lock_path)``, raising
-    ``RuntimeError`` if another machine currently holds the lock.  Nested
-    entries (depth > 0) only bump the counter.  The last exit (depth → 0)
-    releases the lock and removes the lock file.
-
-    Why this wrapper is required instead of a naked ``with PipelineLock(...)``
-    in each function: ``PipelineLock.acquire()`` succeeds for the *same* host
-    even when the file already exists (same-host re-acquire is intentional),
-    and ``release()`` unconditionally deletes the file.  A naively nested pair
-    of ``with PipelineLock(...)`` calls would therefore delete the lock file
-    when the inner ``with`` exits, while the outer scope still believes it holds
-    the lock — silently opening the cross-machine race window for the remainder
-    of the outer call.  The reentrant depth counter prevents that by ensuring
-    exactly one ``PipelineLock`` is live for the duration of the outermost
-    mutating call.
-    """
-    global _lock_depth, _active_lock
-    if _lock_depth == 0:
-        lock = PipelineLock(cfg.lock_path)
-        lock.__enter__()  # raises RuntimeError on conflict with another host
-        _active_lock = lock
-    _lock_depth += 1
-    try:
-        yield
-    finally:
-        _lock_depth -= 1
-        if _lock_depth == 0:
-            assert _active_lock is not None
-            _active_lock.__exit__(None, None, None)
-            _active_lock = None
-
-
-@dataclass(frozen=True)
-class ParityCheck:
-    slug: str
-    index_name: str
-    status: str  # "ok" | "diff" | "missing"
-
 
 @dataclass
-class BootstrapResult:
-    posts: int = 0
-    hugo_in_sync: list[str] = field(default_factory=list)
-    hugo_stale: list[str] = field(default_factory=list)
+class SyndicateReport:
+    done: list[str] = field(default_factory=list)
+    skipped_marked: list[str] = field(default_factory=list)
+    skipped_no_header: list[str] = field(default_factory=list)
+    failed: list[tuple[str, str]] = field(default_factory=list)  # (slug, reason)
 
 
-def make_llm(cfg: Config) -> LLMClient:
-    return LLMClient(max_retries=cfg.shared.translate.max_retries)
+def _scan_online(cfg: Config) -> list[BlogPost]:
+    return scan_blog_posts(cfg.journals_dir, cfg.pages_dir, online_only=True)
 
 
-def make_store(cfg: Config) -> ReviewStore:
-    channel_order = list(cfg.shared.channels)  # pyyaml preserves YAML insertion order
-    channel_labels = {name: ch.label or name.capitalize() for name, ch in cfg.shared.channels.items()}
-    return ReviewStore(cfg.pages_dir, channel_order=channel_order, channel_labels=channel_labels)
+def _has_header(post: BlogPost) -> bool:
+    hm = post.header_media
+    return hm is not None and hm.exists
 
 
-def scan_posts(cfg: Config) -> list[BlogPost]:
-    return scan_blog_posts(cfg.journals_dir, cfg.pages_dir)
+def _upload_all(sftp: SftpUploader, staged: StagedPost) -> None:
+    for up in staged.uploads:
+        sftp.upload(up.local, up.remote)
 
 
-def find_post(cfg: Config, slug: str) -> BlogPost:
-    posts = {p.slug: p for p in scan_posts(cfg)}
+def _check_webhooks(cfg: Config, *, need_reel: bool) -> None:
+    if not cfg.shared.webhooks.publish_url:
+        raise SystemExit("webhooks.publish_url is not configured in syndicator.yaml")
+    if need_reel and not cfg.shared.webhooks.reel_url:
+        raise SystemExit("webhooks.reel_url is not configured in syndicator.yaml")
+
+
+def syndicate(cfg: Config, slug: str | None = None) -> SyndicateReport:
+    """Syndicate new online posts (or one ``--post``)."""
+    _check_webhooks(cfg, need_reel=True)
+    llm = LLMClient()
+    posts = _scan_online(cfg)
+    if slug is not None:
+        posts = [p for p in posts if p.slug == slug]
+        if not posts:
+            raise SystemExit(f"unknown online post slug: {slug}")
+
+    report = SyndicateReport()
+    with tempfile.TemporaryDirectory(prefix="syndicator-") as tmp_root:
+        tmp = Path(tmp_root)
+        jm_path = tmp / "journey-map.mp4"
+        has_journey_map = generate_journey_map(cfg, jm_path)
+
+        with sftp_session(cfg) as sftp:
+            if has_journey_map:
+                sftp.upload(jm_path, journey_map_remote(cfg))
+            for post in posts:
+                _syndicate_one(cfg, llm, sftp, post, tmp, has_journey_map, report)
+
+    _log_report(report)
+    return report
+
+
+def _syndicate_one(
+    cfg: Config,
+    llm: LLMClient,
+    sftp: SftpUploader,
+    post: BlogPost,
+    tmp: Path,
+    has_journey_map: bool,
+    report: SyndicateReport,
+) -> None:
+    slug = post.slug
+    if is_syndicated(post):
+        log.info("skip %s: already syndicated (delete the marker to re-run)", slug)
+        report.skipped_marked.append(slug)
+        return
+    if not _has_header(post):
+        log.warning("skip %s: no header:: image (required — add one and re-run)", slug)
+        report.skipped_no_header.append(slug)
+        return
+
+    try:
+        staged = stage_post(post, cfg, llm, tmp / slug, include_social=True)
+        _upload_all(sftp, staged)
+
+        for sv in staged.videos:
+            if not sv.reels:
+                log.warning("%s: video %d has no reel — skipping /reel", slug, sv.index)
+                continue
+            payload = build_reel_payload(
+                post, cfg,
+                index=sv.index, section_title=sv.section_title,
+                section_text=sv.section_text, alt=sv.alt,
+                reels=sv.reels, covers=sv.covers,
+            )
+            post_webhook(cfg.shared.webhooks.reel_url, payload, label=f"/reel {slug} #{sv.index}")
+
+        site_media = build_site_media(post, cfg, include_journey_map=has_journey_map)
+        publish = build_publish_payload(
+            post, cfg, site_media=site_media, header=staged.header, redeploy=False
+        )
+        post_webhook(cfg.shared.webhooks.publish_url, publish, label=f"/publish {slug}")
+
+        set_syndicated_at(post)
+        report.done.append(slug)
+    except (WebhookError, OSError) as err:
+        log.error("%s: syndication failed — %s (marker not set; will retry next run)", slug, err)
+        report.failed.append((slug, str(err)))
+
+
+def redeploy(cfg: Config, slug: str) -> None:
+    """Force a site-only rebuild of one post in the mirrored SFTP tree."""
+    _check_webhooks(cfg, need_reel=False)
+    llm = LLMClient()
+    posts = {p.slug: p for p in _scan_online(cfg)}
     if slug not in posts:
         known = "\n  ".join(sorted(posts))
-        raise SystemExit(f"unknown post slug: {slug}\nknown posts:\n  {known}")
-    return posts[slug]
+        raise SystemExit(f"unknown online post slug: {slug}\nknown posts:\n  {known}")
+    post = posts[slug]
+    if not _has_header(post):
+        raise SystemExit(f"{slug}: no header:: image — the site build requires a featured image")
 
+    with tempfile.TemporaryDirectory(prefix="syndicator-") as tmp_root:
+        tmp = Path(tmp_root)
+        jm_path = tmp / "journey-map.mp4"
+        has_journey_map = generate_journey_map(cfg, jm_path)
+        staged = stage_post(post, cfg, llm, tmp / slug, include_social=False)
 
-def run_parity(cfg: Config) -> list[ParityCheck]:
-    """Compare fresh source-language renders against the live site repo."""
-    from .hugo_format import index_filename
-    from .nodes.hugo import render_index
+        with sftp_session(cfg) as sftp:
+            if has_journey_map:
+                sftp.upload(jm_path, journey_map_remote(cfg))
+            _upload_all(sftp, staged)
 
-    ch = cfg.shared.channels["hugo"]
-    checks: list[ParityCheck] = []
-    for post in scan_posts(cfg):
-        live = cfg.hugo_posts_dir / post.slug / index_filename(post.meta.language)
-        if not live.exists():
-            checks.append(ParityCheck(post.slug, live.name, "missing"))
-            continue
-        rendered = render_index(post, ch).encode("utf-8")
-        status = "ok" if live.read_bytes() == rendered else "diff"
-        checks.append(ParityCheck(post.slug, live.name, status))
-    return checks
-
-
-def run_bootstrap(cfg: Config) -> BootstrapResult:
-    """Compose bootstrap: scan posts, compare live bundles, and write state."""
-    with _locked(cfg):
-        from .nodes.bootstrap import hugo_bundle_hash
-
-        store = make_store(cfg)
-        posts = scan_posts(cfg)
-        result = BootstrapResult(posts=len(posts))
-
-        for post in posts:
-            state = store.load(post.slug)
-            hugo_hash = hugo_bundle_hash(cfg, post)
-            store.save(state)
-            set_hugo_hash(post, hugo_hash)
-            ensure_syndication_link(post)
-            if hugo_hash:
-                result.hugo_in_sync.append(post.slug)
-            else:
-                result.hugo_stale.append(post.slug)
-
-        return result
-
-
-def mark_channels_published(cfg: Config, slug: str, channels: list[str] | None) -> list[str]:
-    """Mark selected channel blocks on a review page as published."""
-    with _locked(cfg):
-        store = make_store(cfg)
-        if not store.exists(slug):
-            raise ValueError(f"No review page for {slug} — run `syndicator catchup --post {slug}` first.")
-
-        state = store.load(slug)
-        social = list(cfg.social_channels())
-        targets = channels or [c for c in social if state.channel_state(c) == "draft"]
-        if not targets:
-            raise ValueError("Nothing to mark: no draft channels and none given via --channel.")
-
-        for channel in targets:
-            if channel not in social:
-                raise ValueError(f"Unknown channel: {channel}")
-            posts = state.posts_for(channel)
-            if not posts:
-                raise ValueError(
-                    f"  {slug} {channel}: no blocks on review page — flip status:: in Logseq"
-                )
-            for post in posts:
-                post.status = "published"
-
-        store.save(state)
-        return targets
-
-
-def stale_draft_channels(cfg: Config, store: ReviewStore, post: BlogPost) -> list[str]:
-    """Draft channels with blocks generated from an older source version."""
-    state = store.load(post.slug)
-    h = source_hash(post)
-    return [
-        name
-        for name in cfg.social_channels()
-        if state.channel_state(name) == "draft" and state.stale_posts(name, h)
-    ]
-
-
-def social_channels_to_export(cfg: Config, store: ReviewStore, post: BlogPost) -> list[str]:
-    """Channels needing an export: pending ones plus stale drafts.
-
-    Published channels (every block published) are immutable — the posts are
-    live on the platform and cannot be changed, so they are never re-exported
-    (not even with force). Individual published blocks inside a draft channel
-    are frozen by the export node.
-    """
-    state = store.load(post.slug)
-    pending = [name for name in cfg.social_channels() if state.channel_state(name) == "pending"]
-    return pending + stale_draft_channels(cfg, store, post)
-
-
-def next_catchup_post(cfg: Config, store: ReviewStore) -> BlogPost | None:
-    """Oldest post that still has social channels to export."""
-    for post in scan_posts(cfg):  # sorted by date
-        if social_channels_to_export(cfg, store, post):
-            return post
-    return None
-
-
-def _log_social_plan(slug: str, plans: dict[str, list[PostIntent]]) -> None:
-    """Log the social_plan -> caption boundary: one line per planned intent."""
-    for channel, intents in plans.items():
-        for intent in intents:
-            log.info(
-                "plan %s %s #%d: %s/%s, %d media, %s",
-                slug,
-                channel,
-                intent.index,
-                intent.kind,
-                intent.format,
-                len(intent.media),
-                intent.suggested_date or "-",
+            site_media = build_site_media(post, cfg, include_journey_map=has_journey_map)
+            publish = build_publish_payload(
+                post, cfg, site_media=site_media, header={}, redeploy=True
             )
+            post_webhook(cfg.shared.webhooks.publish_url, publish, label=f"/publish redeploy {slug}")
+
+    log.info("redeploy %s: site rebuild handed off (no social, no marker)", slug)
 
 
-def run_social_for_post(
-    cfg: Config,
-    post: BlogPost,
-    llm: LLMClient | None = None,
-    force: bool = False,
-    verify_links: bool = True,
-    start: date | None = None,
-    channels: list[str] | None = None,
-):
-    """Generate social post blocks for one post on its review page.
-
-    Default channel selection: pending plus stale drafts. ``force`` re-exports
-    fresh drafts too. Published blocks are immutable and never regenerated.
-    Returns the review page path, or None when there was nothing to do.
-    """
-    with _locked(cfg):
-        store = make_store(cfg)
-        if channels is None:
-            if force:
-                state = store.load(post.slug)
-                channels = [
-                    name for name in cfg.social_channels()
-                    if state.channel_state(name) != "published"
-                ]
-            else:
-                channels = social_channels_to_export(cfg, store, post)
-        if not channels:
-            log.info("%s: no social channels to export (published is immutable)", post.slug)
-            return None
-
-        llm = llm or make_llm(cfg)
-        state = store.load(post.slug)
-        plans = plan_social(post, cfg, start)
-        plans = {c: intents for c, intents in plans.items() if c in channels}
-        _log_social_plan(post.slug, plans)
-        src_hash = short_hash(source_hash(post))
-
-        links: dict[str, str] = {}
-        page = store.path_for(post.slug)
-        for channel, intents in plans.items():
-            lang = cfg.shared.channels[channel].language
-            if lang not in links:
-                links[lang] = resolve_post_url(cfg, post.slug, lang, verify=verify_links)
-            url = links[lang]
-            posts = _run_channel(cfg, post, llm, state, channel, intents, url, src_hash)
-            cleanup_channel_assets(cfg, post.slug, channel, posts)
-            state.replace_channel_posts(channel, posts)
-            # Record state after each successful channel so a later channel's
-            # failure never discards the finished (paid-for) LLM work above.
-            page = store.save(state)
-
-        log.info("review page written to %s", page)
-        ensure_syndication_link(post)
-        return page
-
-
-def _run_channel(
-    cfg: Config,
-    post: BlogPost,
-    llm: LLMClient,
-    state: ReviewState,
-    channel: str,
-    intents: list[PostIntent],
-    url: str,
-    src_hash: str,
-) -> list[SocialPostState]:
-    """Freeze published blocks, (re)generate the rest for one channel.
-
-    Frozen-vs-generate gating is orchestrator logic: blocks whose status is
-    approved/scheduled/published are immutable and matched by position; every
-    other slot is captioned, media-adapted and reassembled. Frozen blocks
-    beyond the current plan length stay listed at the end.
-    """
-    ch_cfg = cfg.shared.channels[channel]
-    frozen = {
-        i: p
-        for i, p in enumerate(state.posts_for(channel))
-        if p.status in _FROZEN_STATUSES
-    }
-    posts: list[SocialPostState] = []
-    for i, intent in enumerate(intents):
-        if i in frozen:
-            log.info("%s %s #%d: %s — frozen", post.slug, channel, i, frozen[i].status)
-            posts.append(frozen.pop(i))
-            continue
-        log.info("caption %s #%d (%s)", channel, intent.index, intent.kind)
-        draft = generate_caption(post, intent, cfg, llm)
-        youtube = youtube_links(post, intent)
-        text = compose_post_text(draft, intent, ch_cfg, url, youtube)
-        media_rel = package_intent_media(cfg, post.slug, intent, llm)
-        location = draft.location if ch_cfg.supports_location else ""
-        posts.append(
-            build_post_block(intent, text, media_rel, youtube, location, src_hash)
-        )
-    posts.extend(frozen.values())
-    return posts
-
-
-# --- site pipeline ----------------------------------------------------------
-
-
-def site_changed_posts(cfg: Config, store: ReviewStore) -> list[BlogPost]:
-    """Posts whose content differs from what the hugo channel last processed."""
-    changed = []
-    for post in scan_posts(cfg):
-        if read_hugo_hash(post) != short_hash(source_hash(post)):
-            changed.append(post)
-    return changed
-
-
-def run_site_for_post(
-    cfg: Config,
-    post: BlogPost,
-    llm: LLMClient,
-    store: ReviewStore,
-    try_run: bool = False,
-    force: bool = False,
-) -> bool:
-    """Render the Hugo bundle and translations for one post.
-
-    Returns True when the post was (re)generated. A try run does the real
-    work (bundle + translations into the site repo working tree) but does
-    not record the hugo state, so the next real run picks the post up again
-    and commits (including re-translating).
-    """
-    from .nodes.hugo import bundle_media_plan, write_bundle
-    from .nodes.media_adapt import adapt_or_copy
-    from .nodes.translate import translate_bundle
-
-    h = short_hash(source_hash(post))
-    if not force and read_hugo_hash(post) == h:
-        return False
-
-    bundle = write_bundle(post, cfg.hugo_posts_dir, cfg)
-    for src, dest_name in bundle_media_plan(post, cfg):
-        adapt_or_copy(src, "hugo", cfg, bundle, llm, dest_name=dest_name)
-    log.info("%s: hugo bundle written (%s)", post.slug, bundle)
-
-    translated = translate_bundle(post, cfg, llm, bundle)
-    if translated:
-        log.info("%s: translated to %s", post.slug, ", ".join(translated))
-
-    if not try_run:
-        # Record the processed hash here (not only after push): an identical
-        # re-render produces no git diff, and the post must not be retried
-        # forever. A failed push raises and leaves the state untouched.
-        state = store.load(post.slug)
-        store.save(state)
-        set_hugo_hash(post, h)
-        ensure_syndication_link(post)
-    return True
-
-
-def run_all(
-    cfg: Config,
-    slugs: list[str] | None = None,
-    try_run: bool = False,
-    force: bool = False,
-    site_only: bool = False,
-    social_only: bool = False,
-) -> None:
-    """Full pipeline: site (hugo + translate + journeymap + git push) and the
-    social exports for newly published posts.
-
-    A try run does everything for real (LLM calls included) except the final
-    git commit/push, so nothing goes live. Social blocks are exported too,
-    without link verification: the slug-based post URLs only resolve once a
-    real run pushes the site.
-    """
-    from .nodes.journeymap import generate_journey_map
-    from .nodes.publish_git import (
-        commit_and_push,
-        has_changes,
-        has_unpushed_commits,
-        wait_for_deploy,
+def _log_report(report: SyndicateReport) -> None:
+    log.info(
+        "syndicate: %d done, %d already-marked, %d no-header, %d failed",
+        len(report.done), len(report.skipped_marked),
+        len(report.skipped_no_header), len(report.failed),
     )
-    from .siteurl import post_url
-
-    store = make_store(cfg)
-    llm = make_llm(cfg)
-
-    with _locked(cfg):
-        if slugs:
-            posts = [find_post(cfg, slug) for slug in slugs]
-        else:
-            posts = site_changed_posts(cfg, store) if not social_only else []
-
-        new_posts: list[BlogPost] = []
-        site_changed = False
-
-        if not social_only:
-            for post in posts:
-                was_new = read_hugo_hash(post) == ""
-                if run_site_for_post(cfg, post, llm, store, try_run=try_run, force=force):
-                    site_changed = True
-                    if was_new:
-                        new_posts.append(post)
-
-            # A try run leaves the tree dirty on purpose — the next real run
-            # picks the post up again via has_changes — so it must never push
-            # even if the repo is dirty/ahead.
-            if try_run:
-                if site_changed:
-                    generate_journey_map(cfg)
-                    log.info(
-                        "try run: skipping commit/push — inspect with: git -C %s status",
-                        cfg.local.sailingnomads_dir,
-                    )
-                else:
-                    log.info("site: nothing changed")
-            elif site_changed or has_changes(cfg) or has_unpushed_commits(cfg):
-                # Publish when this run re-rendered a post, or a previous run
-                # left the repo dirty/ahead (a repair push after a failed push).
-                generate_journey_map(cfg)
-                pushed = commit_and_push(cfg)
-                if pushed:
-                    for post in new_posts:
-                        set_hugo_hash(post, short_hash(source_hash(post)))
-                        url = post_url(cfg, post.slug, cfg.shared.site.default_language)
-                        wait_for_deploy(cfg, url)
-            else:
-                log.info("site: nothing changed")
-
-        if not site_only:
-            # In a try run the post is not live yet, so skip link
-            # verification; the URLs resolve once a real run pushes.
-            verify = not try_run
-            if slugs:
-                for post in [find_post(cfg, s) for s in slugs]:
-                    run_social_for_post(cfg, post, llm=llm, force=force, verify_links=verify)
-            else:
-                new_slugs = {p.slug for p in new_posts}
-                for post in new_posts:
-                    run_social_for_post(cfg, post, llm=llm, force=force, verify_links=verify)
-                # Edited posts: re-export only stale drafts. Pending channels
-                # of older posts stay in the manual catch-up backlog.
-                for post in scan_posts(cfg):
-                    if post.slug in new_slugs:
-                        continue
-                    stale = stale_draft_channels(cfg, store, post)
-                    if stale:
-                        run_social_for_post(
-                            cfg, post, llm=llm, verify_links=verify, channels=stale
-                        )
+    for slug, reason in report.failed:
+        log.error("  failed: %s (%s)", slug, reason)
+    for slug in report.skipped_no_header:
+        log.warning("  skipped (no header): %s", slug)

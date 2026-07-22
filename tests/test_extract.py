@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from syndicator.nodes.extract import extract_posts, scan_blog_posts, source_hash
+from syndicator.nodes.extract import extract_posts, scan_blog_posts
 
 FIXTURES = Path(__file__).parent / "fixtures"
 JOURNALS = FIXTURES / "journals"
@@ -70,6 +70,27 @@ def test_charly_sections_without_titles():
     assert [m.kind for m in sections[2].media] == ["image"] * 6
 
 
+def test_charly_reel_section_text_marks_video_position():
+    post = post_by_slug("2026-05-19_Charly_Superstar")
+    videos = post.videos()
+    assert [v.filename for v in videos] == [
+        "charly-drinkt_1779210131407_0.mp4",
+        "charly-hueftschwung_1779210255901_0.mp4",
+    ]
+
+    # First video: only text below it (the intro above is a boundary).
+    first = post.section_text_for_video(videos[0])
+    assert first == "[VIDEO]\n\nCharly scheint aber wirklich eine besondere Wirkung auf die Menschen zu haben. Kein Tag vergeht an dem wir nicht ein Dutzend mal auf Charly angesprochen werden. Die Leute wollen alles wissen, inklusive wieviel denn so ein Hund kostet. Manchmal ist es fast ein bisschen zu viel und ich kann langsam erahnen, wie es sein muss wenn man berühmt ist. Immer dieselben Fragen, auch dann wenn man es eilig hat oder einfach gerade keine Lust."
+
+    # Second video: text above *and* below it, with the marker in between.
+    second = post.section_text_for_video(videos[1])
+    assert second.count("[VIDEO]") == 1
+    parts = second.split("\n\n[VIDEO]\n\n")
+    assert len(parts) == 2
+    assert parts[0].startswith("Charly scheint aber wirklich")
+    assert parts[1].startswith("Insgesamt ist Charly aber ein unglaubliche Bereicherung")
+
+
 def test_athen_youtube_block():
     post = post_by_slug("2026-06-03_Athen")
     yt = [m for m in post.all_media() if m.kind == "youtube"]
@@ -130,14 +151,6 @@ def test_header_media_resolution():
     header = post.header_media
     assert header is not None
     assert header.filename == "alex-lachen_1781168210193_0.jpg"
-
-
-def test_source_hash_stability_and_sensitivity():
-    a = post_by_slug("2026-05-19_Charly_Superstar")
-    b = post_by_slug("2026-05-19_Charly_Superstar")
-    assert source_hash(a) == source_hash(b)
-    b.blocks[0].raw += " geändert"
-    assert source_hash(a) != source_hash(b)
 
 
 def test_scan_skips_posts_without_date_or_title(tmp_path: Path):

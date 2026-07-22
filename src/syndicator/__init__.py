@@ -1,3 +1,3 @@
-"""Syndicator: Logseq publish pipeline for sailingnomads.ch."""
+"""Syndicator: thin local trigger for the sailingnomads.ch n8n publish pipeline."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

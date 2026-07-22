@@ -1,9 +1,29 @@
 # Syndicator v2 — n8n Migration Design
 
-**Status:** approved design, not yet implemented. Agreed 2026-07-13.
+**Status:** implemented. Agreed 2026-07-13; the active design includes the
+2026-07-21 amendment below. The local trigger (`syndicate`/`redeploy`), SFTP
+contracts and three n8n workflows (`Syndicator Error`, `Blog Post Publish`,
+`Reel Publish`) are in place. Remaining operational setup, such as production
+webhook URLs and seeding `syndicated-at::` on existing posts, is documented in
+the README.
 **Audience:** the implementing LLM session / developer. This document is
 self-contained: all decisions are final unless marked as a *spike*, and the
 rejected alternatives are listed so they are not re-proposed.
+
+> **Amendment 2026-07-21 — site commit moved out of n8n.** The "one commit via
+> the GitHub Git Data API" decision (§2, §6 steps 4–5) is **superseded**. The
+> in-n8n commit proved brittle and memory-hungry: every site binary was
+> SFTP-downloaded into n8n, base64-inflated in RAM and re-uploaded as a GitHub
+> blob, although the media was already on the staging server. The site staging
+> now mirrors the Hugo repository below `/syndicator/sailingnomads/`: the local
+> trigger uploads media to `content/posts/<slug>/` and the journey map to
+> `static/`; `Blog Post Publish` writes the generated `index.<lang>.md` beside
+> the media. The owner then recursively fetches that one directory into the
+> site checkout, reviews the diff, commits and pushes (→ deploy). Deliberately
+> manual, no CLI command or manifest — it is a plain SFTP fetch plus
+> `git commit && git push`, and it doubles as a pre-deploy review gate. n8n no
+> longer needs the GitHub credential. Current state is described in
+> [architecture.md](architecture.md).
 
 ---
 
@@ -72,7 +92,7 @@ flowchart LR
         M["syndicate / redeploy"] --> X["extract (Logseq edge)"]
         X --> A["media_adapt (ffmpeg/Pillow):\nsite 16:9 + per-platform reels (4:5 today) + covers + header crops"]
         X --> J["journeymap (Go tools) -> journey-map.mp4"]
-        A & J --> U["SFTP upload, resumable\n/syndicator/&lt;slug&gt;/... + /syndicator/journey-map.mp4"]
+        A & J --> U["SFTP upload, resumable\n/syndicator/sailingnomads/... + /syndicator/&lt;slug&gt;/social files"]
         U --> W["POST webhooks (small JSON, retries)"]
     end
     subgraph Server["Owner's server"]
@@ -171,23 +191,27 @@ Local client: 3 retries with backoff.
     { "kind": "title", "raw": "## …", "heading_level": 2 },
     { "kind": "text",  "raw": "…" },
     { "kind": "media", "media": { "kind": "image", "bundle_filename": "x.jpg",
-                                   "sftp_path": "/syndicator/2026-07-05_Titel/site/x.jpg", "alt": "…" } },
+                                   "sftp_path": "/syndicator/sailingnomads/content/posts/2026-07-05_Titel/x.jpg", "alt": "…" } },
     { "kind": "media", "media": { "kind": "video", "bundle_filename": "v1.mp4",
-                                   "sftp_path": "/syndicator/2026-07-05_Titel/site/v1.mp4", "alt": "…" } },
+                                   "sftp_path": "/syndicator/sailingnomads/content/posts/2026-07-05_Titel/v1.mp4", "alt": "…" } },
     { "kind": "youtube", "media": { "kind": "youtube", "youtube_id": "…" } }
   ],
   "site_media": [
-    { "sftp_path": "/syndicator/2026-07-05_Titel/site/x.jpg",  "bundle_filename": "x.jpg" },
-    { "sftp_path": "/syndicator/2026-07-05_Titel/site/v1.mp4", "bundle_filename": "v1.mp4" },
-    { "sftp_path": "/syndicator/2026-07-05_Titel/site/featured.jpg", "bundle_filename": "featured.jpg" },
-    { "sftp_path": "/syndicator/journey-map.mp4", "repo_path": "static/journey-map.mp4" }
+    { "sftp_path": "/syndicator/sailingnomads/content/posts/2026-07-05_Titel/x.jpg",
+      "repo_path": "content/posts/2026-07-05_Titel/x.jpg", "bundle_filename": "x.jpg" },
+    { "sftp_path": "/syndicator/sailingnomads/content/posts/2026-07-05_Titel/v1.mp4",
+      "repo_path": "content/posts/2026-07-05_Titel/v1.mp4", "bundle_filename": "v1.mp4" },
+    { "sftp_path": "/syndicator/sailingnomads/content/posts/2026-07-05_Titel/featured.jpg",
+      "repo_path": "content/posts/2026-07-05_Titel/featured.jpg", "bundle_filename": "featured.jpg" },
+    { "sftp_path": "/syndicator/sailingnomads/static/journey-map.mp4",
+      "repo_path": "static/journey-map.mp4" }
   ],
   "header": {
     "facebook":  { "sftp_path": "/syndicator/2026-07-05_Titel/header/facebook.jpg" },
     "instagram": { "sftp_path": "/syndicator/2026-07-05_Titel/header/instagram.jpg" },
     "x":         { "sftp_path": "/syndicator/2026-07-05_Titel/header/x.jpg" }
   },
-  "flags": { "redeploy": false }   // `redeploy` command sets true; `syndicate` sets false. If true: only re-render + commit the site (skip captions/drafts — see §6 steps 5-6)
+  "flags": { "redeploy": false }   // `redeploy` command sets true; `syndicate` sets false. If true: only re-render the staged site (skip captions/drafts — see §6 steps 5-6)
 }
 ```
 
@@ -231,7 +255,12 @@ no marker is set. In batch `syndicate` the offending post is reported and
 skipped; the others continue. The author adds a header and re-runs.
 
 **`POST /reel`** — one call per video in the post (independent of /publish).
-`files.reels` and `files.covers` are **always keyed by platform**. Identical
+`video.section_text` is the prose surrounding the clip (the run of text
+paragraphs directly above **and** below it, bounded by any title or other
+media), with a `[VIDEO]` marker inserted where the video sits — the describing
+sentence may be written above *or* below the clip, so the LLM is given both plus
+its position rather than guessing. `files.reels` and `files.covers` are
+**always keyed by platform**. Identical
 path strings mean a shared file (allowed when full `VideoSpec` adapts
 coincide — e.g. source ≤ 90 s); different paths mean distinct adapts (e.g.
 IG 90 s trim vs longer FB). Example when all three share:
@@ -277,7 +306,7 @@ Python/ffmpeg/Go/SFTP toolchain) so the server can run it later.
 
 | Workflow | Trigger | Role |
 |---|---|---|
-| `Blog Post Publish` | webhook `/publish` | render + translate + GitHub commit + intro drafts |
+| `Blog Post Publish` | webhook `/publish` | render + translate into mirrored SFTP Hugo tree + intro drafts |
 | `Reel Publish` | webhook `/reel` | one reel → Postiz drafts |
 | `Syndicator Error` | Error Trigger | Mailgun failure mail; assigned to the other two |
 
@@ -326,18 +355,13 @@ future step, not built now.
      in parallel with the English node (they do not depend on it).
    - Append each target's disclaimer. Typical German source → **4** direct
      translates (`en`/`es`/`fr`/`it`) + **1** pirate = 5 body LLM calls.
-4. Loop `site_media` sequentially: FTP download → GitHub `POST /git/blobs`
-   (base64, ≤100 MB/blob). Then one tree (`base_tree` = current `main` tree,
-   entries for all `index.*.md` + media under `content/posts/<slug>/` +
-   `static/journey-map.mp4`) → one commit → `PATCH refs/heads/main`.
-   **Orphans accepted (matches v1):** `base_tree` only adds/overwrites, never
-   deletes, so a removed/renamed/re-extensioned asset or a dropped language
-   leaves a stale file in the bundle. These never reach the live site (Hugo
-   only publishes *referenced* bundle resources) — they only bloat the repo.
-   Known edge case: if a header image's *extension* changes, both
-   `featured.<old>` and `featured.<new>` coexist and `GetMatch
-   "**{feature,cover}*"` may pick either; avoid by keeping the header
-   extension stable (or clean the bundle by hand).
+4. Upload every generated `index.<lang>.md` directly to
+   `/syndicator/sailingnomads/content/posts/<slug>/`. Site media is already
+   beside it because the local trigger uploaded it there; the journey map is
+   already at `/syndicator/sailingnomads/static/journey-map.mp4`. n8n never
+   downloads a site binary and has no GitHub credential. The owner later
+   fetches `/syndicator/sailingnomads/` into the site checkout in one
+   operation, reviews, commits and pushes.
 5. If not `flags.redeploy = true`: intro captions per platform (OpenAI;
    **always English**; prompts derived from `prompts/caption_facebook.md` /
    `caption_instagram.md`, reworked for "summary of the whole post"; a new X
@@ -402,9 +426,9 @@ marked. Recovery is out-of-band, by failure class:
   retries): the marker is *not* written, so the next `syndicate` re-runs the
   whole post. Duplicates are harmless (site commit is idempotent; duplicate
   drafts are deleted by hand).
-- **Site async failure** (`Blog Post Publish` render / translate / commit):
-  run `redeploy --post SLUG` — it ignores the marker and re-runs the site
-  only.
+- **Site async failure** (`Blog Post Publish` render / translate / SFTP
+  write): run `redeploy --post SLUG` — it ignores the marker and overwrites
+  that post in the mirrored Hugo staging tree.
 - **Social async failure** (Postiz drafts, in `/publish` step 6 or
   `Reel Publish`): **no CLI path by design.** The owner re-runs the failed
   execution in n8n (the error mail's execution URL → the execution's input
@@ -529,10 +553,10 @@ labels the field "Images").
 
 ## 8. Prerequisites (owner provides)
 
-1. n8n: community node `n8n-nodes-postiz` installed · GitHub fine-grained
-   PAT (`contents: read/write` on the sailingnomads repo) · Postiz API
-   credential (`postizApi`: API key + host `https://api.postiz.com`) · OpenAI
-   credential (translate + captions) · Mailgun credential (error mail).
+1. n8n: community node `n8n-nodes-postiz` installed · Postiz API credential
+   (`postizApi`: API key + host `https://api.postiz.com`) · OpenAI credential
+   (translate + captions) · Mailgun credential (error mail). No GitHub
+   credential is needed.
 2. SFTP staging base dir — **done (verified 2026-07-18):**
    `/srv/sftp/sftp/syndicator` exists, owned `sftp:sftponly`, and a
    put/overwrite/delete round-trip through the chrooted `sftp` user succeeded.

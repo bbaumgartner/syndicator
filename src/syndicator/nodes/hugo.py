@@ -1,14 +1,11 @@
-"""hugo node: render a BlogPost into a Hugo leaf bundle.
+"""hugo node (v2): the local media-rewriting helpers.
 
-Behavior-parity port of the old Go converter (main.go, processors.go,
-writer.go): identical front matter, identical media handling (flattened
-basenames, video/youtube shortcodes, featured image), identical bundle
-directory naming.
-
-This node only renders the bundle index — it is pure and never touches an
-LLM. The media that belongs in the bundle (content assets + featured header
-image) is planned here (`bundle_media_plan`) but adapted by the orchestrator
-through the `media_adapt` node (see `pipeline.run_site_for_post`).
+In v2 the Hugo *render* (front matter + index assembly + translation) happens
+in n8n; the final site commit is manual. What stays local is the media
+rewriting: turning raw Logseq block text into Hugo-ready markdown (flattened
+bundle basenames, video/youtube shortcodes) and computing the bundle media
+manifest that gets uploaded. This module keeps exactly that logic — the
+``hugo`` channel is the site bundle spec.
 """
 
 from __future__ import annotations
@@ -18,13 +15,12 @@ import re
 from pathlib import Path
 
 from ..config import ChannelConfig, Config
-from ..hugo_format import escape_toml, index_filename
-from ..model import BlogPost, Meta
+from ..model import BlogPost
 from .media_adapt import channel_rewrites_filenames, output_basename
 
 log = logging.getLogger(__name__)
 
-# Same patterns as processors.go.
+# Same patterns as the old Go converter (processors.go).
 ASSET_RE = re.compile(r"!\[(.*?)\]\((.*?assets/)(.*?)\)(?:\{[^}]*\})?")
 LOGSEQ_VIDEO_RE = re.compile(r"\{\{video\s+(https?://[^\s}]+)\s*\}\}")
 YOUTUBE_ID_RE = re.compile(r"(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/embed/)([a-zA-Z0-9_-]+)")
@@ -32,19 +28,6 @@ YOUTUBE_ID_RE = re.compile(r"(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/e
 VIDEO_EXTENSIONS = {
     ".mp4", ".mov", ".avi", ".wmv", ".flv", ".webm", ".mkv", ".m4v", ".mpg", ".mpeg",
 }
-
-def front_matter(meta: Meta, summary: str) -> str:
-    return (
-        "+++\n"
-        f'date = "{escape_toml(meta.date)}"\n'
-        f'lastmod = "{escape_toml(meta.date)}"\n'
-        "draft = false\n"
-        f'title = "{escape_toml(meta.title)}"\n'
-        f'summary = "{escape_toml(summary)}"\n'
-        "[params]\n"
-        f'  author = "{escape_toml(meta.author)}"\n'
-        "+++\n\n"
-    )
 
 
 def build_content(post: BlogPost) -> str:
@@ -95,22 +78,13 @@ def transform_content(content: str, ch: ChannelConfig | None = None) -> str:
     return ASSET_RE.sub(replace_asset, content)
 
 
-def render_index(post: BlogPost, ch: ChannelConfig | None = None) -> str:
-    """Full index.<lang>.md content for the post's source language."""
-    content = transform_content(build_content(post), ch)
-    return front_matter(post.meta, summary_for(post)) + content + "\n"
-
-
-def bundle_dir_name(post: BlogPost) -> str:
-    return post.slug
-
-
 def bundle_media_plan(post: BlogPost, cfg: Config) -> list[tuple[Path, str]]:
     """The full media copy plan for the bundle: (source path, dest basename) pairs.
 
     Covers every content asset referenced in the post plus, when set, the
-    featured header image. A missing source is logged and skipped here, so
-    the orchestrator only ever sees files that exist.
+    featured header image (as ``featured<ext>``). A missing source is logged and
+    skipped, so callers only ever see files that exist. This is the authoritative
+    media manifest for the site commit, independent of the block list.
     """
     source_dir = post.source_path.parent
     ch = cfg.shared.channels["hugo"]
@@ -130,17 +104,3 @@ def bundle_media_plan(post: BlogPost, cfg: Config) -> list[tuple[Path, str]]:
             log.warning("missing header image %s", header_src)
 
     return plan
-
-
-def write_bundle(post: BlogPost, posts_dir: Path, cfg: Config) -> Path:
-    """Write the source-language bundle index file.
-
-    Bundle media is not copied here — see `bundle_media_plan`.
-    """
-    out_dir = posts_dir / bundle_dir_name(post)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    ch = cfg.shared.channels["hugo"]
-    index_path = out_dir / index_filename(post.meta.language)
-    index_path.write_text(render_index(post, ch), encoding="utf-8")
-    return out_dir
