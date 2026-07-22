@@ -1,0 +1,709 @@
+{
+  "name": "Reel Publish",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "reel",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "1b89a431-ba5c-493e-962e-a401fef1cc5b",
+      "name": "Reel Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        -16
+      ],
+      "webhookId": "4e23d978-d4c3-4ed4-9803-0e31e00f0779"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"status\": \"accepted\"\n}",
+        "options": {}
+      },
+      "id": "5c41dee9-20af-415a-ab48-c0bfa1f6bf19",
+      "name": "Respond Accepted",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        224,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst p = raw.body ?? raw;\nreturn [{ json: p }];"
+      },
+      "id": "4ba2477c-f155-41e8-97ba-6f9d31a1deb4",
+      "name": "Parse Reel Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "protocol": "sftp",
+        "path": "={{ $(\"Parse Reel Payload\").item.json.files.covers.facebook }}",
+        "options": {}
+      },
+      "id": "0f3ab22d-8197-4bc8-a7b2-a6383b52f8b5",
+      "name": "Download Cover FB",
+      "type": "n8n-nodes-base.ftp",
+      "typeVersion": 1,
+      "position": [
+        672,
+        176
+      ],
+      "credentials": {
+        "sftp": {
+          "id": "wE5ow7vv0UZN97yp",
+          "name": "FTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-5.4-mini"
+        },
+        "text": "=You write a Facebook post for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Goal: grow the audience and earn clicks. Write in English. This is one short reel from the blog post titled \"{{ $(\"Parse Reel Payload\").item.json.post.title }}\". Base the post ONLY on this section. Section title: {{ $(\"Parse Reel Payload\").item.json.video.section_title }}. Section text: \n\n{{ $(\"Parse Reel Payload\").item.json.video.section_text }}.\n\nThe section text contains a [VIDEO] marker showing where this reel's clip sits in the surrounding prose; the sentence describing the clip may come just before or just after the marker, so rely on the text nearest the marker and treat the rest as background. The attached image is the reel cover frame; use it for concrete visual detail. Write 2 to 4 short, warm, personal paragraphs with a strong first-line hook. A tasteful emoji is fine. End with a light call to action. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends. Do not invent facts not in the section. Do NOT include any URL. After the caption, add 0 to 3 relevant hashtags on their own final line, each starting with #. Return ONLY the caption text followed by that hashtag line.",
+        "inputType": "base64",
+        "options": {
+          "detail": "auto",
+          "maxTokens": 500
+        }
+      },
+      "id": "3017f745-e855-417a-954d-95ef6be11550",
+      "name": "Caption FB",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        896,
+        176
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "MeZuDDMNwmnq1Xh4",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "protocol": "sftp",
+        "path": "={{ $(\"Parse Reel Payload\").item.json.files.reels.facebook }}",
+        "options": {}
+      },
+      "id": "0820ed93-f3e7-47bc-94fd-cde5d24b5273",
+      "name": "Download Reel FB",
+      "type": "n8n-nodes-base.ftp",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        176
+      ],
+      "credentials": {
+        "sftp": {
+          "id": "wE5ow7vv0UZN97yp",
+          "name": "FTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "uploadFile",
+        "binaryProperty": "data"
+      },
+      "id": "7c5fa71b-0c58-43b6-b9df-886619b69a52",
+      "name": "Upload FB",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        176
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "2vzlqHVdDCSaUrVH",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "type": "draft",
+        "date": "={{ $now.plus(1, \"days\").toISO() }}",
+        "posts": {
+          "post": [
+            {
+              "integrationId": "cmrmbindh050spg0ypnszg5ag",
+              "group": "={{ $(\"Parse Reel Payload\").item.json.slug }}-reel-{{ $(\"Parse Reel Payload\").item.json.video.index }}",
+              "settings": {
+                "setting": [
+                  {
+                    "key": "__type",
+                    "stringValue": "facebook"
+                  },
+                  {
+                    "key": "post_type",
+                    "stringValue": "post"
+                  }
+                ]
+              },
+              "value": {
+                "contentItem": [
+                  {
+                    "content": "={{ $('Caption FB').item.json[0].content[0].text }}\n\n{{ $(\"Parse Reel Payload\").item.json.post.url }}",
+                    "image": {
+                      "imageItem": [
+                        {
+                          "id": "={{ $json.id }}",
+                          "path": "={{ $json.path }}"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "9cf72165-2782-4850-9d47-bc2565eed7cc",
+      "name": "Create FB Draft",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        176
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "2vzlqHVdDCSaUrVH",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "protocol": "sftp",
+        "path": "={{ $(\"Parse Reel Payload\").item.json.files.covers.instagram }}",
+        "options": {}
+      },
+      "id": "f219fed2-d0e5-47da-be4b-fc3ce4af3ae2",
+      "name": "Download Cover IG",
+      "type": "n8n-nodes-base.ftp",
+      "typeVersion": 1,
+      "position": [
+        672,
+        -208
+      ],
+      "credentials": {
+        "sftp": {
+          "id": "wE5ow7vv0UZN97yp",
+          "name": "FTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-5.4-mini"
+        },
+        "text": "=You write an Instagram caption for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Goal: reach, saves and profile visits; the blog link lives in the bio. Write in English. This is one short reel from the blog post titled \"{{ $(\"Parse Reel Payload\").item.json.post.title }}\". Base the caption ONLY on this section. Section title: {{ $(\"Parse Reel Payload\").item.json.video.section_title }}. Section text: \n\n{{ $(\"Parse Reel Payload\").item.json.video.section_text }}. \n\nThe section text contains a [VIDEO] marker showing where this reel's clip sits in the surrounding prose; the sentence describing the clip may come just before or just after the marker, so rely on the text nearest the marker and treat the rest as background. The attached image is the reel cover frame; use it for concrete visual detail. The first line must hook within about 125 characters. Short airy paragraphs, emojis welcome but not overloaded. End with a question or a save-this nudge. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends. Do NOT include any URL or a link-in-bio call to action. Do not invent facts not in the section. After the caption, add 5 to 8 specific hashtags on their own final line, each starting with #, mixing niche sailing and travel tags with location tags, avoiding banned or spammy tags. Return ONLY the caption text followed by that hashtag line.",
+        "inputType": "base64",
+        "options": {
+          "detail": "auto",
+          "maxTokens": 500
+        }
+      },
+      "id": "47a51a96-5bbf-40c4-94e8-ecba0ee74d97",
+      "name": "Caption IG",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        896,
+        -208
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "MeZuDDMNwmnq1Xh4",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "protocol": "sftp",
+        "path": "={{ $(\"Parse Reel Payload\").item.json.files.reels.instagram }}",
+        "options": {}
+      },
+      "id": "a99ed76c-ae19-4fae-a54c-fece6654aaa4",
+      "name": "Download Reel IG",
+      "type": "n8n-nodes-base.ftp",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        -208
+      ],
+      "credentials": {
+        "sftp": {
+          "id": "wE5ow7vv0UZN97yp",
+          "name": "FTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "uploadFile",
+        "binaryProperty": "data"
+      },
+      "id": "f55a00de-d1d5-47a4-afbe-fc605847d62d",
+      "name": "Upload IG",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        -208
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "2vzlqHVdDCSaUrVH",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "type": "draft",
+        "date": "={{ $now.plus(1, \"days\").toISO() }}",
+        "posts": {
+          "post": [
+            {
+              "integrationId": "cmrmbjfkp00win60ybjz64sxw",
+              "group": "={{ $(\"Parse Reel Payload\").item.json.slug }}-reel-{{ $(\"Parse Reel Payload\").item.json.video.index }}",
+              "settings": {
+                "setting": [
+                  {
+                    "key": "__type",
+                    "stringValue": "instagram"
+                  },
+                  {
+                    "key": "post_type",
+                    "stringValue": "post"
+                  },
+                  {
+                    "key": "is_trial_reel",
+                    "valueType": "boolean"
+                  }
+                ]
+              },
+              "value": {
+                "contentItem": [
+                  {
+                    "content": "={{ $('Caption IG').item.json[0].content[0].text }}",
+                    "image": {
+                      "imageItem": [
+                        {
+                          "id": "={{ $json.id }}",
+                          "path": "={{ $json.path }}"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "2b42cab0-fee0-4fd5-b9ee-528d8ec6d3ee",
+      "name": "Create IG Draft",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        -208
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "2vzlqHVdDCSaUrVH",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "protocol": "sftp",
+        "path": "={{ $(\"Parse Reel Payload\").item.json.files.covers.x }}",
+        "options": {}
+      },
+      "id": "2fe4dff4-e5a5-4462-b9f0-f28a44c6143d",
+      "name": "Download Cover X",
+      "type": "n8n-nodes-base.ftp",
+      "typeVersion": 1,
+      "position": [
+        672,
+        -16
+      ],
+      "credentials": {
+        "sftp": {
+          "id": "wE5ow7vv0UZN97yp",
+          "name": "FTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-5.4-mini"
+        },
+        "text": "=You write a post for X (Twitter) for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Goal: grow the audience. Write in English. This is one short reel from the blog post titled \"{{ $(\"Parse Reel Payload\").item.json.post.title }}\". Base the post ONLY on this section. Section title: {{ $(\"Parse Reel Payload\").item.json.video.section_title }}. Section text: \n\n{{ $(\"Parse Reel Payload\").item.json.video.section_text }}. \n\nThe section text contains a [VIDEO] marker showing where this reel's clip sits in the surrounding prose; the sentence describing the clip may come just before or just after the marker, so rely on the text nearest the marker and treat the rest as background. The attached image is the reel cover frame; use it for a vivid concrete detail. One punchy thought relating to the video: a hook, a vivid detail or a dry observation. Plain language, at most one emoji. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends. Do NOT include any URL. End the post with 0 to 2 short relevant hashtags, each starting with #. The entire post including the hashtags must be at most 240 characters. Return ONLY the post text followed by the hashtags.",
+        "inputType": "base64",
+        "options": {
+          "detail": "auto",
+          "maxTokens": 300
+        }
+      },
+      "id": "d97ee52c-abc0-4c67-9d08-f036c2c8ab11",
+      "name": "Caption X",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        896,
+        -16
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "MeZuDDMNwmnq1Xh4",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "protocol": "sftp",
+        "path": "={{ $(\"Parse Reel Payload\").item.json.files.reels.x }}",
+        "options": {}
+      },
+      "id": "e37bb547-7670-4abf-b713-c558035889c9",
+      "name": "Download Reel X",
+      "type": "n8n-nodes-base.ftp",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        -16
+      ],
+      "credentials": {
+        "sftp": {
+          "id": "wE5ow7vv0UZN97yp",
+          "name": "FTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "uploadFile",
+        "binaryProperty": "data"
+      },
+      "id": "997cb678-34b9-4072-9733-fbc8d475d16f",
+      "name": "Upload X",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        -16
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "2vzlqHVdDCSaUrVH",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "type": "draft",
+        "date": "={{ $now.plus(1, \"days\").toISO() }}",
+        "posts": {
+          "post": [
+            {
+              "integrationId": "cmrmbk0b9050zpg0ytkz5uy0r",
+              "group": "={{ $(\"Parse Reel Payload\").item.json.slug }}-reel-{{ $(\"Parse Reel Payload\").item.json.video.index }}",
+              "settings": {
+                "setting": [
+                  {
+                    "key": "__type",
+                    "stringValue": "x"
+                  },
+                  {
+                    "key": "who_can_reply_post",
+                    "stringValue": "everyone"
+                  }
+                ]
+              },
+              "value": {
+                "contentItem": [
+                  {
+                    "content": "={{ $('Caption X').item.json[0].content[0].text }}",
+                    "image": {
+                      "imageItem": [
+                        {
+                          "id": "={{ $json.id }}",
+                          "path": "={{ $json.path }}"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "45bd6414-44f0-4c26-b3f0-4c28367db3b5",
+      "name": "Create X Draft",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        -16
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "2vzlqHVdDCSaUrVH",
+          "name": "Postiz account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Reel Webhook": {
+      "main": [
+        [
+          {
+            "node": "Respond Accepted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond Accepted": {
+      "main": [
+        [
+          {
+            "node": "Parse Reel Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Reel Payload": {
+      "main": [
+        [
+          {
+            "node": "Download Cover FB",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Download Cover IG",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Download Cover X",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Cover FB": {
+      "main": [
+        [
+          {
+            "node": "Caption FB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Caption FB": {
+      "main": [
+        [
+          {
+            "node": "Download Reel FB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Reel FB": {
+      "main": [
+        [
+          {
+            "node": "Upload FB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload FB": {
+      "main": [
+        [
+          {
+            "node": "Create FB Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create FB Draft": {
+      "main": [
+        []
+      ]
+    },
+    "Download Cover IG": {
+      "main": [
+        [
+          {
+            "node": "Caption IG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Caption IG": {
+      "main": [
+        [
+          {
+            "node": "Download Reel IG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Reel IG": {
+      "main": [
+        [
+          {
+            "node": "Upload IG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload IG": {
+      "main": [
+        [
+          {
+            "node": "Create IG Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create IG Draft": {
+      "main": [
+        []
+      ]
+    },
+    "Download Cover X": {
+      "main": [
+        [
+          {
+            "node": "Caption X",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Caption X": {
+      "main": [
+        [
+          {
+            "node": "Download Reel X",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Reel X": {
+      "main": [
+        [
+          {
+            "node": "Upload X",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload X": {
+      "main": [
+        [
+          {
+            "node": "Create X Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create X Draft": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "x32a5IzGiS75jAtb",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "ac5f750b-41ce-4ad4-9138-0456e57c677e",
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "instanceId": "cc5b37f2534616d7722eec7fc1fd09aa1aa9462dba306d6d43049bbb363fbb97"
+  },
+  "nodeGroups": [],
+  "id": "ZjcBauT3Zhy0T6H8",
+  "tags": []
+}
