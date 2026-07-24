@@ -33,8 +33,8 @@ sftp:
 # n8n production webhook URLs. Filled in after the Phase 1 workflows are created
 # and their production webhooks activated.
 webhooks:
-  publish_url: "https://kampfpudel.app.n8n.cloud/webhook/publish"
-  reel_url: "https://kampfpudel.app.n8n.cloud/webhook/reel"
+  publish_url: "http://192.168.0.26:5678/webhook/publish"
+  reel_url: "http://192.168.0.26:5678/webhook/reel"
 
 # Per-channel media specs. hugo = the site bundle; facebook/instagram/x = social
 # reels + header crops. Reel/header specs are per channel so a later platform can
