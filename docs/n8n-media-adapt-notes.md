@@ -54,8 +54,7 @@ written to SFTP.
 - Hardcoded single 4:5 1080×1350 encode (full source duration). Later a
   parallel 9:16 Shorts encode can be added in this workflow; Reel Publish
   would then point YouTube at that path.
-- Crop math mirrors `docs/n8n-crop-box.js` / `syndicator.crop_math`
-- Plan reference: `docs/n8n-plan-4x5-adapt.js`
+- Crop math mirrors `syndicator.crop_math` (inlined in the Adapt workflow Code nodes; see `docs/Adapt Reel Media.json`)
 - OpenAI image analyze uses `prompts/crop_focus.md` semantics → `{x,y}` 0–1
 - Cover frames are extracted in **Reel Publish** from `video_4x5_local`
 

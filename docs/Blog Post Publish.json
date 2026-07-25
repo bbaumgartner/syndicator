@@ -2,6 +2,7 @@
   "id": "l7HCCWtO1ALC82n6",
   "name": "Blog Post Publish",
   "active": true,
+  "isArchived": false,
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate",
@@ -12,51 +13,51 @@
   },
   "nodes": [
     {
-      "name": "Publish Webhook",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2.1,
       "parameters": {
         "httpMethod": "POST",
         "path": "publish",
         "responseMode": "responseNode",
         "options": {}
       },
+      "id": "50db514b-76ca-4f03-9a74-28b2edbd6837",
+      "name": "Publish Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
       "position": [
         -1600,
         192
-      ]
+      ],
+      "webhookId": "8dcea78d-b2de-49a7-8ebb-83a623cec475"
     },
     {
-      "name": "Respond Accepted",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.5,
       "parameters": {
         "respondWith": "json",
         "responseBody": "{\n  \"status\": \"accepted\"\n}",
         "options": {}
       },
+      "id": "71b844ca-cda9-422c-b134-dc6046b858f2",
+      "name": "Respond Accepted",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
       "position": [
         -1376,
         192
       ]
     },
     {
+      "parameters": {
+        "jsCode": "const src = $('Publish Webhook').first().json.body ?? $('Publish Webhook').first().json;\nconst lang = src.meta.lang_code || 'de';\nconst blocks = (src.blocks || []).map((b) => {\n  if (b.kind !== 'title' && b.kind !== 'text') return b;\n  const out = { kind: b.kind, [lang]: b.raw ?? b[lang] ?? '' };\n  if (b.heading_level != null) out.heading_level = b.heading_level;\n  return out;\n});\nreturn [{\n  json: {\n    slug: src.slug,\n    meta: src.meta,\n    source_lang: lang,\n    title: src.meta.title,\n    blocks,\n    translate_items: blocks.flatMap((b, i) =>\n      b.kind === 'title' || b.kind === 'text' ? [{ index: i, kind: b.kind, text: b[lang] }] : []\n    ),\n  },\n}];"
+      },
+      "id": "e404e3a5-e352-4cfc-bbeb-6abdf97752de",
       "name": "Prepare Blocks",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "parameters": {
-        "jsCode": "const src = $('Publish Webhook').first().json.body ?? $('Publish Webhook').first().json;\nconst lang = src.meta.lang_code || 'de';\nconst blocks = (src.blocks || []).map((b) => {\n  if (b.kind !== 'title' && b.kind !== 'text') return b;\n  const out = { kind: b.kind, [lang]: b.raw ?? b[lang] ?? '' };\n  if (b.heading_level != null) out.heading_level = b.heading_level;\n  return out;\n});\nreturn [{\n  json: {\n    slug: src.slug,\n    meta: src.meta,\n    source_lang: lang,\n    title: src.meta.title,\n    blocks,\n    translate_items: blocks.flatMap((b, i) =>\n      b.kind === 'title' || b.kind === 'text' ? [{ index: i, kind: b.kind, text: b[lang] }] : []\n    ),\n  },\n}];",
-        "mode": "runOnceForAllItems"
-      },
       "position": [
         -1152,
         192
       ]
     },
     {
-      "name": "Natural Language Translation",
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 2.3,
       "parameters": {
         "modelId": {
           "__rl": true,
@@ -84,15 +85,16 @@
           }
         }
       },
+      "id": "4e2ab00d-de21-415c-84b0-ec6bbda6b971",
+      "name": "Natural Language Translation",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
       "position": [
         -928,
         192
       ]
     },
     {
-      "name": "Skip Social If Redeploy",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
       "parameters": {
         "conditions": {
           "options": {
@@ -116,42 +118,45 @@
         },
         "options": {}
       },
+      "id": "1090e09f-2afe-444b-b2ea-5aba17fd83cf",
+      "name": "Skip Social If Redeploy",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
       "position": [
         0,
         384
       ]
     },
     {
+      "parameters": {
+        "protocol": "sftp",
+        "path": "={{ $('Adapt Feature Image').item.json.header.facebook }}",
+        "options": {}
+      },
+      "id": "7ca330c5-d1f5-4bc2-a93f-8385682fbf6f",
       "name": "Download Header FB",
       "type": "n8n-nodes-base.ftp",
       "typeVersion": 1,
-      "parameters": {
-        "protocol": "sftp",
-        "path": "={{ ($('Adapt Publish Media').item.json.header && $('Adapt Publish Media').item.json.header.facebook) || ('/syndicator/' + ($('Publish Webhook').item.json.body || $('Publish Webhook').item.json).slug + '/header/facebook.jpg') }}",
-        "options": {}
-      },
-      "position": [
-        576,
-        192
-      ]
-    },
-    {
-      "name": "Upload Intro FB",
-      "type": "n8n-nodes-postiz.postiz",
-      "typeVersion": 1,
-      "parameters": {
-        "operation": "uploadFile",
-        "binaryProperty": "data"
-      },
       "position": [
         800,
         192
       ]
     },
     {
-      "name": "Create Intro FB Draft",
+      "parameters": {
+        "operation": "uploadFile",
+        "binaryProperty": "data"
+      },
+      "id": "b3c2d485-fcf5-446f-bce0-8c3a4b702427",
+      "name": "Upload Intro FB",
       "type": "n8n-nodes-postiz.postiz",
       "typeVersion": 1,
+      "position": [
+        1024,
+        192
+      ]
+    },
+    {
       "parameters": {
         "type": "draft",
         "date": "={{ $now.plus(1, \"days\").toISO() }}",
@@ -191,42 +196,45 @@
           ]
         }
       },
+      "id": "e246e3de-0d94-4ee4-a633-6ed3696e7261",
+      "name": "Create Intro FB Draft",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
       "position": [
-        1024,
+        1248,
         192
       ]
     },
     {
+      "parameters": {
+        "protocol": "sftp",
+        "path": "={{ $('Adapt Feature Image').item.json.header.instagram }}",
+        "options": {}
+      },
+      "id": "6c6bd7a8-85ac-4642-a0ed-b7651e667aa3",
       "name": "Download Header IG",
       "type": "n8n-nodes-base.ftp",
       "typeVersion": 1,
-      "parameters": {
-        "protocol": "sftp",
-        "path": "={{ ($('Adapt Publish Media').item.json.header && $('Adapt Publish Media').item.json.header.instagram) || ('/syndicator/' + ($('Publish Webhook').item.json.body || $('Publish Webhook').item.json).slug + '/header/instagram.jpg') }}",
-        "options": {}
-      },
-      "position": [
-        576,
-        384
-      ]
-    },
-    {
-      "name": "Upload Intro IG",
-      "type": "n8n-nodes-postiz.postiz",
-      "typeVersion": 1,
-      "parameters": {
-        "operation": "uploadFile",
-        "binaryProperty": "data"
-      },
       "position": [
         800,
         384
       ]
     },
     {
-      "name": "Create Intro IG Draft",
+      "parameters": {
+        "operation": "uploadFile",
+        "binaryProperty": "data"
+      },
+      "id": "5c43cc84-b8c7-40d8-adf3-84c6894e6c85",
+      "name": "Upload Intro IG",
       "type": "n8n-nodes-postiz.postiz",
       "typeVersion": 1,
+      "position": [
+        1024,
+        384
+      ]
+    },
+    {
       "parameters": {
         "type": "draft",
         "date": "={{ $now.plus(1, \"days\").toISO() }}",
@@ -266,42 +274,45 @@
           ]
         }
       },
+      "id": "ae8c9865-804f-487e-b081-ece115e498b4",
+      "name": "Create Intro IG Draft",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
       "position": [
-        1024,
+        1248,
         384
       ]
     },
     {
+      "parameters": {
+        "protocol": "sftp",
+        "path": "={{ $('Adapt Feature Image').item.json.header.x }}",
+        "options": {}
+      },
+      "id": "654e05e6-b06e-462c-9f82-e2f9e0428fa7",
       "name": "Download Header X",
       "type": "n8n-nodes-base.ftp",
       "typeVersion": 1,
-      "parameters": {
-        "protocol": "sftp",
-        "path": "={{ ($('Adapt Publish Media').item.json.header && $('Adapt Publish Media').item.json.header.x) || ('/syndicator/' + ($('Publish Webhook').item.json.body || $('Publish Webhook').item.json).slug + '/header/x.jpg') }}",
-        "options": {}
-      },
-      "position": [
-        576,
-        576
-      ]
-    },
-    {
-      "name": "Upload Intro X",
-      "type": "n8n-nodes-postiz.postiz",
-      "typeVersion": 1,
-      "parameters": {
-        "operation": "uploadFile",
-        "binaryProperty": "data"
-      },
       "position": [
         800,
         576
       ]
     },
     {
-      "name": "Create Intro X Draft",
+      "parameters": {
+        "operation": "uploadFile",
+        "binaryProperty": "data"
+      },
+      "id": "437bf9d8-7b06-4097-bd3f-e61d7a4e399e",
+      "name": "Upload Intro X",
       "type": "n8n-nodes-postiz.postiz",
       "typeVersion": 1,
+      "position": [
+        1024,
+        576
+      ]
+    },
+    {
       "parameters": {
         "type": "draft",
         "date": "={{ $now.plus(1, \"days\").toISO() }}",
@@ -341,15 +352,16 @@
           ]
         }
       },
+      "id": "d0c30e04-5d43-4090-a805-aaf1f29c3eff",
+      "name": "Create Intro X Draft",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
       "position": [
-        1024,
+        1248,
         576
       ]
     },
     {
-      "name": "Caption Intro FB",
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 2.3,
       "parameters": {
         "modelId": {
           "__rl": true,
@@ -372,15 +384,16 @@
           "maxTokens": 800
         }
       },
+      "id": "b9f35c3c-120a-43c7-85ab-0b481554b7ea",
+      "name": "Caption Intro FB",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
       "position": [
-        224,
+        448,
         192
       ]
     },
     {
-      "name": "Caption Intro IG",
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 2.3,
       "parameters": {
         "modelId": {
           "__rl": true,
@@ -403,15 +416,16 @@
           "maxTokens": 800
         }
       },
+      "id": "67644765-2fa4-47bd-9f00-812e5c8e8358",
+      "name": "Caption Intro IG",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
       "position": [
-        224,
+        448,
         384
       ]
     },
     {
-      "name": "Caption Intro X",
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 2.3,
       "parameters": {
         "modelId": {
           "__rl": true,
@@ -434,15 +448,16 @@
           "maxTokens": 300
         }
       },
+      "id": "83299979-23e7-4c25-9a9a-a1ca15d21ca6",
+      "name": "Caption Intro X",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
       "position": [
-        224,
+        448,
         576
       ]
     },
     {
-      "name": "Pirate Speak Generator",
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 2.3,
       "parameters": {
         "modelId": {
           "__rl": true,
@@ -472,51 +487,55 @@
           "temperature": 0.9
         }
       },
+      "id": "ba5604a4-761b-4ed7-bb46-b84b32875766",
+      "name": "Pirate Speak Generator",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
       "position": [
         -576,
         192
       ]
     },
     {
+      "parameters": {
+        "jsCode": "const { slug, meta, blocks, titles, source_lang: src } = $('Assemble Multilingual Blocks').item.json;\nconst q = JSON.stringify;\nconst VIDEO_RE = /\\.(mp4|mov|m4v|webm|avi|mkv|mpeg|mpg)$/i;\nfunction hugoBasename(name) {\n  const n = String(name || '');\n  if (!n) return n;\n  if (VIDEO_RE.test(n)) return n.replace(/\\.[^.]+$/, '') + '.mp4';\n  return n;\n}\nfunction rewriteHugoNames(text) {\n  return String(text || '')\n    .replace(/\\{\\{<\\s*video\\s+src=\"([^\"]+)\"\\s*>\\}\\}/g, (_, s) => `{{< video src=\"${hugoBasename(s)}\" >}}`)\n    .replace(/!\\[([^\\]]*)\\]\\(([^)]+)\\)/g, (full, alt, file) => {\n      if (!VIDEO_RE.test(file)) return full;\n      return `![${alt}](${hugoBasename(file)})`;\n    });\n}\nconst fm = (t, s) => `+++\\ndate = ${q(meta.date)}\\nlastmod = ${q(meta.date)}\\ndraft = false\\ntitle = ${q(t)}\\nsummary = ${q(s)}\\n[params]\\n  author = ${q(meta.author)}\\n+++\\n\\n`;\nconst emit = (b, lang) => {\n  if (b.kind === 'title' || b.kind === 'text') return rewriteHugoNames(b[lang] || '');\n  if (b.kind === 'youtube') return `{{< youtube ${b.media.youtube_id} >}}`;\n  const m = b.media;\n  const name = hugoBasename(m.source_filename || '');\n  return m.kind === 'video' ? `{{< video src=\"${name}\" >}}` : `![${m.alt || ''}](${name})`;\n};\nconst body = (lang) => blocks.map((b) => emit(b, lang)).filter(Boolean).join('\\n\\n');\nconst firstPara = (bd) => {\n  const out = [];\n  for (const line of bd.split('\\n')) {\n    const t = line.trim();\n    if (!out.length && !t) continue;\n    if (out.length && (!t || t[0] === '#' || t === '---' || t === '***' || t === '___')) break;\n    out.push(line);\n  }\n  return out.join(' ').trim();\n};\nconst DISC = {\n  en: '*This blog post has been automatically translated by a Large Language Model.',\n  de: '*Dieser Blogbeitrag wurde automatisch von einem Large Language Model uebersetzt.',\n  es: '*Esta publicacion de blog ha sido traducida automaticamente por un Large Language Model.',\n  fr: '*Cet article de blog a ete traduit automatiquement par un Large Language Model.',\n  it: '*Questo post del blog e stato tradotto automaticamente da un Large Language Model.',\n  arrr: \"*Arrr, this here blog post be rewritten in the tongue o' pirates by a Large Language Model, ye scallywag!*\",\n};\nreturn [{\n  json: {\n    indexFiles: Object.keys(titles).map((code) => {\n      const b = body(code).replace(/[\\s\\r\\n]+$/, '');\n      const full = code === src ? b : `${b}\\n\\n---\\n\\n${DISC[code] || ''}`;\n      const summary = code === src ? (meta.summary || firstPara(full)) : firstPara(full);\n      return { repo_path: `content/posts/${slug}/index.${code}.md`, content: fm(titles[code] || meta.title, summary) + full + '\\n' };\n    }),\n  },\n}];"
+      },
+      "id": "87e5c0d9-dc1a-4cd7-a831-5beb7f9435bd",
       "name": "Generate Hugo Index MDs",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "parameters": {
-        "jsCode": "const { slug, meta, blocks, titles, source_lang: src } = $('Assemble Multilingual Blocks').item.json;\nconst q = JSON.stringify;\nconst fm = (t, s) => `+++\\ndate = ${q(meta.date)}\\nlastmod = ${q(meta.date)}\\ndraft = false\\ntitle = ${q(t)}\\nsummary = ${q(s)}\\n[params]\\n  author = ${q(meta.author)}\\n+++\\n\\n`;\nconst emit = (b, lang) => {\n  if (b.kind === 'title' || b.kind === 'text') return b[lang] || '';\n  if (b.kind === 'youtube') return `{{< youtube ${b.media.youtube_id} >}}`;\n  const m = b.media;\n  return m.kind === 'video' ? `{{< video src=\"${m.bundle_filename}\" >}}` : `![${m.alt || ''}](${m.bundle_filename})`;\n};\nconst body = (lang) => blocks.map((b) => emit(b, lang)).filter(Boolean).join('\\n\\n');\nconst firstPara = (bd) => {\n  const out = [];\n  for (const line of bd.split('\\n')) {\n    const t = line.trim();\n    if (!out.length && !t) continue;\n    if (out.length && (!t || t[0] === '#' || t === '---' || t === '***' || t === '___')) break;\n    out.push(line);\n  }\n  return out.join(' ').trim();\n};\nconst DISC = {\n  en: '*This blog post has been automatically translated by a Large Language Model.',\n  de: '*Dieser Blogbeitrag wurde automatisch von einem Large Language Model uebersetzt.',\n  es: '*Esta publicacion de blog ha sido traducida automaticamente por un Large Language Model.',\n  fr: '*Cet article de blog a ete traduit automatiquement par un Large Language Model.',\n  it: '*Questo post del blog e stato tradotto automaticamente da un Large Language Model.',\n  arrr: \"*Arrr, this here blog post be rewritten in the tongue o' pirates by a Large Language Model, ye scallywag!*\",\n};\nreturn [{\n  json: {\n    indexFiles: Object.keys(titles).map((code) => {\n      const b = body(code).replace(/[\\s\\r\\n]+$/, '');\n      const full = code === src ? b : `${b}\\n\\n---\\n\\n${DISC[code] || ''}`;\n      const summary = code === src ? (meta.summary || firstPara(full)) : firstPara(full);\n      return { repo_path: `content/posts/${slug}/index.${code}.md`, content: fm(titles[code] || meta.title, summary) + full + '\\n' };\n    }),\n  },\n}];"
-      },
       "position": [
-        0,
+        224,
         0
       ]
     },
     {
-      "name": "Assemble Multilingual Blocks",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
       "parameters": {
         "jsCode": "const prep = $('Prepare Blocks').item.json;\nconst parseTr = (j) => {\n  let t = j?.output?.[0]?.content?.[0]?.text ?? j;\n  if (typeof t === 'string') t = JSON.parse(t);\n  return t.translations || [];\n};\nconst blocks = prep.blocks.map((b) => ({ ...b }));\nconst titles = { [prep.source_lang]: prep.title };\nfor (const tr of [...parseTr($('Natural Language Translation').item.json), ...parseTr($('Pirate Speak Generator').item.json)]) {\n  const code = tr.lang_code;\n  if (!code || code === prep.source_lang) continue;\n  titles[code] = code === 'arrr' ? prep.title : (tr.title || prep.title);\n  for (const { index: i, text } of tr.items || []) {\n    if (blocks[i] && (blocks[i].kind === 'title' || blocks[i].kind === 'text')) blocks[i][code] = text ?? '';\n  }\n}\nreturn [{ json: { slug: prep.slug, meta: prep.meta, source_lang: prep.source_lang, blocks, titles } }];"
       },
+      "id": "26ef7f10-7b46-4a2b-a384-4ba59d34e2c2",
+      "name": "Assemble Multilingual Blocks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         -224,
         192
       ]
     },
     {
+      "parameters": {
+        "jsCode": "const root = '/syndicator/sailingnomads';\nreturn $('Generate Hugo Index MDs').first().json.indexFiles.map((f) => ({\n  json: {\n    sftp_path: `${root}/${f.repo_path}`,\n    content: f.content,\n  },\n}));"
+      },
+      "id": "1301589f-ac65-4019-985e-ebe2768c5c53",
       "name": "Stage Site Files",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "parameters": {
-        "jsCode": "const src = $('Publish Webhook').item.json.body ?? $('Publish Webhook').item.json;\nconst anchor = (src.site_media || []).find((e) =>\n  e.repo_path && e.sftp_path && e.sftp_path.endsWith(e.repo_path)\n);\nif (!anchor) throw new Error('cannot derive Hugo staging root from site_media');\nconst root = anchor.sftp_path.slice(0, -anchor.repo_path.length).replace(/\\/$/, '');\nreturn $('Generate Hugo Index MDs').first().json.indexFiles.map((f) => ({\n  json: {\n    sftp_path: `${root}/${f.repo_path}`,\n    content: f.content,\n  },\n}));"
-      },
       "position": [
-        288,
+        512,
         0
       ]
     },
     {
-      "name": "Upload Site Files",
-      "type": "n8n-nodes-base.ftp",
-      "typeVersion": 1,
       "parameters": {
         "protocol": "sftp",
         "operation": "upload",
@@ -525,65 +544,132 @@
         "fileContent": "={{ $json.content }}",
         "options": {}
       },
+      "id": "9429c516-3ce2-4936-8879-3bd6d59746f7",
+      "name": "Upload Site Files",
+      "type": "n8n-nodes-base.ftp",
+      "typeVersion": 1,
       "position": [
-        576,
+        800,
         0
       ]
     },
     {
-      "name": "Adapt Publish Media",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.3,
       "parameters": {
-        "mode": "once",
-        "options": {
-          "waitForSubWorkflow": true
-        },
-        "source": "database",
         "workflowId": {
           "__rl": true,
-          "cachedResultName": "Adapt Publish Media",
+          "value": "OGa6Xa8GxkSmA7Cr",
           "mode": "list",
-          "value": "OGa6Xa8GxkSmA7Cr"
+          "cachedResultUrl": "/workflow/OGa6Xa8GxkSmA7Cr",
+          "cachedResultName": "Adapt Hugo Media"
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
+          "value": {
+            "slug": "={{ ($('Publish Webhook').item.json.body || $('Publish Webhook').item.json).slug }}",
+            "blocks": "={{ ($('Publish Webhook').item.json.body || $('Publish Webhook').item.json).blocks || [] }}",
+            "header_source": "={{ ($('Publish Webhook').item.json.body || $('Publish Webhook').item.json).header_source || '' }}"
+          },
+          "matchingColumns": [],
           "schema": [
             {
-              "canBeUsedToMatch": true,
-              "display": true,
-              "displayName": "slug",
               "id": "slug",
+              "displayName": "slug",
               "required": false,
-              "type": "string"
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
             },
             {
-              "canBeUsedToMatch": true,
-              "display": true,
-              "displayName": "header_source_sftp_path",
-              "id": "header_source_sftp_path",
+              "id": "blocks",
+              "displayName": "blocks",
               "required": false,
-              "type": "string"
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "array",
+              "removed": false
             },
             {
-              "canBeUsedToMatch": true,
-              "display": true,
-              "displayName": "site_media",
-              "id": "site_media",
+              "id": "header_source",
+              "displayName": "header_source",
               "required": false,
-              "type": "array"
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
             }
           ],
-          "value": {
-            "header_source_sftp_path": "={{ ($json.body || $json).header_source?.sftp_path || '' }}",
-            "site_media": "={{ ($json.body || $json).site_media || [] }}",
-            "slug": "={{ ($json.body || $json).slug }}"
-          }
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
         }
       },
+      "id": "c1744b55-8707-4599-b78e-2b40d6f6569e",
+      "name": "Adapt Hugo Media",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
       "position": [
-        -200,
+        0,
         0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "8NOGn9jgOoV0fw0u",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/8NOGn9jgOoV0fw0u",
+          "cachedResultName": "Adapt Feature Image"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "slug": "={{ ($('Publish Webhook').item.json.body || $('Publish Webhook').item.json).slug }}",
+            "header_source": "={{ ($('Publish Webhook').item.json.body || $('Publish Webhook').item.json).header_source || '' }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "slug",
+              "displayName": "slug",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "header_source",
+              "displayName": "header_source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "15b5bb5e-180b-4e31-896c-f181f2d29705",
+      "name": "Adapt Feature Image",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        224,
+        384
       ]
     }
   ],
@@ -665,27 +751,6 @@
         ]
       ]
     },
-    "Skip Social If Redeploy": {
-      "main": [
-        [
-          {
-            "node": "Caption Intro FB",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Caption Intro IG",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Caption Intro X",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Caption Intro FB": {
       "main": [
         [
@@ -756,12 +821,12 @@
       "main": [
         [
           {
-            "node": "Generate Hugo Index MDs",
+            "node": "Skip Social If Redeploy",
             "type": "main",
             "index": 0
           },
           {
-            "node": "Skip Social If Redeploy",
+            "node": "Adapt Hugo Media",
             "type": "main",
             "index": 0
           }
@@ -790,18 +855,39 @@
         ]
       ]
     },
-    "Respond Accepted": {
+    "Skip Social If Redeploy": {
       "main": [
         [
           {
-            "node": "Adapt Publish Media",
+            "node": "Adapt Feature Image",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Adapt Publish Media": {
+    "Adapt Feature Image": {
+      "main": [
+        [
+          {
+            "node": "Caption Intro FB",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Caption Intro IG",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Caption Intro X",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond Accepted": {
       "main": [
         [
           {
@@ -811,6 +897,26 @@
           }
         ]
       ]
+    },
+    "Adapt Hugo Media": {
+      "main": [
+        [
+          {
+            "node": "Generate Hugo Index MDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
-  }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  },
+  "versionId": "5e390d19-73b7-4d97-9651-fc84cc58bb1b",
+  "tags": [],
+  "nodeGroups": []
 }

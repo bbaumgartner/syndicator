@@ -177,7 +177,8 @@ covers, crop-focus) and the Hugo front-matter/render live in n8n; the site
 commit is manual. Deleted local modules include the old
 `media_adapt` Pillow/ffmpeg path. `hugo.py` keeps only the media-rewriting
 helpers for the structured blocks payload. Crop geometry for the n8n Code
-nodes is documented in `crop_math.py` / `docs/n8n-crop-box.js`.
+nodes is documented in `crop_math.py` (Python mirror) and inlined in the
+Adapt workflow backups under `docs/*.json`.
 
 ### 5.3 Prompts & models
 

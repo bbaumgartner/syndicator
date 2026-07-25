@@ -1,15 +1,23 @@
 {
+  "id": "O6fHa4LyBB7P71nU",
   "name": "Syndicator Error",
+  "active": true,
+  "isArchived": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
   "nodes": [
     {
       "parameters": {},
-      "id": "56f38409-4b87-41da-b559-0061b077c1f5",
+      "id": "8c2b214a-4549-435a-9fde-f9a8e2079c36",
       "name": "On Workflow Error",
       "type": "n8n-nodes-base.errorTrigger",
       "typeVersion": 1,
       "position": [
-        240,
-        304
+        256,
+        -256
       ]
     },
     {
@@ -19,23 +27,16 @@
         "subject": "=Syndicator workflow failed: {{ $json.workflow.name }}",
         "text": "=Workflow: {{ $json.workflow.name }}\nError: {{ $json.execution.error.message }}\nExecution: {{ $json.execution.url }}"
       },
-      "id": "0073bc96-7c75-4f62-baf7-8acc8e516429",
+      "id": "6193880a-c3db-457b-8725-55b81ff2f6df",
       "name": "Send Failure Mail",
       "type": "n8n-nodes-base.mailgun",
       "typeVersion": 1,
       "position": [
-        528,
-        304
-      ],
-      "credentials": {
-        "mailgunApi": {
-          "id": "AOwTlU9Hr05k80mK",
-          "name": "Mailgun account"
-        }
-      }
+        544,
+        -256
+      ]
     }
   ],
-  "pinData": {},
   "connections": {
     "On Workflow Error": {
       "main": [
@@ -49,19 +50,11 @@
       ]
     }
   },
-  "active": true,
-  "settings": {
-    "executionOrder": "v1",
-    "binaryMode": "separate",
-    "availableInMCP": true
-  },
-  "versionId": "2d9e148a-20a8-46cc-b6ca-883bf4586746",
+  "pinData": {},
   "meta": {
-    "aiBuilderAssisted": true,
-    "builderVariant": "mcp",
-    "instanceId": "cc5b37f2534616d7722eec7fc1fd09aa1aa9462dba306d6d43049bbb363fbb97"
+    "templateCredsSetupCompleted": true
   },
-  "nodeGroups": [],
-  "id": "x32a5IzGiS75jAtb",
-  "tags": []
+  "versionId": "3c3ad28a-2a0f-438b-b7dd-4b4762620057",
+  "tags": [],
+  "nodeGroups": []
 }
