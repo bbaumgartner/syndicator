@@ -1,12 +1,13 @@
 """Resumable, idempotent SFTP uploader for the staging area.
 
 The staging server exposes a chrooted, key-only ``sftp`` user (§4.1). Every
-``sftp_path`` in the webhook contracts is chroot-absolute and used verbatim.
+``sftp_path`` in local uploads is chroot-absolute. Webhook contracts pass
+basenames only; n8n derives the same layout when downloading/uploading.
 
 Design constraints (§4.1):
 - must work through OpenSSH ``internal-sftp`` (so paramiko, not rsync/lftp);
 - resumable: an interrupted upload is continued from its byte offset;
-- idempotent: a re-run overwrites in place (adapts can change run to run);
+- idempotent: a re-run overwrites in place;
 - never deletes (cleanup is manual on the server).
 """
 
@@ -40,7 +41,7 @@ class SftpUploader:
         except FileNotFoundError:
             return None
 
-    def _ensure_dir(self, remote_dir: str) -> None:
+    def ensure_dir(self, remote_dir: str) -> None:
         """``mkdir -p`` for a chroot-absolute directory path."""
         parts = PurePosixPath(remote_dir).parts
         current = PurePosixPath(parts[0]) if parts and parts[0] == "/" else PurePosixPath("/")
@@ -60,7 +61,7 @@ class SftpUploader:
         """Upload one file to a chroot-absolute remote path (resume or overwrite)."""
         local_path = Path(local_path)
         local_size = local_path.stat().st_size
-        self._ensure_dir(str(PurePosixPath(remote_path).parent))
+        self.ensure_dir(str(PurePosixPath(remote_path).parent))
 
         remote_size = self._remote_size(remote_path)
         if remote_size is not None and 0 < remote_size < local_size:

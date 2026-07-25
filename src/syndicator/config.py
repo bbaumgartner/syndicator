@@ -7,38 +7,26 @@ Two layers:
 The repo root is located by walking up from this file, so the CLI works from
 any working directory.
 
-v2 (n8n migration): translation, captions and the Hugo render moved to n8n;
-the final site commit is manual. Their models/prompts are no longer configured
-here. What stays local: media specs (adaptation), the crop-focus vision model,
-the SFTP staging target and the n8n webhook URLs.
+v2: translation, captions, media adaptation and the Hugo render live in n8n;
+the final site commit is manual. Local config keeps the SFTP staging target and
+the webhook URLs. Social/Hugo media geometry is hardcoded in the n8n Adapt
+workflows.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
 
 import yaml
 from pydantic import BaseModel
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
-ChannelKind = Literal["site", "social", "article"]
-
 
 class SiteConfig(BaseModel):
     title: str = "Sailing Nomads"
     base_url: str
     default_language: str = "en"
-
-
-class CropFocusConfig(BaseModel):
-    enabled: bool = True
-    model: str = "gpt-5.4-mini"
-
-
-class MediaConfig(BaseModel):
-    crop_focus: CropFocusConfig = CropFocusConfig()
 
 
 class SftpConfig(BaseModel):
@@ -53,38 +41,10 @@ class WebhooksConfig(BaseModel):
     reel_url: str = ""
 
 
-class ImageSpec(BaseModel):
-    mode: Literal["copy", "convert"] = "convert"
-    aspect: str | None = None  # e.g. "4:5"; None = keep aspect
-    width: int | None = None
-    height: int | None = None
-    max_edge: int | None = None
-    format: str = "jpeg"
-    quality: int = 90
-
-
-class VideoSpec(BaseModel):
-    aspect: str | None = None  # e.g. "9:16"; None = keep aspect
-    width: int | None = None
-    height: int | None = None
-    max_seconds: int | None = None
-    pad_mode: Literal["blur", "black", "crop"] = "crop"
-
-
-class ChannelConfig(BaseModel):
-    kind: ChannelKind
-    enabled: bool = True
-    image: ImageSpec = ImageSpec()
-    video: VideoSpec = VideoSpec()
-    reel_video: VideoSpec | None = None  # 4:5 crop for reel-format posts
-
-
 class SharedConfig(BaseModel):
     site: SiteConfig
-    media: MediaConfig = MediaConfig()
     sftp: SftpConfig
     webhooks: WebhooksConfig = WebhooksConfig()
-    channels: dict[str, ChannelConfig]
 
 
 class LocalConfig(BaseModel):
@@ -112,14 +72,6 @@ class Config(BaseModel):
     @property
     def pages_dir(self) -> Path:
         return self.local.saillog_dir / "pages"
-
-    def social_channels(self) -> dict[str, ChannelConfig]:
-        """Enabled social channels, in YAML order (pyyaml preserves it)."""
-        return {
-            name: ch
-            for name, ch in self.shared.channels.items()
-            if ch.kind == "social" and ch.enabled
-        }
 
 
 def load_config(repo_root: Path | None = None) -> Config:

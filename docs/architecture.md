@@ -67,9 +67,9 @@ and all review/state commands were removed.
 
 | Constraint | Consequence |
 |---|---|
-| n8n Cloud today, self-hostable later | No env vars, no shell/ffmpeg, no persistent disk; the FTP node is a client; binary ops must be sequenced for memory. Workflows must not rely on Cloud-only features. |
-| Media transport via SFTP staging | The Hugo output mirrors the repository below `/syndicator/sailingnomads/`; social-only files stay below `/syndicator/<slug>/`. Nobody deletes automatically. |
-| Local media adaptation | ffmpeg/Pillow (and the crop-focus vision model) stay local; n8n cannot run ffmpeg. |
+| Self-hosted n8n (same machine as SFTP) | Media adapt runs in n8n (Edit Image + `n8n-nodes-ffmpeg-studio` + OpenAI focus). Large binaries may load into workflow RAM; prefer path-based FFmpeg where possible. |
+| Media transport via SFTP staging | Client writes immutable originals under `/syndicator/<slug>/source/`; n8n builds `/syndicator/sailingnomads/` and social derivatives. Nobody deletes automatically. |
+| Media adaptation in n8n | Crop/resize/reencode and crop-focus live in Adapt Hugo / Adapt Feature / Adapt Reel sub-workflows; local trigger does not run ffmpeg/Pillow. |
 | One commit per publish | The owner fetches the staged post from SFTP into the site checkout and commits/pushes by hand, so a publish is a single deploy. n8n has no GitHub access and never touches a site binary. |
 | URL-as-secret webhooks | The two webhook URLs are the only auth; keep them out of the public. |
 | Runs from a checkout | Local prompts, shared config and tool binaries are resolved relative to the repo; run via `uv run syndicator …`. Mac-first, Linux-compatible. |
@@ -87,18 +87,18 @@ owns the remaining edges.
 flowchart LR
     Author["Author\n(writes; reviews in Postiz;\ncommits the site)"]
     Graph[("Logseq graph\n(content source — an Edge)")]
-    SYN["Local trigger\n(extract · media_adapt · journeymap · SFTP · webhooks)"]
+    SYN["Local trigger\n(extract · journeymap · SFTP source/ · webhooks)"]
     S[("SFTP staging\n(owner's server)")]
-    N8N["n8n\n(3 stateless workflows)"]
+    N8N["n8n\n(adapt + publish workflows)"]
     GH[("GitHub → site deploy")]
     PZ["Postiz cloud\n(drafts + calendar)"]
     Platforms["Facebook · Instagram · X"]
 
     Author --> Graph
     Graph --> SYN
-    SYN -->|upload| S
+    SYN -->|upload originals| S
     SYN -->|POST /publish, /reel| N8N
-    N8N -->|FTP download headers/covers,\nwrite Hugo indexes| S
+    N8N -->|adapt media, write Hugo indexes,\nread social derivatives| S
     S -->|"manual fetch"| Author
     Author -->|"git commit + push"| GH
     N8N -->|upload + draft| PZ
@@ -119,17 +119,15 @@ edge means changing only the local `extract` boundary.
 Two cooperating layers with a small, explicit contract between them.
 
 **Local trigger (Python).** A pipeline of small modules, each *inputs →
-outputs*, all deterministic except the crop-focus vision assist:
+outputs*, all deterministic:
 
 - `extract` — Logseq graph → `BlogPost` (the privacy boundary).
-- `media_adapt` — source media + channel spec → site 16:9, per-platform reels
-  (4:5 today), reel cover frames, header crops. Reels are deduplicated by full
-  `VideoSpec` equality, so identical adapts share one uploaded file.
 - `journeymap` — Go tools → the global `journey-map.mp4` (deterministic, so
   git content-addressing dedupes it).
-- `staging` — orchestrates adaptation into the SFTP layout.
-- `sftp_upload` — resumable, idempotent uploads.
-- `payload` — builds the `/publish` and `/reel` JSON contracts.
+- `staging` — copies immutable originals into `<slug>/source/` for SFTP.
+- `sftp_upload` — resumable, idempotent uploads; pre-creates n8n output dirs.
+- `payload` — builds the `/publish` and `/reel` JSON contracts (basenames +
+  slug; n8n derives SFTP layout paths).
 - `webhook` — POSTs with retries; expects `{"status":"accepted"}`.
 - `marker` — writes `syndicated-at::` after all webhooks were accepted.
 
@@ -138,25 +136,20 @@ owner recursively fetches `/syndicator/sailingnomads/` into the existing site
 checkout, reviews the diff, commits and pushes. The SFTP subtree already has
 the exact Hugo layout, so no manifest or file rearranging is needed.
 
-**n8n (three stateless workflows).**
+**n8n (stateless workflows).** See [n8n-media-adapt-notes.md](n8n-media-adapt-notes.md).
 
-- **Blog Post Publish** (`/publish`): respond early → emit the source-language
-  Hugo `index` from the structured `blocks` (a thin emitter; no Logseq
-  parsing) → translate into every other language (English once, pirate off
-  English, others in parallel) → write the `index.<lang>.md` files directly
-  to `/syndicator/sailingnomads/content/posts/<slug>/` beside the media the
-  local trigger already uploaded → unless `flags.redeploy`, one Postiz intro
-  draft per platform from the header crops. The workflow never downloads or
-  uploads a site binary and has no GitHub access.
-- **Reel Publish** (`/reel`): respond early → per platform SFTP-download the
-  cover, write an English vision caption, download the reel, upload to Postiz,
-  create one single-channel draft.
-- **Syndicator Error**: Error Trigger → Mailgun failure mail; assigned as the
-  `settings.errorWorkflow` of the other two.
+- **Adapt Hugo Media**: Hugo images are copied; Hugo videos are FFmpeg-resized
+  only (no crop). **Adapt Feature Image**: crop-focus the feature image into
+  social headers. **Adapt Reel Media**: FFmpeg 4:5 crop. None modify `source/`.
+- **Blog Post Publish** (`/publish`): respond early → translate/assemble →
+  Adapt Hugo Media → Generate Hugo indexes → upload; unless `flags.redeploy`,
+  Adapt Feature Image then Postiz intro drafts from header crops.
+- **Reel Publish** (`/reel`): respond early → adapt → vision captions → Postiz
+  reel drafts.
+- **Syndicator Error**: Error Trigger → Mailgun; shared `settings.errorWorkflow`.
 
-The contract is intentionally narrow: **chroot-absolute `sftp_path`s** passed
-verbatim on both sides, and two small JSON webhook bodies (see
-[n8n-migration.md §4](n8n-migration.md)).
+The contract is intentionally narrow: **slug + basenames** in the webhook
+bodies; n8n derives chroot-absolute SFTP paths from fixed layout conventions.
 
 ---
 
@@ -169,30 +162,29 @@ verbatim on both sides, and two small JSON webhook bodies (see
 | Driver (CLI) | `cli.py` — `syndicate`, `redeploy` |
 | Local orchestrator | `pipeline.py` |
 | Domain model | `model.py` — `BlogPost`, `Section`, `MediaRef`, `Block`, `Meta` |
-| Local nodes | `nodes/` — `extract`, `media_adapt`, `journeymap`, `hugo` (media-rewriting helpers only) |
+| Local nodes | `nodes/` — `extract`, `journeymap`, `hugo` (media-rewriting helpers only); `crop_math.py` (n8n Code reference) |
 | Transport & contracts | `staging.py`, `sftp_upload.py`, `payload.py`, `webhook.py` |
 | Site commit | manual: recursively fetch `/syndicator/sailingnomads/` into the site checkout, then git commit/push |
 | Hand-off state | `marker.py` — the `syndicated-at::` property |
 | Local edge helpers | `siteurl.py` (builds `post_url`) |
 | Configuration | `config.py`: `syndicator.yaml` (shared) + `config.local.yaml` (machine paths, `sftp_key`) |
-| Cloud "nodes" | the three n8n workflows (authored via the n8n MCP server) |
+| Cloud "nodes" | Adapt Hugo Media / Adapt Feature Image / Adapt Reel Media + Blog Post Publish / Reel Publish / Syndicator Error |
 
 ### 5.2 What moved to n8n
 
-Translation, captioning and the Hugo front-matter/render moved to n8n; the site
-commit is now manual. The corresponding local modules
-(`translate`, `caption`, `social_plan`, `export`, `publish_git`, `backlink`,
-`bootstrap`, `state`, `watch`, `hugo_format`) and the daemon unit were deleted.
-`hugo.py` keeps only the media-rewriting helpers whose output the emitter and
-`media_adapt` still need locally.
+Translation, captioning, **media adaptation** (headers, site videos, reels,
+covers, crop-focus) and the Hugo front-matter/render live in n8n; the site
+commit is manual. Deleted local modules include the old
+`media_adapt` Pillow/ffmpeg path. `hugo.py` keeps only the media-rewriting
+helpers for the structured blocks payload. Crop geometry for the n8n Code
+nodes is documented in `crop_math.py` / `docs/n8n-crop-box.js`.
 
 ### 5.3 Prompts & models
 
-Prompts were ported once from `prompts/` into the n8n OpenAI nodes; from then
-on the **n8n copies are authoritative** for the cloud steps (translate,
-captions), and model names live on those nodes. `prompts/` + `syndicator.yaml`
-stay canonical only for LLM use that remains local (the `media_adapt`
-crop-focus model).
+Prompts for translate/captions/crop-focus were ported into n8n OpenAI nodes;
+the **n8n copies are authoritative**. `prompts/crop_focus.md` remains the
+reference text for the focus prompt. Media geometry (Hugo resize, social
+headers, reel 4:5) is hardcoded in the n8n Adapt workflows.
 
 ---
 
@@ -203,23 +195,23 @@ crop-focus model).
 1. The author sets `status:: online` (with a `header::` image) and runs
    `syndicate`.
 2. The trigger generates + uploads the global journey map once, then per post:
-   adapt media → SFTP upload → one `/reel` per video → `/publish`.
+   upload `source/` originals → one `/reel` per video → `/publish`.
 3. Each workflow responds `{"status":"accepted"}` immediately and continues
-   async. Once every webhook for a post was accepted, the trigger writes
-   `syndicated-at::`.
-4. n8n renders + translates the index files directly into the mirrored Hugo
-   tree and creates the Postiz drafts. The author reviews and schedules the
-   drafts in the Postiz calendar.
+   async (adapt media, then translate/drafts). Once every webhook for a post
+   was accepted, the trigger writes `syndicated-at::`.
+4. n8n adapts media into the mirrored Hugo tree and social paths, renders +
+   translates indexes, and creates the Postiz drafts. The author reviews and
+   schedules drafts in the Postiz calendar.
 5. The author recursively fetches `/syndicator/sailingnomads/` into the site
    checkout, reviews the diff, commits and pushes — the push triggers the
    deploy.
 
 ### 6.2 Redeploy (`redeploy --post`)
 
-Site only: adapt site media + journey map → SFTP → `/publish` with
-`flags.redeploy: true`. n8n re-renders and re-translates directly into the
-mirrored Hugo tree; no drafts, no marker change. The manual fetch + commit
-ships it.
+Site only: upload `source/` + journey map → `/publish` with
+`flags.redeploy: true`. n8n re-adapts site media, re-renders and re-translates
+into the mirrored Hugo tree; no drafts, no marker change. The manual fetch +
+commit ships it.
 
 ### 6.3 Failure & recovery
 
@@ -247,19 +239,19 @@ flowchart LR
     subgraph Owner ["Owner's server"]
         S[("SFTP staging\n/syndicator/")]
     end
-    subgraph Cloud ["n8n (Cloud now, self-hosted later)"]
-        WF["Blog Post Publish · Reel Publish · Syndicator Error"]
+    subgraph Cloud ["n8n (self-hosted)"]
+        WF["Adapt · Blog Post Publish · Reel Publish · Error"]
     end
     C --- G
-    C -->|upload| S
+    C -->|upload source/| S
     C -->|webhooks| WF
-    WF -->|"FTP (read social media, write Hugo indexes)"| S
+    WF -->|"FTP adapt + Hugo indexes"| S
     S -->|"manual fetch → git push"| GH[("GitHub → deploy")]
     WF -->|Postiz| PZ["Postiz cloud"]
 ```
 
-- The local trigger runs on the Mac today; the toolchain (Python/ffmpeg/Go/
-  SFTP) stays Linux-compatible so the server can run it later.
+- The local trigger runs on the Mac today; Go/SFTP stay Linux-compatible so
+  the server can run it later. FFmpeg for adapt runs on the n8n host.
 - n8n workflows are authored and updated through the **n8n MCP server**;
   MCP-created workflows are MCP-enabled automatically.
 - No locking, no cross-machine state file: worst case is duplicate drafts,
@@ -282,10 +274,10 @@ deletions are handled like any other site change.
 the whole site build (re-translates) by design; the only state is the new-post
 marker plus Postiz and git history.
 
-**Reel sharing.** Local adapts once per distinct effective `VideoSpec`; the
-`/reel` contract carries per-platform `sftp_path`s, so identical adapts share a
-file while a divergent one (e.g. an Instagram 90 s trim, or a future 9:16
-TikTok) gets its own path without a contract change.
+**Reel variants.** Adapt Reel Media hardcodes a single 4:5 encode under
+`reels/4x5/`. Reel Publish posts that same file to FB/IG/X. A future 9:16
+Shorts variant would be another hardcoded encode in Adapt, wired only to the
+YouTube target in Reel Publish — not driven by `syndicator.yaml`.
 
 **Cloud statelessness.** Workflows hold no state between executions; failure
 handling is the error mail + manual recovery, never a state coupling back to
@@ -297,7 +289,7 @@ local.
 
 | # | Decision | Rationale |
 |---|---|---|
-| 1 | Thin local trigger + n8n workflows | Move heavy lifting off the two-machine Python core; keep only the private diary edge and media adaptation local. |
+| 1 | Thin local trigger + n8n workflows | Move heavy lifting (including media adapt) off the Python core; keep only the private diary edge and journey map local. |
 | 2 | Postiz cloud for social | Drafts + calendar UI as the human review/schedule surface; open-source exit hatch; no own Meta/X developer apps. |
 | 3 | SFTP staging as media transport | Resumable, no Cloud upload-size cap; n8n downloads, never deletes. |
 | 4 | Site commit is a manual local step (supersedes: Git Data API commit in n8n) | The SFTP subtree mirrors the Hugo repo: local media uploads and n8n index writes meet under `/syndicator/sailingnomads/`, which can be fetched into the checkout in one operation. Removes the base64-in-RAM blob round-trip and GitHub credential in n8n, and adds a pre-deploy `git diff` gate — at the cost of one manual step. |
@@ -321,10 +313,10 @@ alternatives.
 - **Publish needs a manual step:** the site is live only after the owner
   fetches the staged output and pushes. Accepted deliberately — it doubles as
   the review gate.
+- **Large media in n8n:** adapt may load binaries into workflow memory; accepted
+  with self-hosted RAM headroom and path-based FFmpeg where available.
 - **Staging area growth:** nobody deletes automatically; periodic manual
   purge.
-- **Cloud lock-in surface:** kept small (FTP client, HTTP, community Postiz
-  node) so a self-hosted n8n move stays feasible.
 
 ---
 
@@ -334,10 +326,9 @@ alternatives.
 |---|---|
 | **Local trigger** | The Python CLI that reads the diary, adapts media, uploads over SFTP and fires the webhooks. The only diary reader. |
 | **Workflow** | One stateless n8n execution graph (Blog Post Publish, Reel Publish, Syndicator Error). |
-| **Staging area** | The chrooted `/syndicator/` SFTP tree. `/syndicator/sailingnomads/` mirrors the Hugo checkout; `/syndicator/<slug>/` contains social-only headers, reels and covers. |
-| **`sftp_path`** | A chroot-absolute path passed verbatim to both the uploader and the n8n FTP node. |
+| **Staging area** | The chrooted `/syndicator/` SFTP tree. `/syndicator/<slug>/source/` holds immutable originals; `/syndicator/sailingnomads/` is the Hugo mirror built by n8n; `/syndicator/<slug>/header|reels|covers/` are social derivatives. |
+| **`sftp_path`** | A chroot-absolute path used by SFTP upload/download nodes. Derived in n8n from slug + basename; the local uploader still builds absolute remotes when copying originals. |
 | **Marker** | The `syndicated-at::` property; records hand-off (all webhooks accepted), not completion. |
 | **Intro post** | One per blog post per platform: header crop + English summary caption. |
 | **Reel** | One per video per platform: adapted vertical clip + English vision caption. |
-| **Channel** | Configuration for one target (media specs, reel spec); parameterizes local adaptation, is not code. |
 | **Slug** | Stable post identifier (`<date>_<title>`); names the staging dir, bundle and drafts. |

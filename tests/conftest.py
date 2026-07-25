@@ -3,26 +3,8 @@
 from pathlib import Path
 
 from syndicator.config import Config, LocalConfig, SharedConfig
-from syndicator.llm import LLMClient
 
 FIXTURES = Path(__file__).parent / "fixtures"
-REEL_VIDEO_45 = {"aspect": "4:5", "width": 1080, "height": 1350, "max_seconds": 90, "pad_mode": "crop"}
-
-
-class FakeLLM(LLMClient):
-    """Injected LLM strategy for tests: canned outputs, no network, no cost."""
-
-    def __init__(self):
-        super().__init__()
-        self.calls = 0
-
-    def complete_text(self, node, model, system, user, temperature=None):
-        self.calls += 1
-        return f"[{node}] {user}"
-
-    def complete_structured(self, node, model, system, user_content, schema, temperature=None):
-        self.calls += 1
-        return schema()  # e.g. CropFocus() -> centered focus
 
 
 def make_cfg(tmp_path: Path) -> Config:
@@ -42,31 +24,6 @@ def make_cfg(tmp_path: Path) -> Config:
             "webhooks": {
                 "publish_url": "https://n8n.example/webhook/publish",
                 "reel_url": "https://n8n.example/webhook/reel",
-            },
-            "channels": {
-                "hugo": {
-                    "kind": "site",
-                    "image": {"mode": "copy"},
-                    "video": {"aspect": "16:9", "width": 1920, "height": 1080, "pad_mode": "crop"},
-                },
-                "facebook": {
-                    "kind": "social",
-                    "image": {"mode": "convert", "max_edge": 2048},
-                    "video": {"max_seconds": 240},
-                    "reel_video": {"aspect": "4:5", "width": 1080, "height": 1350, "max_seconds": 240, "pad_mode": "crop"},
-                },
-                "instagram": {
-                    "kind": "social",
-                    "image": {"mode": "convert", "aspect": "4:5", "width": 1080, "height": 1350},
-                    "video": {"aspect": "4:5", "width": 1080, "height": 1350, "max_seconds": 90, "pad_mode": "crop"},
-                    "reel_video": REEL_VIDEO_45,
-                },
-                "x": {
-                    "kind": "social",
-                    "image": {"mode": "convert", "max_edge": 2048},
-                    "video": {"max_seconds": 140},
-                    "reel_video": {"aspect": "4:5", "width": 1080, "height": 1350, "max_seconds": 140, "pad_mode": "crop"},
-                },
             },
         }
     )

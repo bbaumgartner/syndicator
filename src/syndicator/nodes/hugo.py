@@ -1,11 +1,11 @@
 """hugo node (v2): the local media-rewriting helpers.
 
-In v2 the Hugo *render* (front matter + index assembly + translation) happens
-in n8n; the final site commit is manual. What stays local is the media
-rewriting: turning raw Logseq block text into Hugo-ready markdown (flattened
-bundle basenames, video/youtube shortcodes) and computing the bundle media
-manifest that gets uploaded. This module keeps exactly that logic — the
-``hugo`` channel is the site bundle spec.
+In v2 the Hugo *render* (front matter + index assembly + translation) and media
+adaptation happen in n8n. What stays local is rewriting raw Logseq block text
+into Hugo-oriented markdown (flattened source basenames, video/youtube
+shortcodes). Hugo dest naming (videos → ``.mp4``) is owned by n8n Adapt Hugo
+Media / Generate Hugo Index MDs; ``hugo_basename`` here mirrors that rule for
+tests.
 """
 
 from __future__ import annotations
@@ -14,9 +14,7 @@ import logging
 import re
 from pathlib import Path
 
-from ..config import ChannelConfig, Config
-from ..model import BlogPost
-from .media_adapt import channel_rewrites_filenames, output_basename
+from ..model import VIDEO_EXTENSIONS, BlogPost
 
 log = logging.getLogger(__name__)
 
@@ -25,9 +23,17 @@ ASSET_RE = re.compile(r"!\[(.*?)\]\((.*?assets/)(.*?)\)(?:\{[^}]*\})?")
 LOGSEQ_VIDEO_RE = re.compile(r"\{\{video\s+(https?://[^\s}]+)\s*\}\}")
 YOUTUBE_ID_RE = re.compile(r"(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/embed/)([a-zA-Z0-9_-]+)")
 
-VIDEO_EXTENSIONS = {
-    ".mp4", ".mov", ".avi", ".wmv", ".flv", ".webm", ".mkv", ".m4v", ".mpg", ".mpeg",
-}
+
+def hugo_basename(original: str) -> str:
+    """Mirror of n8n Hugo naming: images keep their name; videos become ``.mp4``."""
+    path = Path(original)
+    if path.suffix.lower() in VIDEO_EXTENSIONS:
+        return f"{path.stem}.mp4"
+    return path.name
+
+
+# Back-compat alias used by older tests/callers.
+output_basename = hugo_basename
 
 
 def build_content(post: BlogPost) -> str:
@@ -53,9 +59,11 @@ def collect_asset_copies(content: str, source_dir: Path) -> list[tuple[Path, str
     return copies
 
 
-def transform_content(content: str, ch: ChannelConfig | None = None) -> str:
-    """Rewrite media references for the Hugo bundle (ProcessContent)."""
-    rewrite_filenames = ch is not None and channel_rewrites_filenames(ch)
+def transform_content(content: str) -> str:
+    """Rewrite Logseq media refs to shortcodes using *source* basenames.
+
+    Hugo dest renaming (``.mov`` → ``.mp4``) is applied later in n8n.
+    """
 
     def replace_video_embed(m: re.Match[str]) -> str:
         url = m.group(1)
@@ -69,8 +77,6 @@ def transform_content(content: str, ch: ChannelConfig | None = None) -> str:
     def replace_asset(m: re.Match[str]) -> str:
         alt = m.group(1)
         filename = Path(m.group(3)).name
-        if rewrite_filenames and ch is not None:
-            filename = output_basename(filename, ch)
         if Path(filename).suffix.lower() in VIDEO_EXTENSIONS:
             return f'{{{{< video src="{filename}" >}}}}'
         return f"![{alt}]({filename})"
@@ -78,23 +84,16 @@ def transform_content(content: str, ch: ChannelConfig | None = None) -> str:
     return ASSET_RE.sub(replace_asset, content)
 
 
-def bundle_media_plan(post: BlogPost, cfg: Config) -> list[tuple[Path, str]]:
-    """The full media copy plan for the bundle: (source path, dest basename) pairs.
-
-    Covers every content asset referenced in the post plus, when set, the
-    featured header image (as ``featured<ext>``). A missing source is logged and
-    skipped, so callers only ever see files that exist. This is the authoritative
-    media manifest for the site commit, independent of the block list.
-    """
+def bundle_media_plan(post: BlogPost) -> list[tuple[Path, str]]:
+    """(source path, Hugo dest basename) pairs using the n8n naming mirror."""
     source_dir = post.source_path.parent
-    ch = cfg.shared.channels["hugo"]
     plan: list[tuple[Path, str]] = []
 
     for src, name in collect_asset_copies(build_content(post), source_dir):
         if not src.exists():
             log.warning("missing asset %s", src)
             continue
-        plan.append((src, output_basename(name, ch)))
+        plan.append((src, hugo_basename(name)))
 
     if post.meta.header:
         header_src = (source_dir / post.meta.header).resolve()

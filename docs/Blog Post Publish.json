@@ -1,52 +1,62 @@
 {
+  "id": "l7HCCWtO1ALC82n6",
   "name": "Blog Post Publish",
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "O6fHa4LyBB7P71nU",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
   "nodes": [
     {
+      "name": "Publish Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
       "parameters": {
         "httpMethod": "POST",
         "path": "publish",
         "responseMode": "responseNode",
         "options": {}
       },
-      "id": "05811d7b-6787-4ab6-9991-456d7a9dae48",
-      "name": "Publish Webhook",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2.1,
       "position": [
-        0,
+        -1600,
         192
-      ],
-      "webhookId": "8dcea78d-b2de-49a7-8ebb-83a623cec475"
+      ]
     },
     {
+      "name": "Respond Accepted",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
       "parameters": {
         "respondWith": "json",
         "responseBody": "{\n  \"status\": \"accepted\"\n}",
         "options": {}
       },
-      "id": "758c49da-aa55-479b-9d3d-8b3d6c6580d1",
-      "name": "Respond Accepted",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.5,
       "position": [
-        224,
+        -1376,
         192
       ]
     },
     {
-      "parameters": {
-        "jsCode": "const src = $input.first().json.body ?? $input.first().json;\nconst lang = src.meta.lang_code || 'de';\nconst blocks = (src.blocks || []).map((b) => {\n  if (b.kind !== 'title' && b.kind !== 'text') return b;\n  const out = { kind: b.kind, [lang]: b.raw ?? b[lang] ?? '' };\n  if (b.heading_level != null) out.heading_level = b.heading_level;\n  return out;\n});\nreturn [{\n  json: {\n    slug: src.slug,\n    meta: src.meta,\n    source_lang: lang,\n    title: src.meta.title,\n    blocks,\n    translate_items: blocks.flatMap((b, i) =>\n      b.kind === 'title' || b.kind === 'text' ? [{ index: i, kind: b.kind, text: b[lang] }] : []\n    ),\n  },\n}];"
-      },
-      "id": "9d9c6ba0-11b4-4ff6-82f5-deaf237184e9",
       "name": "Prepare Blocks",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
+      "parameters": {
+        "jsCode": "const src = $('Publish Webhook').first().json.body ?? $('Publish Webhook').first().json;\nconst lang = src.meta.lang_code || 'de';\nconst blocks = (src.blocks || []).map((b) => {\n  if (b.kind !== 'title' && b.kind !== 'text') return b;\n  const out = { kind: b.kind, [lang]: b.raw ?? b[lang] ?? '' };\n  if (b.heading_level != null) out.heading_level = b.heading_level;\n  return out;\n});\nreturn [{\n  json: {\n    slug: src.slug,\n    meta: src.meta,\n    source_lang: lang,\n    title: src.meta.title,\n    blocks,\n    translate_items: blocks.flatMap((b, i) =>\n      b.kind === 'title' || b.kind === 'text' ? [{ index: i, kind: b.kind, text: b[lang] }] : []\n    ),\n  },\n}];",
+        "mode": "runOnceForAllItems"
+      },
       "position": [
-        448,
+        -1152,
         192
       ]
     },
     {
+      "name": "Natural Language Translation",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
       "parameters": {
         "modelId": {
           "__rl": true,
@@ -74,22 +84,15 @@
           }
         }
       },
-      "id": "de34ac1a-0759-4967-b7a7-9a54dc6731a5",
-      "name": "Natural Language Translation",
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 2.3,
       "position": [
-        672,
+        -928,
         192
-      ],
-      "credentials": {
-        "openAiApi": {
-          "id": "MeZuDDMNwmnq1Xh4",
-          "name": "OpenAI account"
-        }
-      }
+      ]
     },
     {
+      "name": "Skip Social If Redeploy",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
       "parameters": {
         "conditions": {
           "options": {
@@ -113,57 +116,42 @@
         },
         "options": {}
       },
-      "id": "308dc11d-2bcd-4fe5-a3d2-ac7a0a26a421",
-      "name": "Skip Social If Redeploy",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
       "position": [
-        1600,
+        0,
         384
       ]
     },
     {
-      "parameters": {
-        "protocol": "sftp",
-        "path": "={{ ($(\"Publish Webhook\").item.json.body.header.facebook && $(\"Publish Webhook\").item.json.body.header.facebook.sftp_path) || ($(\"Publish Webhook\").item.json.body.site_media || []).find(m => String(m.bundle_filename || '').startsWith('featured')).sftp_path }}",
-        "options": {}
-      },
-      "id": "3b405d7c-137f-4fa7-a8e8-81cd3b7081bf",
       "name": "Download Header FB",
       "type": "n8n-nodes-base.ftp",
       "typeVersion": 1,
+      "parameters": {
+        "protocol": "sftp",
+        "path": "={{ ($('Adapt Publish Media').item.json.header && $('Adapt Publish Media').item.json.header.facebook) || ('/syndicator/' + ($('Publish Webhook').item.json.body || $('Publish Webhook').item.json).slug + '/header/facebook.jpg') }}",
+        "options": {}
+      },
       "position": [
-        2176,
+        576,
         192
-      ],
-      "credentials": {
-        "sftp": {
-          "id": "wE5ow7vv0UZN97yp",
-          "name": "FTP account"
-        }
-      }
+      ]
     },
     {
+      "name": "Upload Intro FB",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
       "parameters": {
         "operation": "uploadFile",
         "binaryProperty": "data"
       },
-      "id": "55c38d6b-8876-452d-b3e9-8601d383a16a",
-      "name": "Upload Intro FB",
-      "type": "n8n-nodes-postiz.postiz",
-      "typeVersion": 1,
       "position": [
-        2400,
+        800,
         192
-      ],
-      "credentials": {
-        "postizApi": {
-          "id": "2vzlqHVdDCSaUrVH",
-          "name": "Postiz account"
-        }
-      }
+      ]
     },
     {
+      "name": "Create Intro FB Draft",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
       "parameters": {
         "type": "draft",
         "date": "={{ $now.plus(1, \"days\").toISO() }}",
@@ -203,63 +191,42 @@
           ]
         }
       },
-      "id": "022ac5e3-43e3-42fb-8336-0415c3939372",
-      "name": "Create Intro FB Draft",
-      "type": "n8n-nodes-postiz.postiz",
-      "typeVersion": 1,
       "position": [
-        2624,
+        1024,
         192
-      ],
-      "credentials": {
-        "postizApi": {
-          "id": "2vzlqHVdDCSaUrVH",
-          "name": "Postiz account"
-        }
-      }
+      ]
     },
     {
-      "parameters": {
-        "protocol": "sftp",
-        "path": "={{ ($(\"Publish Webhook\").item.json.body.header.instagram && $(\"Publish Webhook\").item.json.body.header.instagram.sftp_path) || ($(\"Publish Webhook\").item.json.body.site_media || []).find(m => String(m.bundle_filename || '').startsWith('featured')).sftp_path }}",
-        "options": {}
-      },
-      "id": "b182ab29-9d9f-453e-b4ff-548c506ad269",
       "name": "Download Header IG",
       "type": "n8n-nodes-base.ftp",
       "typeVersion": 1,
+      "parameters": {
+        "protocol": "sftp",
+        "path": "={{ ($('Adapt Publish Media').item.json.header && $('Adapt Publish Media').item.json.header.instagram) || ('/syndicator/' + ($('Publish Webhook').item.json.body || $('Publish Webhook').item.json).slug + '/header/instagram.jpg') }}",
+        "options": {}
+      },
       "position": [
-        2176,
+        576,
         384
-      ],
-      "credentials": {
-        "sftp": {
-          "id": "wE5ow7vv0UZN97yp",
-          "name": "FTP account"
-        }
-      }
+      ]
     },
     {
+      "name": "Upload Intro IG",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
       "parameters": {
         "operation": "uploadFile",
         "binaryProperty": "data"
       },
-      "id": "0a608a6d-698c-418d-984d-231ae8aed1fa",
-      "name": "Upload Intro IG",
-      "type": "n8n-nodes-postiz.postiz",
-      "typeVersion": 1,
       "position": [
-        2400,
+        800,
         384
-      ],
-      "credentials": {
-        "postizApi": {
-          "id": "2vzlqHVdDCSaUrVH",
-          "name": "Postiz account"
-        }
-      }
+      ]
     },
     {
+      "name": "Create Intro IG Draft",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
       "parameters": {
         "type": "draft",
         "date": "={{ $now.plus(1, \"days\").toISO() }}",
@@ -299,63 +266,42 @@
           ]
         }
       },
-      "id": "b28d76d9-dc75-4e7c-80f4-351a0c8aaf5a",
-      "name": "Create Intro IG Draft",
-      "type": "n8n-nodes-postiz.postiz",
-      "typeVersion": 1,
       "position": [
-        2624,
+        1024,
         384
-      ],
-      "credentials": {
-        "postizApi": {
-          "id": "2vzlqHVdDCSaUrVH",
-          "name": "Postiz account"
-        }
-      }
+      ]
     },
     {
-      "parameters": {
-        "protocol": "sftp",
-        "path": "={{ ($(\"Publish Webhook\").item.json.body.header.x && $(\"Publish Webhook\").item.json.body.header.x.sftp_path) || ($(\"Publish Webhook\").item.json.body.site_media || []).find(m => String(m.bundle_filename || '').startsWith('featured')).sftp_path }}",
-        "options": {}
-      },
-      "id": "5f18a1a5-45dd-4773-a537-45f9859fa135",
       "name": "Download Header X",
       "type": "n8n-nodes-base.ftp",
       "typeVersion": 1,
+      "parameters": {
+        "protocol": "sftp",
+        "path": "={{ ($('Adapt Publish Media').item.json.header && $('Adapt Publish Media').item.json.header.x) || ('/syndicator/' + ($('Publish Webhook').item.json.body || $('Publish Webhook').item.json).slug + '/header/x.jpg') }}",
+        "options": {}
+      },
       "position": [
-        2176,
+        576,
         576
-      ],
-      "credentials": {
-        "sftp": {
-          "id": "wE5ow7vv0UZN97yp",
-          "name": "FTP account"
-        }
-      }
+      ]
     },
     {
+      "name": "Upload Intro X",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
       "parameters": {
         "operation": "uploadFile",
         "binaryProperty": "data"
       },
-      "id": "6c00d47c-52e2-4bce-a9af-3b3019ba8033",
-      "name": "Upload Intro X",
-      "type": "n8n-nodes-postiz.postiz",
-      "typeVersion": 1,
       "position": [
-        2400,
+        800,
         576
-      ],
-      "credentials": {
-        "postizApi": {
-          "id": "2vzlqHVdDCSaUrVH",
-          "name": "Postiz account"
-        }
-      }
+      ]
     },
     {
+      "name": "Create Intro X Draft",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
       "parameters": {
         "type": "draft",
         "date": "={{ $now.plus(1, \"days\").toISO() }}",
@@ -395,22 +341,15 @@
           ]
         }
       },
-      "id": "03f0b9a1-0e1c-48ab-a75f-6fc2951a1c02",
-      "name": "Create Intro X Draft",
-      "type": "n8n-nodes-postiz.postiz",
-      "typeVersion": 1,
       "position": [
-        2624,
+        1024,
         576
-      ],
-      "credentials": {
-        "postizApi": {
-          "id": "2vzlqHVdDCSaUrVH",
-          "name": "Postiz account"
-        }
-      }
+      ]
     },
     {
+      "name": "Caption Intro FB",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
       "parameters": {
         "modelId": {
           "__rl": true,
@@ -433,22 +372,15 @@
           "maxTokens": 800
         }
       },
-      "id": "4720a9df-33a0-4559-812d-817b507b1527",
-      "name": "Caption Intro FB",
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 2.3,
       "position": [
-        1824,
+        224,
         192
-      ],
-      "credentials": {
-        "openAiApi": {
-          "id": "MeZuDDMNwmnq1Xh4",
-          "name": "OpenAI account"
-        }
-      }
+      ]
     },
     {
+      "name": "Caption Intro IG",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
       "parameters": {
         "modelId": {
           "__rl": true,
@@ -471,22 +403,15 @@
           "maxTokens": 800
         }
       },
-      "id": "09b28b0b-196d-4ae6-ae17-0e8ee3dd0cc0",
-      "name": "Caption Intro IG",
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 2.3,
       "position": [
-        1824,
+        224,
         384
-      ],
-      "credentials": {
-        "openAiApi": {
-          "id": "MeZuDDMNwmnq1Xh4",
-          "name": "OpenAI account"
-        }
-      }
+      ]
     },
     {
+      "name": "Caption Intro X",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
       "parameters": {
         "modelId": {
           "__rl": true,
@@ -509,22 +434,15 @@
           "maxTokens": 300
         }
       },
-      "id": "0954690c-bc48-45ee-a796-a3d4d2aca0fc",
-      "name": "Caption Intro X",
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 2.3,
       "position": [
-        1824,
+        224,
         576
-      ],
-      "credentials": {
-        "openAiApi": {
-          "id": "MeZuDDMNwmnq1Xh4",
-          "name": "OpenAI account"
-        }
-      }
+      ]
     },
     {
+      "name": "Pirate Speak Generator",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
       "parameters": {
         "modelId": {
           "__rl": true,
@@ -554,61 +472,51 @@
           "temperature": 0.9
         }
       },
-      "id": "9238f9de-7daa-42e8-ab08-b98bf07f17c2",
-      "name": "Pirate Speak Generator",
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 2.3,
       "position": [
-        1024,
+        -576,
         192
-      ],
-      "credentials": {
-        "openAiApi": {
-          "id": "MeZuDDMNwmnq1Xh4",
-          "name": "OpenAI account"
-        }
-      }
+      ]
     },
     {
-      "parameters": {
-        "jsCode": "const { slug, meta, blocks, titles, source_lang: src } = $('Assemble Multilingual Blocks').item.json;\nconst q = JSON.stringify;\nconst fm = (t, s) => `+++\\ndate = ${q(meta.date)}\\nlastmod = ${q(meta.date)}\\ndraft = false\\ntitle = ${q(t)}\\nsummary = ${q(s)}\\n[params]\\n  author = ${q(meta.author)}\\n+++\\n\\n`;\nconst emit = (b, lang) => {\n  if (b.kind === 'title' || b.kind === 'text') return b[lang] || '';\n  if (b.kind === 'youtube') return `{{< youtube ${b.media.youtube_id} >}}`;\n  const m = b.media;\n  return m.kind === 'video' ? `{{< video src=\"${m.bundle_filename}\" >}}` : `![${m.alt || ''}](${m.bundle_filename})`;\n};\nconst body = (lang) => blocks.map((b) => emit(b, lang)).filter(Boolean).join('\\n\\n');\nconst firstPara = (bd) => {\n  const out = [];\n  for (const line of bd.split('\\n')) {\n    const t = line.trim();\n    if (!out.length && !t) continue;\n    if (out.length && (!t || t[0] === '#' || t === '---' || t === '***' || t === '___')) break;\n    out.push(line);\n  }\n  return out.join(' ').trim();\n};\nconst DISC = {\n  en: '*This blog post has been automatically translated by a Large Language Model.',\n  de: '*Dieser Blogbeitrag wurde automatisch von einem Large Language Model uebersetzt.',\n  es: '*Esta publicacion de blog ha sido traducida automaticamente por un Large Language Model.',\n  fr: '*Cet article de blog a ete traduit automatiquement par un Large Language Model.',\n  it: '*Questo post del blog e stato tradotto automaticamente da un Large Language Model.',\n  arrr: \"*Arrr, this here blog post be rewritten in the tongue o' pirates by a Large Language Model, ye scallywag!*\",\n};\nreturn [{\n  json: {\n    indexFiles: Object.keys(titles).map((code) => {\n      const b = body(code).replace(/[\\s\\r\\n]+$/, '');\n      const full = code === src ? b : `${b}\\n\\n---\\n\\n${DISC[code] || ''}`;\n      const summary = code === src ? (meta.summary || firstPara(full)) : firstPara(full);\n      return { repo_path: `content/posts/${slug}/index.${code}.md`, content: fm(titles[code] || meta.title, summary) + full + '\\n' };\n    }),\n  },\n}];"
-      },
-      "id": "6a41b176-d5cb-4ae6-beaf-7589e0c2221e",
       "name": "Generate Hugo Index MDs",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
+      "parameters": {
+        "jsCode": "const { slug, meta, blocks, titles, source_lang: src } = $('Assemble Multilingual Blocks').item.json;\nconst q = JSON.stringify;\nconst fm = (t, s) => `+++\\ndate = ${q(meta.date)}\\nlastmod = ${q(meta.date)}\\ndraft = false\\ntitle = ${q(t)}\\nsummary = ${q(s)}\\n[params]\\n  author = ${q(meta.author)}\\n+++\\n\\n`;\nconst emit = (b, lang) => {\n  if (b.kind === 'title' || b.kind === 'text') return b[lang] || '';\n  if (b.kind === 'youtube') return `{{< youtube ${b.media.youtube_id} >}}`;\n  const m = b.media;\n  return m.kind === 'video' ? `{{< video src=\"${m.bundle_filename}\" >}}` : `![${m.alt || ''}](${m.bundle_filename})`;\n};\nconst body = (lang) => blocks.map((b) => emit(b, lang)).filter(Boolean).join('\\n\\n');\nconst firstPara = (bd) => {\n  const out = [];\n  for (const line of bd.split('\\n')) {\n    const t = line.trim();\n    if (!out.length && !t) continue;\n    if (out.length && (!t || t[0] === '#' || t === '---' || t === '***' || t === '___')) break;\n    out.push(line);\n  }\n  return out.join(' ').trim();\n};\nconst DISC = {\n  en: '*This blog post has been automatically translated by a Large Language Model.',\n  de: '*Dieser Blogbeitrag wurde automatisch von einem Large Language Model uebersetzt.',\n  es: '*Esta publicacion de blog ha sido traducida automaticamente por un Large Language Model.',\n  fr: '*Cet article de blog a ete traduit automatiquement par un Large Language Model.',\n  it: '*Questo post del blog e stato tradotto automaticamente da un Large Language Model.',\n  arrr: \"*Arrr, this here blog post be rewritten in the tongue o' pirates by a Large Language Model, ye scallywag!*\",\n};\nreturn [{\n  json: {\n    indexFiles: Object.keys(titles).map((code) => {\n      const b = body(code).replace(/[\\s\\r\\n]+$/, '');\n      const full = code === src ? b : `${b}\\n\\n---\\n\\n${DISC[code] || ''}`;\n      const summary = code === src ? (meta.summary || firstPara(full)) : firstPara(full);\n      return { repo_path: `content/posts/${slug}/index.${code}.md`, content: fm(titles[code] || meta.title, summary) + full + '\\n' };\n    }),\n  },\n}];"
+      },
       "position": [
-        1600,
+        0,
         0
       ]
     },
     {
-      "parameters": {
-        "jsCode": "const prep = $('Prepare Blocks').item.json;\nconst parseTr = (j) => {\n  let t = j?.output?.[0]?.content?.[0]?.text ?? j;\n  if (typeof t === 'string') t = JSON.parse(t);\n  return t.translations || [];\n};\nconst blocks = prep.blocks.map((b) => ({ ...b }));\nconst titles = { [prep.source_lang]: prep.title };\nfor (const tr of [...parseTr($('Natural Language Translation').item.json), ...parseTr($('Pirate Speak Generator').item.json)]) {\n  const code = tr.lang_code;\n  if (!code || code === prep.source_lang) continue;\n  titles[code] = code === 'arrr' ? prep.title : (tr.title || prep.title);\n  for (const { index: i, text } of tr.items || []) {\n    if (blocks[i] && (blocks[i].kind === 'title' || blocks[i].kind === 'text')) blocks[i][code] = text ?? '';\n  }\n}\nreturn [{ json: { slug: prep.slug, meta: prep.meta, source_lang: prep.source_lang, blocks, titles } }];"
-      },
-      "id": "505da260-cde8-4b19-98ad-fb71a02d3ab3",
       "name": "Assemble Multilingual Blocks",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
+      "parameters": {
+        "jsCode": "const prep = $('Prepare Blocks').item.json;\nconst parseTr = (j) => {\n  let t = j?.output?.[0]?.content?.[0]?.text ?? j;\n  if (typeof t === 'string') t = JSON.parse(t);\n  return t.translations || [];\n};\nconst blocks = prep.blocks.map((b) => ({ ...b }));\nconst titles = { [prep.source_lang]: prep.title };\nfor (const tr of [...parseTr($('Natural Language Translation').item.json), ...parseTr($('Pirate Speak Generator').item.json)]) {\n  const code = tr.lang_code;\n  if (!code || code === prep.source_lang) continue;\n  titles[code] = code === 'arrr' ? prep.title : (tr.title || prep.title);\n  for (const { index: i, text } of tr.items || []) {\n    if (blocks[i] && (blocks[i].kind === 'title' || blocks[i].kind === 'text')) blocks[i][code] = text ?? '';\n  }\n}\nreturn [{ json: { slug: prep.slug, meta: prep.meta, source_lang: prep.source_lang, blocks, titles } }];"
+      },
       "position": [
-        1376,
+        -224,
         192
       ]
     },
     {
-      "parameters": {
-        "jsCode": "const src = $('Publish Webhook').item.json.body ?? $('Publish Webhook').item.json;\nconst anchor = (src.site_media || []).find((e) =>\n  e.repo_path && e.sftp_path && e.sftp_path.endsWith(e.repo_path)\n);\nif (!anchor) throw new Error('cannot derive Hugo staging root from site_media');\nconst root = anchor.sftp_path.slice(0, -anchor.repo_path.length).replace(/\\/$/, '');\nreturn $('Generate Hugo Index MDs').first().json.indexFiles.map((f) => ({\n  json: {\n    sftp_path: `${root}/${f.repo_path}`,\n    content: f.content,\n  },\n}));"
-      },
-      "id": "11b83f43-09e5-48c5-a2fd-feb6367d6d77",
       "name": "Stage Site Files",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
+      "parameters": {
+        "jsCode": "const src = $('Publish Webhook').item.json.body ?? $('Publish Webhook').item.json;\nconst anchor = (src.site_media || []).find((e) =>\n  e.repo_path && e.sftp_path && e.sftp_path.endsWith(e.repo_path)\n);\nif (!anchor) throw new Error('cannot derive Hugo staging root from site_media');\nconst root = anchor.sftp_path.slice(0, -anchor.repo_path.length).replace(/\\/$/, '');\nreturn $('Generate Hugo Index MDs').first().json.indexFiles.map((f) => ({\n  json: {\n    sftp_path: `${root}/${f.repo_path}`,\n    content: f.content,\n  },\n}));"
+      },
       "position": [
-        1888,
+        288,
         0
       ]
     },
     {
+      "name": "Upload Site Files",
+      "type": "n8n-nodes-base.ftp",
+      "typeVersion": 1,
       "parameters": {
         "protocol": "sftp",
         "operation": "upload",
@@ -617,95 +525,74 @@
         "fileContent": "={{ $json.content }}",
         "options": {}
       },
-      "id": "3599e495-ad9c-4bcb-ba55-71a074b0bb1b",
-      "name": "Upload Site Files",
-      "type": "n8n-nodes-base.ftp",
-      "typeVersion": 1,
       "position": [
-        2176,
+        576,
         0
-      ],
-      "credentials": {
-        "sftp": {
-          "id": "wE5ow7vv0UZN97yp",
-          "name": "FTP account"
+      ]
+    },
+    {
+      "name": "Adapt Publish Media",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "parameters": {
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        },
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "cachedResultName": "Adapt Publish Media",
+          "mode": "list",
+          "value": "OGa6Xa8GxkSmA7Cr"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "schema": [
+            {
+              "canBeUsedToMatch": true,
+              "display": true,
+              "displayName": "slug",
+              "id": "slug",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "display": true,
+              "displayName": "header_source_sftp_path",
+              "id": "header_source_sftp_path",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "display": true,
+              "displayName": "site_media",
+              "id": "site_media",
+              "required": false,
+              "type": "array"
+            }
+          ],
+          "value": {
+            "header_source_sftp_path": "={{ ($json.body || $json).header_source?.sftp_path || '' }}",
+            "site_media": "={{ ($json.body || $json).site_media || [] }}",
+            "slug": "={{ ($json.body || $json).slug }}"
+          }
         }
-      }
+      },
+      "position": [
+        -200,
+        0
+      ]
     }
   ],
-  "pinData": {
-    "Translate All": [
-      {
-        "json": {
-          "output": [
-            {
-              "id": "msg_02f4955b6dbc4948006a5d16c85d3c8193b4083ab7622967d0",
-              "type": "message",
-              "status": "completed",
-              "content": [
-                {
-                  "type": "output_text",
-                  "annotations": [],
-                  "logprobs": [],
-                  "text": {
-                    "translations": [
-                      {
-                        "lang_code": "en",
-                        "title": "Catamaran Training",
-                        "body": "Catamarans have two hulls connected by a structure on top. As a result, they offer much more space than monohulls of the same length.\n\n![benno.jpg](benno_1776699897582_0.jpg)\n\nBut catamarans are also much wider and have two engines, one in each hull, which means they are handled in a completely different way. That is what brings us to Pomer, where JoJo offers catamaran training. The one-week course is split into two parts, 3 days of maneuvering practice in and around the harbor, and then a three-day trip. Since, as always, someone has to look after the dog, we decided that I would do the maneuvering practice and Alex the enjoyable second part.\n\n![essen.jpg](essen_1776699810373_0.jpg)\n\nFor 3 days we practice docking and leaving the dock in every color and form. We are a crew of six plus sailing instructor Lukas, and we got pretty awful weather. The partly strong wind is actually a good thing, because you can practice at the limit without having to worry about your own boat. But the rain did not have to come along as well.\n\n{{< video src=\"regen_1784467394037_0.mp4\" >}}\n\nThe fun thing about the catamaran is that you do not need the wheel at all: with the 2 engines you can drive the thing like a tank and, for example, turn on the spot. Less fun is that because of the high superstructure this cube catches the wind easily, and if you are not careful it can get blown off course, while the engines are not necessarily strong enough in every case to rescue the maneuver. But that is what fenders are for...\n\n{{< video src=\"alen-anlegen_1784467465787_0.mp4\" >}}\n\nLukas does a great job and by the third day we all more or less get the hang of it, and I am absolutely wiped out. But that was absolutely necessary, I cannot understand any charter company that hands out boats like this without extra training. And as always: JoJo does a fantastic job.\n\n![cool.jpg](cool_1776699869064_0.jpg)\n\n![IMG_20260412_115030955_HDR.jpg](IMG_20260412_115030955_HDR_1776700101718_0.jpg)\n\n![IMG-20260412-WA0005.jpg](IMG-20260412-WA0005_1776700115882_0.jpg)\n\n![IMG-20260412-WA0007.jpg](IMG-20260412-WA0007_1776700129132_0.jpg)\n\n![IMG-20260412-WA0008.jpg](IMG-20260412-WA0008_1776700142267_0.jpg)\n\n![IMG-20260412-WA0009.jpg](IMG-20260412-WA0009_1776700152274_0.jpg)\n\n![IMG-20260412-WA0020.jpg](IMG-20260412-WA0020_1776700161866_0.jpg)"
-                      },
-                      {
-                        "lang_code": "es",
-                        "title": "Entrenamiento de catamarán",
-                        "body": "Los catamaranes tienen dos cascos unidos entre sí por una estructura superior. Gracias a eso, ofrecen muchísimo más espacio que un barco monocasco con la misma eslora.\n\n![benno.jpg](benno_1776699897582_0.jpg)\n\nPero los catamaranes también son mucho más anchos y tienen dos motores: uno en cada casco, y por eso se maniobran de una forma totalmente distinta. Eso nos lleva a Pomer, donde JoJo ofrece un entrenamiento de catamarán. El entrenamiento de una semana está dividido en dos partes: 3 días de maniobras en el puerto y sus alrededores, y luego una salida de tres días. Como siempre, alguien tiene que cuidar del perro, así que decidimos que yo haría el entrenamiento de maniobras y Alex la segunda parte, que es más divertida.\n\n![essen.jpg](essen_1776699810373_0.jpg)\n\nDurante 3 días practicamos entrar y salir del puerto en todas las variantes posibles. Somos una tripulación de seis personas y el instructor de vela Lukas, y nos tocó un tiempo bastante horrible. El viento, a ratos fuerte, en realidad es algo bueno, porque así se puede practicar al límite sin tener que preocuparse por el propio barco. Pero la lluvia no hacía ninguna falta.\n\n{{< video src=\"regen_1784467394037_0.mp4\" >}}\n\nLo divertido del catamarán es que ni siquiera hace falta el timón: con los 2 motores puedes llevar ese cacharro como si fuera un tanque y, por ejemplo, girar sobre sí mismo. Lo menos divertido es que, por la superestructura alta, este cubo es bastante sensible al viento y, si no tienes cuidado, te lo puede desviar, y entonces los motores no necesariamente son lo bastante potentes para salvar la maniobra en todos los casos. Pero para algo están los defensores...\n\n{{< video src=\"alen-anlegen_1784467465787_0.mp4\" >}}\n\nLukas lo hace genial y el tercer día ya todos le hemos cogido más o menos el truco, y yo estoy reventado. Pero era totalmente necesario, no puedo entender a ningún chárter que entregue barcos así sin formación adicional. Y como siempre: JoJo lo hace de maravilla.\n\n![cool.jpg](cool_1776699869064_0.jpg)\n\n![IMG_20260412_115030955_HDR.jpg](IMG_20260412_115030955_HDR_1776700101718_0.jpg)\n\n![IMG-20260412-WA0005.jpg](IMG-20260412-WA0005_1776700115882_0.jpg)\n\n![IMG-20260412-WA0007.jpg](IMG-20260412-WA0007_1776700129132_0.jpg)\n\n![IMG-20260412-WA0008.jpg](IMG-20260412-WA0008_1776700142267_0.jpg)\n\n![IMG-20260412-WA0009.jpg](IMG-20260412-WA0009_1776700152274_0.jpg)\n\n![IMG-20260412-WA0020.jpg](IMG-20260412-WA0020_1776700161866_0.jpg)"
-                      },
-                      {
-                        "lang_code": "fr",
-                        "title": "Formation catamaran",
-                        "body": "Les catamarans ont deux coques reliées entre elles par une superstructure. Du coup, à longueur égale, ils offrent beaucoup plus d’espace que les monocoques.\n\n![benno.jpg](benno_1776699897582_0.jpg)\n\nMais les catamarans sont aussi beaucoup plus larges et ont deux moteurs: un dans chaque coque, et c’est pour ça qu’ils se manœuvrent d’une façon complètement différente. C’est ce qui nous amène à Pomer, où JoJo propose une formation catamaran. La formation d’une semaine est divisée en deux parties: 3 jours de manœuvres dans le port et autour du port, puis une sortie de trois jours. Comme toujours, quelqu’un doit s’occuper du chien, nous avons donc décidé que je ferais la partie manœuvres et qu’Alex profiterait de la seconde partie.\n\n![essen.jpg](essen_1776699810373_0.jpg)\n\nPendant 3 jours, on s’exerce aux arrivées et aux départs du quai sous toutes les formes possibles. Nous sommes une équipe de six personnes avec l’instructeur de voile Lukas, et on a eu un temps franchement pourri. Le vent parfois bien costaud est en fait une bonne chose, car on peut s’entraîner à la limite sans avoir à craindre pour son propre bateau. Mais la pluie, elle, n’était vraiment pas indispensable.\n\n{{< video src=\"regen_1784467394037_0.mp4\" >}}\n\nLe côté amusant du catamaran, c’est qu’on n’a même pas besoin du volant: avec les 2 moteurs, on peut conduire l’engin comme un char d’assaut et, par exemple, pivoter sur place. Ce qui l’est moins, c’est qu’avec sa superstructure haute, ce cube prend facilement le vent et, si on ne fait pas attention, on se fait emporter, et les moteurs ne sont alors pas forcément assez puissants dans tous les cas pour sauver la manœuvre. Mais pour ça, on a bien les pare-battages...\n\n{{< video src=\"alen-anlegen_1784467465787_0.mp4\" >}}\n\nLukas fait ça super bien et, au troisième jour, on a tous à peu près pris le coup, et moi je suis complètement rincé. Mais c’était absolument nécessaire, je ne peux pas comprendre un loueur qui met ce genre de bateaux à disposition sans formation supplémentaire. Et comme toujours: JoJo assure à fond.\n\n![cool.jpg](cool_1776699869064_0.jpg)\n\n![IMG_20260412_115030955_HDR.jpg](IMG_20260412_115030955_HDR_1776700101718_0.jpg)\n\n![IMG-20260412-WA0005.jpg](IMG-20260412-WA0005_1776700115882_0.jpg)\n\n![IMG-20260412-WA0007.jpg](IMG-20260412-WA0007_1776700129132_0.jpg)\n\n![IMG-20260412-WA0008.jpg](IMG-20260412-WA0008_1776700142267_0.jpg)\n\n![IMG-20260412-WA0009.jpg](IMG-20260412-WA0009_1776700152274_0.jpg)\n\n![IMG-20260412-WA0020.jpg](IMG-20260412-WA0020_1776700161866_0.jpg)"
-                      },
-                      {
-                        "lang_code": "it",
-                        "title": "Training in catamarano",
-                        "body": "I catamarani hanno due scafi collegati tra loro da una struttura superiore. Per questo offrono, a parità di lunghezza, molto più spazio delle barche monoscafo.\n\n![benno.jpg](benno_1776699897582_0.jpg)\n\nMa i catamarani sono anche molto più larghi e hanno due motori: uno in ogni scafo, e quindi si manovrano in modo completamente diverso. È questo che ci porta a Pomer, dove JoJo offre un training in catamarano. Il corso di una settimana è diviso in due parti, 3 giorni di manovre in porto e nelle sue vicinanze, e poi un’uscita di tre giorni. Siccome, come sempre, qualcuno deve badare al cane, abbiamo deciso che io avrei fatto il training di manovra e Alex la seconda parte, più divertente.\n\n![essen.jpg](essen_1776699810373_0.jpg)\n\nPer 3 giorni ci alleniamo ad attraccare e mollare gli ormeggi in tutti i modi e in tutte le varianti possibili. Siamo un equipaggio di sei persone e l’istruttore di vela Lukas, e ci è capitato un tempo davvero pessimo. Il vento, a tratti forte, in realtà è una cosa buona, perché così si può esercitarsi al limite senza dover temere per la propria barca. Però la pioggia poteva anche risparmiarsela.\n\n{{< video src=\"regen_1784467394037_0.mp4\" >}}\n\nLa cosa divertente del catamarano è che il timone non serve affatto: con i 2 motori puoi guidare quel coso come un carro armato e, per esempio, girare su te stesso. Meno divertente è che, a causa dell’alta sovrastruttura, questo cubo è piuttosto sensibile al vento e, se non fai attenzione, te lo lascia prendere, e i motori non sono necessariamente abbastanza potenti in ogni caso per salvare la manovra. Ma a qualcosa serviranno pur sempre i parabordi...\n\n{{< video src=\"alen-anlegen_1784467465787_0.mp4\" >}}\n\nLukas fa un ottimo lavoro e il terzo giorno abbiamo più o meno tutti capito il trucco, e io sono distrutto. Ma era assolutamente necessario, non riesco a capire un noleggiatore che consegna barche del genere senza un addestramento aggiuntivo. E come sempre: JoJo fa un lavoro eccezionale.\n\n![cool.jpg](cool_1776699869064_0.jpg)\n\n![IMG_20260412_115030955_HDR.jpg](IMG_20260412_115030955_HDR_1776700101718_0.jpg)\n\n![IMG-20260412-WA0005.jpg](IMG-20260412-WA0005_1776700115882_0.jpg)\n\n![IMG-20260412-WA0007.jpg](IMG-20260412-WA0007_1776700129132_0.jpg)\n\n![IMG-20260412-WA0008.jpg](IMG-20260412-WA0008_1776700142267_0.jpg)\n\n![IMG-20260412-WA0009.jpg](IMG-20260412-WA0009_1776700152274_0.jpg)\n\n![IMG-20260412-WA0020.jpg](IMG-20260412-WA0020_1776700161866_0.jpg)"
-                      },
-                      {
-                        "lang_code": "arrr",
-                        "title": "Katamaran Training",
-                        "body": "Catamarans be havin' two hulls tied together by a superstructure. That means, fer the same length, they give ye a whole lot more space than a monohull.\n\n![benno.jpg](benno_1776699897582_0.jpg)\n\nBut catamarans be much wider too, and they have two engines: one in each hull, so they be steered in a completely different way. That be what brings us to Pomer, where JoJo be offerin' catamaran training. The week-long training be split into two parts, 3 days o' maneuver trainin' in and around the harbor, then a three-day sailin' run. Since, as always, someone has to watch the dog, we decided I’d do the maneuver trainin' and Alex would take the enjoyin' second part.\n\n![essen.jpg](essen_1776699810373_0.jpg)\n\nFer 3 days we be practicin' dockin' and castin' off in every color and shape ye can imagine. We be a crew o' six, plus sailin' instructor Lukas, and we got ourselves some proper nasty weather. The wind, strong at times, be actually a good thing, so ye can practice at the limit without havin' to fear fer yer own ship. But the rain did not need to come along too.\n\n{{< video src=\"regen_1784467394037_0.mp4\" >}}\n\nThe funny thing about the catamaran be that ye don’t need the wheel at all: with the 2 engines, ye can drive the beast like a tank and, fer example, spin her on the spot. Less funny be that, due to the high superstructure, this cube catches the wind like a fool and, if ye don’t mind yer manners, the wind will blow ye off and the engines ain't necessarily strong enough in every case to save the maneuver. But that be what fenders be fer...\n\n{{< video src=\"alen-anlegen_1784467465787_0.mp4\" >}}\n\nLukas does a grand job and by the third day we all roughly know what be what, and I be dead tired. But that were absolutely necessary, I can’t make sense of any charter outfit that hands out boats like these without extra training. And as always: JoJo be doin' a top-notch job.\n\n![cool.jpg](cool_1776699869064_0.jpg)\n\n![IMG_20260412_115030955_HDR.jpg](IMG_20260412_115030955_HDR_1776700101718_0.jpg)\n\n![IMG-20260412-WA0005.jpg](IMG-20260412-WA0005_1776700115882_0.jpg)\n\n![IMG-20260412-WA0007.jpg](IMG-20260412-WA0007_1776700129132_0.jpg)\n\n![IMG-20260412-WA0008.jpg](IMG-20260412-WA0008_1776700142267_0.jpg)\n\n![IMG-20260412-WA0009.jpg](IMG-20260412-WA0009_1776700152274_0.jpg)\n\n![IMG-20260412-WA0020.jpg](IMG-20260412-WA0020_1776700161866_0.jpg)"
-                      }
-                    ]
-                  }
-                }
-              ],
-              "phase": "final_answer",
-              "role": "assistant"
-            }
-          ]
-        },
-        "pairedItem": {
-          "item": 0
-        }
-      }
-    ]
-  },
   "connections": {
     "Publish Webhook": {
       "main": [
         [
           {
             "node": "Respond Accepted",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Respond Accepted": {
-      "main": [
-        [
-          {
-            "node": "Prepare Blocks",
             "type": "main",
             "index": 0
           }
@@ -902,24 +789,28 @@
           }
         ]
       ]
+    },
+    "Respond Accepted": {
+      "main": [
+        [
+          {
+            "node": "Adapt Publish Media",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Adapt Publish Media": {
+      "main": [
+        [
+          {
+            "node": "Prepare Blocks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
-  },
-  "active": true,
-  "settings": {
-    "executionOrder": "v1",
-    "binaryMode": "separate",
-    "availableInMCP": true,
-    "timeSavedMode": "fixed",
-    "errorWorkflow": "x32a5IzGiS75jAtb",
-    "callerPolicy": "workflowsFromSameOwner"
-  },
-  "versionId": "564fe79b-2f00-4056-914b-498f0616b2f4",
-  "meta": {
-    "aiBuilderAssisted": true,
-    "builderVariant": "mcp",
-    "instanceId": "cc5b37f2534616d7722eec7fc1fd09aa1aa9462dba306d6d43049bbb363fbb97"
-  },
-  "nodeGroups": [],
-  "id": "IzPpLiBLliQVU1N6",
-  "tags": []
+  }
 }

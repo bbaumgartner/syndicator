@@ -1,17 +1,18 @@
 """Pipeline orchestration for the two v2 commands: ``syndicate`` and ``redeploy``.
 
-The local client is a thin trigger (§3): it extracts the diary, adapts media,
-uploads it over SFTP and fires the n8n webhooks. It holds no state beyond the
-``syndicated-at::`` marker; translation, rendering, captions and drafts happen
-in n8n, while the final site commit is manual.
+The local client is a thin trigger (§3): it extracts the diary, uploads
+immutable originals under ``<base>/<slug>/source/``, and fires the n8n webhooks.
+It holds no state beyond the ``syndicated-at::`` marker; media adaptation,
+translation, rendering, captions and drafts happen in n8n, while the final
+site commit is manual.
 
 ``syndicate``: for every ``status:: online`` post without a marker (or one
 ``--post``): the global journey map is generated + uploaded once per invocation;
-then per post — enforce a header, adapt media, SFTP upload, N× ``/reel``,
-``/publish`` (redeploy=false), set the marker once all webhooks are accepted.
+then per post — enforce a header, upload ``source/``, N× ``/reel``, ``/publish``
+(redeploy=false), set the marker once all webhooks are accepted.
 
-``redeploy --post``: site-only re-render (site media + journey map → SFTP →
-``/publish`` with redeploy=true). No social, no marker.
+``redeploy --post``: upload ``source/`` + journey map → ``/publish`` with
+redeploy=true. No social, no marker.
 """
 
 from __future__ import annotations
@@ -22,7 +23,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .config import Config
-from .llm import LLMClient
 from .marker import is_syndicated, set_syndicated_at
 from .model import BlogPost
 from .nodes.extract import scan_blog_posts
@@ -30,7 +30,6 @@ from .nodes.journeymap import generate_journey_map
 from .payload import (
     build_publish_payload,
     build_reel_payload,
-    build_site_media,
     journey_map_remote,
 )
 from .sftp_upload import SftpUploader, sftp_session
@@ -62,6 +61,16 @@ def _upload_all(sftp: SftpUploader, staged: StagedPost) -> None:
         sftp.upload(up.local, up.remote)
 
 
+def _ensure_n8n_output_dirs(sftp: SftpUploader, cfg: Config, post: BlogPost, *, include_social: bool) -> None:
+    """Pre-create dirs n8n will write into (FTP upload often cannot mkdir -p)."""
+    base = cfg.shared.sftp.base_dir.rstrip("/")
+    slug = post.slug
+    sftp.ensure_dir(f"{base}/sailingnomads/content/posts/{slug}")
+    if include_social:
+        sftp.ensure_dir(f"{base}/{slug}/header")
+        sftp.ensure_dir(f"{base}/{slug}/reels")
+
+
 def _check_webhooks(cfg: Config, *, need_reel: bool) -> None:
     if not cfg.shared.webhooks.publish_url:
         raise SystemExit("webhooks.publish_url is not configured in syndicator.yaml")
@@ -72,7 +81,6 @@ def _check_webhooks(cfg: Config, *, need_reel: bool) -> None:
 def syndicate(cfg: Config, slug: str | None = None) -> SyndicateReport:
     """Syndicate new online posts (or one ``--post``)."""
     _check_webhooks(cfg, need_reel=True)
-    llm = LLMClient()
     posts = _scan_online(cfg)
     if slug is not None:
         posts = [p for p in posts if p.slug == slug]
@@ -89,7 +97,7 @@ def syndicate(cfg: Config, slug: str | None = None) -> SyndicateReport:
             if has_journey_map:
                 sftp.upload(jm_path, journey_map_remote(cfg))
             for post in posts:
-                _syndicate_one(cfg, llm, sftp, post, tmp, has_journey_map, report)
+                _syndicate_one(cfg, sftp, post, tmp, report)
 
     _log_report(report)
     return report
@@ -97,11 +105,9 @@ def syndicate(cfg: Config, slug: str | None = None) -> SyndicateReport:
 
 def _syndicate_one(
     cfg: Config,
-    llm: LLMClient,
     sftp: SftpUploader,
     post: BlogPost,
     tmp: Path,
-    has_journey_map: bool,
     report: SyndicateReport,
 ) -> None:
     slug = post.slug
@@ -115,24 +121,26 @@ def _syndicate_one(
         return
 
     try:
-        staged = stage_post(post, cfg, llm, tmp / slug, include_social=True)
+        staged = stage_post(post, cfg, tmp / slug, include_social=True)
         _upload_all(sftp, staged)
+        _ensure_n8n_output_dirs(sftp, cfg, post, include_social=True)
 
         for sv in staged.videos:
-            if not sv.reels:
-                log.warning("%s: video %d has no reel — skipping /reel", slug, sv.index)
+            if not sv.source_filename:
+                log.warning("%s: video %d has no source filename — skipping /reel", slug, sv.index)
                 continue
             payload = build_reel_payload(
                 post, cfg,
                 index=sv.index, section_title=sv.section_title,
                 section_text=sv.section_text, alt=sv.alt,
-                reels=sv.reels, covers=sv.covers,
+                source_filename=sv.source_filename,
             )
             post_webhook(cfg.shared.webhooks.reel_url, payload, label=f"/reel {slug} #{sv.index}")
 
-        site_media = build_site_media(post, cfg, include_journey_map=has_journey_map)
         publish = build_publish_payload(
-            post, cfg, site_media=site_media, header=staged.header, redeploy=False
+            post, cfg,
+            header_source=staged.header_source,
+            redeploy=False,
         )
         post_webhook(cfg.shared.webhooks.publish_url, publish, label=f"/publish {slug}")
 
@@ -144,9 +152,8 @@ def _syndicate_one(
 
 
 def redeploy(cfg: Config, slug: str) -> None:
-    """Force a site-only rebuild of one post in the mirrored SFTP tree."""
+    """Force a site-only rebuild of one post (n8n rebuilds Hugo tree from source/)."""
     _check_webhooks(cfg, need_reel=False)
-    llm = LLMClient()
     posts = {p.slug: p for p in _scan_online(cfg)}
     if slug not in posts:
         known = "\n  ".join(sorted(posts))
@@ -159,16 +166,18 @@ def redeploy(cfg: Config, slug: str) -> None:
         tmp = Path(tmp_root)
         jm_path = tmp / "journey-map.mp4"
         has_journey_map = generate_journey_map(cfg, jm_path)
-        staged = stage_post(post, cfg, llm, tmp / slug, include_social=False)
+        staged = stage_post(post, cfg, tmp / slug, include_social=False)
 
         with sftp_session(cfg) as sftp:
             if has_journey_map:
                 sftp.upload(jm_path, journey_map_remote(cfg))
             _upload_all(sftp, staged)
+            _ensure_n8n_output_dirs(sftp, cfg, post, include_social=False)
 
-            site_media = build_site_media(post, cfg, include_journey_map=has_journey_map)
             publish = build_publish_payload(
-                post, cfg, site_media=site_media, header={}, redeploy=True
+                post, cfg,
+                header_source=staged.header_source,
+                redeploy=True,
             )
             post_webhook(cfg.shared.webhooks.publish_url, publish, label=f"/publish redeploy {slug}")
 

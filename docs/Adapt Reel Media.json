@@ -1,0 +1,416 @@
+{
+  "id": "y9TTx7N8Iygn88ry",
+  "name": "Adapt Reel Media",
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true,
+    "errorWorkflow": "O6fHa4LyBB7P71nU",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "nodes": [
+    {
+      "name": "Adapt Reel Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "slug",
+              "type": "string"
+            },
+            {
+              "name": "index",
+              "type": "number"
+            },
+            {
+              "name": "source_sftp_path",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "name": "Resolve Paths",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const j = $input.first().json;\nconst slug = String(j.slug || 'unknown');\nconst index = Number(j.index || 1);\nconst source_sftp_path = String(j.source_sftp_path || '');\nconst stamp = `${slug}-${index}-${Date.now()}`;\nreturn [{\n  json: {\n    slug,\n    index,\n    source_sftp_path,\n    source_local: `/tmp/syndicator-source-${stamp}.mp4`,\n    frame_local: `/tmp/syndicator-frame-${stamp}.jpg`,\n  },\n}];"
+      },
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "name": "Download Source",
+      "type": "n8n-nodes-base.ftp",
+      "typeVersion": 1,
+      "parameters": {
+        "protocol": "sftp",
+        "operation": "download",
+        "path": "={{ $json.source_sftp_path }}",
+        "binaryPropertyName": "data",
+        "options": {}
+      },
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "name": "Write Source Local",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $json.source_local }}",
+        "dataPropertyName": "data"
+      },
+      "position": [
+        720,
+        0
+      ]
+    },
+    {
+      "name": "Analyze Source",
+      "type": "n8n-nodes-ffmpeg-studio.ffmpegAnalyze",
+      "typeVersion": 1,
+      "parameters": {
+        "operation": "metadata",
+        "inputFile": "={{ $('Resolve Paths').item.json.source_local }}"
+      },
+      "position": [
+        960,
+        0
+      ]
+    },
+    {
+      "name": "Extract First Frame",
+      "type": "n8n-nodes-ffmpeg-studio.ffmpegAnalyze",
+      "typeVersion": 1,
+      "parameters": {
+        "operation": "extractFrames",
+        "inputFile": "={{ $('Resolve Paths').item.json.source_local }}",
+        "frameMode": "timestamp",
+        "frameTimestamp": "0",
+        "frameWidth": 1280,
+        "maxFrames": 1,
+        "framesOutputDir": "/tmp",
+        "returnBinary": true,
+        "binaryPropertyName": "data"
+      },
+      "position": [
+        1200,
+        0
+      ]
+    },
+    {
+      "name": "Crop Focus",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5.4-mini",
+          "cachedResultName": "GPT-5.4-MINI"
+        },
+        "text": "You are a photo editor preparing images for social media crops.\n\nYou get one photo. Identify the main subject (person, animal, boat, focal\nlandmark, whatever the photo is really about) and return the normalized\ncoordinates of the point the crop should be centered on:\n\n- x: 0.0 = left edge, 1.0 = right edge\n- y: 0.0 = top edge, 1.0 = bottom edge\n\nIf there is no clear subject (pure landscape), return the most interesting\narea, typically near the horizon or following the rule of thirds.\n\nReturn ONLY a JSON object like {\"x\":0.5,\"y\":0.4} with no markdown.",
+        "inputType": "base64",
+        "binaryPropertyName": "data",
+        "options": {
+          "detail": "low",
+          "maxTokens": 100
+        }
+      },
+      "position": [
+        1440,
+        0
+      ]
+    },
+    {
+      "name": "Plan Reel Groups",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "function cropBox(width, height, targetRatio, focus) {\n  const fx = focus?.x ?? 0.5;\n  const fy = focus?.y ?? 0.5;\n  const srcRatio = width / height;\n  let cropW;\n  let cropH;\n  if (srcRatio > targetRatio) {\n    cropH = height;\n    cropW = Math.round(height * targetRatio);\n  } else {\n    cropW = width;\n    cropH = Math.round(width / targetRatio);\n  }\n  let left = Math.round(fx * width - cropW / 2);\n  let top = Math.round(fy * height - cropH / 2);\n  left = Math.min(Math.max(left, 0), width - cropW);\n  top = Math.min(Math.max(top, 0), height - cropH);\n  return { left, top, width: cropW, height: cropH };\n}\n\nfunction even(n) {\n  return n % 2 === 0 ? n : n - 1;\n}\n\nfunction fitWithoutUpscale(cropW, cropH, maxW, maxH) {\n  if (cropW <= maxW && cropH <= maxH) return { width: cropW, height: cropH };\n  const scale = Math.min(maxW / cropW, maxH / cropH);\n  return { width: even(Math.floor(cropW * scale)), height: even(Math.floor(cropH * scale)) };\n}\n\nfunction parseFocus(raw) {\n  try {\n    let t = raw?.content ?? raw?.text ?? raw?.[0]?.content?.[0]?.text ?? raw?.output?.[0]?.content?.[0]?.text ?? raw;\n    if (typeof t !== 'string') t = JSON.stringify(t);\n    const m = t.match(/\\{[\\s\\S]*\\}/);\n    if (!m) return { x: 0.5, y: 0.5 };\n    const j = JSON.parse(m[0]);\n    return { x: Number(j.x) || 0.5, y: Number(j.y) || 0.5 };\n  } catch (e) {\n    return { x: 0.5, y: 0.5 };\n  }\n}\n\nfunction pickMeta(meta) {\n  const format = meta?.format || meta || {};\n  let duration = Number(format.duration ?? meta?.duration ?? 0);\n  const streams = meta?.streams || format.streams || [];\n  const v = streams.find((s) => (s.codec_type || s.codecType) === 'video') || streams[0] || meta;\n  const width = Number(v?.width ?? meta?.width ?? 0);\n  const height = Number(v?.height ?? meta?.height ?? 0);\n  if (!duration && meta?.duration) duration = Number(meta.duration);\n  return { width, height, duration };\n}\n\nconst trigger = $('Adapt Reel Trigger').first().json;\nconst slug = String(trigger.slug || '');\nconst index = Number(trigger.index || 1);\nconst sourcePath = String($('Resolve Paths').first().json.source_local || '');\nconst meta = pickMeta($('Analyze Source').first().json);\nconst focus = parseFocus($('Crop Focus').first().json);\n\nconst specs = [\n  { name: 'facebook', aspect: '4:5', width: 1080, height: 1350, max_seconds: 240, pad_mode: 'crop' },\n  { name: 'instagram', aspect: '4:5', width: 1080, height: 1350, max_seconds: 90, pad_mode: 'crop' },\n  { name: 'x', aspect: '4:5', width: 1080, height: 1350, max_seconds: 140, pad_mode: 'crop' },\n];\n\nfunction reelGroupDir(spec, duration) {\n  const aspect = (spec.aspect || 'orig').replace(':', 'x');\n  const trimmed = spec.max_seconds != null && duration > spec.max_seconds;\n  return trimmed ? `${aspect}-${spec.max_seconds}s` : aspect;\n}\n\nfunction reelSignature(spec, duration) {\n  const trimmed = spec.max_seconds != null && duration > spec.max_seconds;\n  const effectiveCap = trimmed ? spec.max_seconds : null;\n  return [spec.aspect, spec.width, spec.height, spec.pad_mode, effectiveCap].join('|');\n}\n\nconst groups = [];\nconst bySig = {};\nconst usedDirs = new Set();\nfor (const spec of specs) {\n  const sig = reelSignature(spec, meta.duration);\n  if (bySig[sig]) {\n    bySig[sig].platforms.push(spec.name);\n    continue;\n  }\n  let specDir = reelGroupDir(spec, meta.duration);\n  if (usedDirs.has(specDir)) {\n    const base = specDir;\n    let i = 2;\n    while (usedDirs.has(specDir)) {\n      specDir = `${base}-${i}`;\n      i += 1;\n    }\n  }\n  usedDirs.add(specDir);\n  const trimmed = spec.max_seconds != null && meta.duration > spec.max_seconds;\n  const box = cropBox(meta.width, meta.height, spec.width / spec.height, focus);\n  const out = fitWithoutUpscale(box.width, box.height, spec.width, spec.height);\n  const group = {\n    channel: spec.name,\n    spec_dir: specDir,\n    platforms: [spec.name],\n    max_seconds: trimmed ? spec.max_seconds : null,\n    crop: box,\n    out,\n    source_local: sourcePath,\n    reel_local: `/tmp/syndicator-reel-${slug}-${index}-${specDir}.mp4`,\n    cover_local: `/tmp/syndicator-cover-${slug}-${index}-${specDir}.jpg`,\n    reel_sftp: `/syndicator/${slug}/reels/${specDir}/${index}.mp4`,\n    cover_sftp: `/syndicator/${slug}/covers/${specDir}/${index}.jpg`,\n  };\n  bySig[sig] = group;\n  groups.push(group);\n}\n\nreturn groups.map((g) => {\n  const vf = `crop=${g.crop.width}:${g.crop.height}:${g.crop.left}:${g.crop.top},scale=${g.out.width}:${g.out.height}`;\n  const trim = g.max_seconds != null ? ` -t ${g.max_seconds}` : '';\n  const customArgs = `-y -i ${g.source_local} -vf \"${vf}\"${trim} -c:v libx264 -pix_fmt yuv420p -c:a aac -movflags +faststart ${g.reel_local}`;\n  return { json: { ...g, customArgs, slug, index } };\n});"
+      },
+      "position": [
+        1680,
+        0
+      ]
+    },
+    {
+      "name": "Adapt Reel FFmpeg",
+      "type": "n8n-nodes-ffmpeg-studio.ffmpegVideo",
+      "typeVersion": 1,
+      "parameters": {
+        "operation": "custom",
+        "customArgs": "={{ $json.customArgs }}",
+        "customReturnFile": true,
+        "customOutputPath": "={{ $json.reel_local }}"
+      },
+      "position": [
+        1920,
+        0
+      ]
+    },
+    {
+      "name": "Upload Reel",
+      "type": "n8n-nodes-base.ftp",
+      "typeVersion": 1,
+      "parameters": {
+        "protocol": "sftp",
+        "operation": "upload",
+        "path": "={{ $('Plan Reel Groups').item.json.reel_sftp }}",
+        "binaryData": true,
+        "options": {}
+      },
+      "position": [
+        2160,
+        0
+      ]
+    },
+    {
+      "name": "Extract Cover",
+      "type": "n8n-nodes-ffmpeg-studio.ffmpegVideo",
+      "typeVersion": 1,
+      "parameters": {
+        "operation": "thumbnail",
+        "inputVideo": "={{ $('Plan Reel Groups').item.json.reel_local }}",
+        "outputPath": "={{ $('Plan Reel Groups').item.json.cover_local }}",
+        "thumbTimestamp": "0",
+        "thumbWidth": 1080,
+        "returnBinary": true,
+        "binaryPropertyName": "data"
+      },
+      "position": [
+        2400,
+        0
+      ]
+    },
+    {
+      "name": "Restore Group Meta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const g = $('Plan Reel Groups').item.json;\nreturn {\n  json: {\n    platforms: g.platforms,\n    reel_sftp: g.reel_sftp,\n    cover_sftp: g.cover_sftp,\n    reel_local: g.reel_local,\n    cover_local: g.cover_local,\n  },\n  binary: $input.item.binary,\n};"
+      },
+      "position": [
+        2640,
+        0
+      ]
+    },
+    {
+      "name": "Upload Cover",
+      "type": "n8n-nodes-base.ftp",
+      "typeVersion": 1,
+      "parameters": {
+        "protocol": "sftp",
+        "operation": "upload",
+        "path": "={{ $('Plan Reel Groups').item.json.cover_sftp }}",
+        "binaryData": true,
+        "options": {}
+      },
+      "position": [
+        2880,
+        0
+      ]
+    },
+    {
+      "name": "Keep Group Paths",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const g = $('Plan Reel Groups').item.json;\nreturn { json: { platforms: g.platforms, reel_sftp: g.reel_sftp, cover_sftp: g.cover_sftp } };"
+      },
+      "position": [
+        3120,
+        0
+      ]
+    },
+    {
+      "name": "Build Files Maps",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all().map((i) => i.json);\nconst files = { reels: {}, covers: {} };\nfor (const g of items) {\n  for (const p of g.platforms || []) {\n    files.reels[p] = g.reel_sftp;\n    files.covers[p] = g.cover_sftp;\n  }\n}\nconst trigger = $('Adapt Reel Trigger').first().json;\nreturn [{\n  json: {\n    slug: trigger.slug,\n    index: trigger.index,\n    source_sftp_path: trigger.source_sftp_path,\n    files,\n  },\n}];"
+      },
+      "position": [
+        3360,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Adapt Reel Trigger": {
+      "main": [
+        [
+          {
+            "node": "Resolve Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Paths": {
+      "main": [
+        [
+          {
+            "node": "Download Source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Source": {
+      "main": [
+        [
+          {
+            "node": "Write Source Local",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Source Local": {
+      "main": [
+        [
+          {
+            "node": "Analyze Source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Source": {
+      "main": [
+        [
+          {
+            "node": "Extract First Frame",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract First Frame": {
+      "main": [
+        [
+          {
+            "node": "Crop Focus",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crop Focus": {
+      "main": [
+        [
+          {
+            "node": "Plan Reel Groups",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Reel Groups": {
+      "main": [
+        [
+          {
+            "node": "Adapt Reel FFmpeg",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Adapt Reel FFmpeg": {
+      "main": [
+        [
+          {
+            "node": "Upload Reel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Reel": {
+      "main": [
+        [
+          {
+            "node": "Extract Cover",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Cover": {
+      "main": [
+        [
+          {
+            "node": "Restore Group Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Group Meta": {
+      "main": [
+        [
+          {
+            "node": "Upload Cover",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Cover": {
+      "main": [
+        [
+          {
+            "node": "Keep Group Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep Group Paths": {
+      "main": [
+        [
+          {
+            "node": "Build Files Maps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

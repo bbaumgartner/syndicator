@@ -4,18 +4,17 @@ Publish pipeline for [sailingnomads.ch](https://www.sailingnomads.ch).
 
 **v2 (n8n migration).** Syndicator is now a **thin local trigger**. It is the
 only component that reads the private [Logseq](https://logseq.com) diary. It
-extracts `type:: blog` + `status:: online` posts, adapts their media locally
-(ffmpeg + Pillow), uploads everything to an SFTP staging area, and fires two
-n8n webhooks. Translation, the Hugo render, captions and the social drafts run
-in **three stateless n8n workflows**. Hugo-ready output mirrors the repository
-under `/syndicator/sailingnomads/`, from where the owner fetches it into the
-site checkout and commits by hand (the push deploys the site). Social posts land
-as **Postiz drafts**; the human edits captions and schedules them in the
-Postiz calendar.
+extracts `type:: blog` + `status:: online` posts, uploads **immutable originals**
+under `/syndicator/<slug>/source/` (plus the journey map), and fires two n8n
+webhooks. **Media adaptation** (Edit Image + FFmpeg + OpenAI crop-focus),
+translation, the Hugo render, captions and social drafts run in **n8n workflows**
+(including Adapt Reel / Adapt Publish sub-workflows). Hugo-ready output is built
+by n8n under `/syndicator/sailingnomads/`, from where the owner fetches it into
+the site checkout and commits by hand. Social posts land as **Postiz drafts**.
 
 ```
-Logseq  →  syndicate (local)  →  SFTP staging  →  n8n  →  Postiz (drafts)
-                                       ↓ /sailingnomads/
+Logseq  →  syndicate (local)  →  SFTP source/  →  n8n (adapt + publish)  →  Postiz
+                                       ↓ sailingnomads/
                                fetch + git push  →  GitHub (site deploy)
 ```
 
@@ -43,8 +42,10 @@ cp config.local.yaml.example config.local.yaml      # adjust paths + sftp_key!
 
 Requirements:
 
-- `ffmpeg` and `go` (the journeymap/animatemap tools are built/run from the
-  converter repo referenced in `config.local.yaml`).
+- `go` (the journeymap/animatemap tools are built/run from the converter repo
+  referenced in `config.local.yaml`). Local ffmpeg/Pillow are **not** required
+  for syndication; video/image adapt runs on the n8n host via
+  `n8n-nodes-ffmpeg-studio` + Edit Image.
 - The Syncthing-synced Logseq graph (`saillog_dir`).
 - A local clone of the Hugo site repo with push access — the site commit is a
   manual step in that checkout.
@@ -53,9 +54,8 @@ Requirements:
 - The two n8n production webhook URLs, filled into `syndicator.yaml`
   (`webhooks.publish_url` / `webhooks.reel_url`) once the workflows are active.
 
-No `OPENAI_API_KEY` is needed locally except for the crop-focus vision model
-used by media adaptation (`media.crop_focus`); translation and captions now run
-in n8n with the OpenAI credential stored there.
+No `OPENAI_API_KEY` is needed locally; crop-focus, translation and captions use
+the OpenAI credential stored in n8n. See [docs/n8n-media-adapt-notes.md](docs/n8n-media-adapt-notes.md).
 
 ## Commands
 
@@ -69,12 +69,13 @@ uv run syndicator version
 ```
 
 `syndicate` per invocation: generate + upload the global journey map once, then
-per post adapt media → SFTP upload → one `/reel` per video → `/publish` → write
-the `syndicated-at::` marker once every webhook returned `{"status":"accepted"}`.
-Already-marked posts are skipped (re-running would create duplicate drafts). A
-`status:: online` post **without a `header::` image is refused** before any work
-(reported and skipped in batch; the others continue) — the site build requires a
-featured image and the intro posts are built from the header crops.
+per post upload originals under `source/` → one `/reel` per video → `/publish` →
+write the `syndicated-at::` marker once every webhook returned
+`{"status":"accepted"}`. Already-marked posts are skipped (re-running would
+create duplicate drafts). A `status:: online` post **without a `header::` image
+is refused** before any work (reported and skipped in batch; the others continue)
+— the site build requires a featured image and the intro posts are built from
+header crops produced in n8n.
 
 `redeploy` ignores the marker and re-runs the site only (`flags.redeploy: true`
 → n8n overwrites the Hugo files in the mirrored staging tree, but creates no
