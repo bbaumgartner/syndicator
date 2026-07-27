@@ -1,4 +1,4 @@
-"""CLI: syndicate, redeploy, version."""
+"""CLI: syndicate, redeploy, list, version."""
 
 from __future__ import annotations
 
@@ -32,6 +32,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_re.add_argument("--post", required=True, help="Post slug to redeploy")
 
+    sub.add_parser(
+        "list",
+        help="List online post slugs and syndicated-at dates (if any)",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "version":
@@ -39,9 +44,20 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     from .config import load_config
-    from .trigger import redeploy, syndicate
+    from .trigger import list_syndication, redeploy, syndicate
 
     cfg = load_config()
+
+    if args.command == "list":
+        rows = list_syndication(cfg)
+        if rows:
+            slug_width = max(len(slug) for slug, _ in rows)
+            for slug, syndicated_at in rows:
+                if syndicated_at:
+                    print(f"  {slug:<{slug_width}}  {syndicated_at}")
+                else:
+                    print(f"  {slug}")
+        return 0
 
     if args.command == "syndicate":
         report = syndicate(cfg, slug=args.post)

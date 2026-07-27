@@ -14,7 +14,7 @@ from urllib.parse import quote
 from .config import Config
 from .extract import VIDEO_EXTENSIONS, BlogPost
 from .journeymap import generate_journey_map
-from .marker import is_syndicated, set_syndicated_at
+from .marker import is_syndicated, read_syndicated_at, set_syndicated_at
 from .sftp import SftpUploader, sftp_session
 from .webhook import WebhookError, post_webhook
 
@@ -240,6 +240,11 @@ def _scan_online(cfg: Config) -> list[BlogPost]:
     from .extract import scan_blog_posts
 
     return scan_blog_posts(cfg.journals_dir, cfg.pages_dir, online_only=True)
+
+
+def list_syndication(cfg: Config) -> list[tuple[str, str]]:
+    """Return (slug, syndicated-at) for every online post; date empty if not marked."""
+    return [(p.slug, read_syndicated_at(p)) for p in _scan_online(cfg)]
 
 
 def _has_header(post: BlogPost) -> bool:

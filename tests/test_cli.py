@@ -1,9 +1,11 @@
-"""Tests for the CLI (version, syndicate, redeploy)."""
+"""Tests for the CLI (version, syndicate, redeploy, list)."""
 
 from pathlib import Path
 
 from syndicator import __version__
 from syndicator.cli import main
+from syndicator.extract import scan_blog_posts
+from syndicator.marker import set_syndicated_at
 from syndicator.trigger import SyndicateReport
 
 from conftest import make_cfg
@@ -85,3 +87,17 @@ def test_redeploy_invokes_pipeline(tmp_path: Path, monkeypatch, capsys):
     )
     assert main(["redeploy", "--post", "2026-06-03_Athen"]) == 0
     assert seen["slug"] == "2026-06-03_Athen"
+
+
+def test_list_shows_slugs_and_syndicated_dates(tmp_path: Path, monkeypatch, capsys):
+    cfg = make_cfg(tmp_path)
+    monkeypatch.setattr("syndicator.config.load_config", lambda repo_root=None: cfg)
+    posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
+    set_syndicated_at(posts["2026-06-03_Athen"], "2026-07-18T12:00:00+02:00")
+
+    assert main(["list"]) == 0
+    out = capsys.readouterr().out
+    assert "2024-06-14_Renan" in out
+    assert "2026-06-03_Athen" in out
+    assert "2026-07-18T12:00:00+02:00" in out
+    assert out.index("2024-06-14_Renan") < out.index("2026-06-03_Athen")
