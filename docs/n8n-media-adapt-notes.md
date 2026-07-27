@@ -124,18 +124,22 @@ still skips social via **Skip Social If Redeploy**.
 
 ```
 Reel Publish
-  Webhook /reel → Respond → Parse
+  Webhook /reel (onReceived) → Parse
     → Execute Adapt Reel Media → Merge Adapt Into Payload
       → Extract Cover (from video_4x5_local) → Caption FB | IG | X
         → Download Reel (same video_4x5_sftp) → Postiz upload → Draft
 
 Blog Post Publish
-  Webhook /publish → Respond
+  Webhook /publish (onReceived)
     → Prepare Blocks → Translate → Pirate → Assemble
       → Adapt Hugo Media → Generate Hugo indexes → Stage → Upload indexes
       → Skip Social If Redeploy → Adapt Feature Image
         → Caption → Download header → Postiz
 ```
+
+Webhooks use `responseMode: onReceived` (no Respond to Webhook node) so the
+caller gets HTTP 200 as soon as the request is accepted — required when
+`N8N_CONCURRENCY_PRODUCTION_LIMIT=1` may queue the execution.
 
 ## Credentials used
 

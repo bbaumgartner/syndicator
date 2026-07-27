@@ -11,7 +11,7 @@ log = logging.getLogger(__name__)
 
 
 class WebhookError(RuntimeError):
-    """A webhook could not be delivered/accepted after all retries."""
+    """A webhook could not be delivered after all retries."""
 
 
 def post_webhook(
@@ -21,7 +21,13 @@ def post_webhook(
     label: str = "webhook",
     retries: int = 3,
     timeout: float = 60.0,
-) -> dict:
+) -> None:
+    """POST ``payload`` and treat any HTTP 2xx as a successful hand-off.
+
+    n8n webhooks use ``responseMode: onReceived`` so the HTTP response is sent
+    as soon as the request is accepted (even when execution is queued under
+    ``N8N_CONCURRENCY_PRODUCTION_LIMIT=1``). Body content is ignored.
+    """
     if not url:
         raise WebhookError(f"{label}: no webhook URL configured")
 
@@ -30,12 +36,9 @@ def post_webhook(
         try:
             resp = httpx.post(url, json=payload, timeout=timeout)
             resp.raise_for_status()
-            data = _parse(resp)
-            if data.get("status") != "accepted":
-                raise WebhookError(f"{label}: unexpected response {data!r}")
-            log.info("%s accepted (attempt %d)", label, attempt)
-            return data
-        except (httpx.HTTPError, WebhookError) as err:
+            log.info("%s accepted HTTP %s (attempt %d)", label, resp.status_code, attempt)
+            return
+        except httpx.HTTPError as err:
             last_err = err
             if attempt == retries:
                 break
@@ -51,11 +54,3 @@ def post_webhook(
             time.sleep(wait)
 
     raise WebhookError(f"{label}: not accepted after {retries} attempts") from last_err
-
-
-def _parse(resp: httpx.Response) -> dict:
-    try:
-        data = resp.json()
-    except ValueError:
-        return {"status": "accepted" if resp.status_code == 200 else "error"}
-    return data if isinstance(data, dict) else {"status": "error", "body": data}

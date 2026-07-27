@@ -127,8 +127,8 @@ all deterministic:
 - `trigger` — stage originals into `<slug>/source/`, build `/publish` and
   `/reel` payloads, orchestrate `syndicate` / `redeploy`.
 - `sftp` — resumable, idempotent uploads of originals under ``source/``.
-- `webhook` — POSTs with retries; expects `{"status":"accepted"}`.
-- `marker` — writes `syndicated-at::` after all webhooks were accepted.
+- `webhook` — POSTs with retries; any HTTP 2xx is a successful hand-off.
+- `marker` — writes `syndicated-at::` after all webhooks returned 2xx.
 
 The last leg — SFTP staging → site repo — is a **manual step by design**: the
 owner recursively fetches `/syndicator/sailingnomads/` into the existing site
@@ -140,11 +140,12 @@ the exact Hugo layout, so no manifest or file rearranging is needed.
 - **Adapt Hugo Media**: Hugo images are copied; Hugo videos are FFmpeg-resized
   only (no crop). **Adapt Feature Image**: crop-focus the feature image into
   social headers. **Adapt Reel Media**: FFmpeg 4:5 crop. None modify `source/`.
-- **Blog Post Publish** (`/publish`): respond early → translate/assemble →
-  Adapt Hugo Media → Generate Hugo indexes → upload; unless `flags.redeploy`,
-  Adapt Feature Image then Postiz intro drafts from header crops.
-- **Reel Publish** (`/reel`): respond early → adapt → vision captions → Postiz
-  reel drafts.
+- **Blog Post Publish** (`/publish`): webhook responds immediately (`onReceived`)
+  → translate/assemble → Adapt Hugo Media → Generate Hugo indexes → upload;
+  unless `flags.redeploy`, Adapt Feature Image then Postiz intro drafts from
+  header crops.
+- **Reel Publish** (`/reel`): webhook responds immediately (`onReceived`) →
+  adapt → vision captions → Postiz reel drafts.
 - **Syndicator Error**: Error Trigger → Mailgun; shared `settings.errorWorkflow`.
 
 The contract is intentionally narrow: **slug + basenames** in the webhook
@@ -193,9 +194,11 @@ headers, reel 4:5) is hardcoded in the n8n Adapt workflows.
    `syndicate`.
 2. The trigger generates + uploads the global journey map once, then per post:
    upload `source/` originals → one `/reel` per video → `/publish`.
-3. Each workflow responds `{"status":"accepted"}` immediately and continues
-   async (adapt media, then translate/drafts). Once every webhook for a post
-   was accepted, the trigger writes `syndicated-at::`.
+3. Each workflow webhook uses `responseMode: onReceived` so HTTP 200 is
+   returned as soon as the request is accepted (safe under
+   `N8N_CONCURRENCY_PRODUCTION_LIMIT=1`, where execution may be queued). The
+   workflow then continues async (adapt media, then translate/drafts). Once
+   every webhook for a post returned 2xx, the trigger writes `syndicated-at::`.
 4. n8n adapts media into the mirrored Hugo tree and social paths, renders +
    translates indexes, and creates the Postiz drafts. The author reviews and
    schedules drafts in the Postiz calendar.
@@ -212,11 +215,11 @@ commit ships it.
 
 ### 6.3 Failure & recovery
 
-Because the workflows respond early and there are no completion callbacks, the
-marker means **handed off**, not **published**. Recovery is out-of-band by
-failure class:
+Because the workflows acknowledge immediately and there are no completion
+callbacks, the marker means **handed off**, not **published**. Recovery is
+out-of-band by failure class:
 
-- **Handoff failure** — webhook never accepted after 3 retries: no marker, the
+- **Handoff failure** — webhook never returns HTTP 2xx after 3 retries: no marker, the
   next `syndicate` re-runs the whole post (duplicates are harmless).
 - **Site async failure** — render/translate failed in n8n:
   `redeploy --post` re-runs and overwrites that post's staged Hugo files.
@@ -290,7 +293,7 @@ local.
 | 2 | Postiz cloud for social | Drafts + calendar UI as the human review/schedule surface; open-source exit hatch; no own Meta/X developer apps. |
 | 3 | SFTP staging as media transport | Resumable, no Cloud upload-size cap; n8n downloads, never deletes. |
 | 4 | Site commit is a manual local step (supersedes: Git Data API commit in n8n) | The SFTP subtree mirrors the Hugo repo: local media uploads and n8n index writes meet under `/syndicator/sailingnomads/`, which can be fetched into the checkout in one operation. Removes the base64-in-RAM blob round-trip and GitHub credential in n8n, and adds a pre-deploy `git diff` gate — at the cost of one manual step. |
-| 5 | Marker = hand-off, not completion | Workflows respond early; out-of-band recovery beats brittle completion callbacks. |
+| 5 | Marker = hand-off, not completion | Webhooks acknowledge immediately (`onReceived`); out-of-band recovery beats brittle completion callbacks. |
 | 6 | n8n copies of prompts/models are authoritative | No include mechanism in n8n; avoid constant drift with `prompts/`. |
 
 Superseded v1 decisions (plain-code pipeline, state in the Logseq graph,
@@ -325,7 +328,7 @@ alternatives.
 | **Workflow** | One stateless n8n execution graph (Blog Post Publish, Reel Publish, Syndicator Error). |
 | **Staging area** | The chrooted `/syndicator/` SFTP tree. `/syndicator/<slug>/source/` holds immutable originals; `/syndicator/sailingnomads/` is the Hugo mirror built by n8n; `/syndicator/<slug>/header|reels|covers/` are social derivatives. |
 | **`sftp_path`** | A chroot-absolute path used by SFTP upload/download nodes. Derived in n8n from slug + basename; the local uploader still builds absolute remotes when copying originals. |
-| **Marker** | The `syndicated-at::` property; records hand-off (all webhooks accepted), not completion. |
+| **Marker** | The `syndicated-at::` property; records hand-off (all webhooks returned HTTP 2xx), not completion. |
 | **Intro post** | One per blog post per platform: header crop + English summary caption. |
 | **Reel** | One per video per platform: adapted vertical clip + English vision caption. |
 | **Slug** | Stable post identifier (`<date>_<title>`); names the staging dir, bundle and drafts. |

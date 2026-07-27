@@ -15,10 +15,18 @@ def _resp(status_code=200, json_body=None):
     return httpx.Response(status_code, json=json_body, request=req)
 
 
-def test_accepted_response_returns_data():
-    with patch("syndicator.webhook.httpx.post", return_value=_resp(200, {"status": "accepted"})):
-        data = post_webhook("https://n8n.example/webhook/publish", {"a": 1}, label="/publish")
-    assert data == {"status": "accepted"}
+def test_http_200_is_accepted():
+    with patch("syndicator.webhook.httpx.post", return_value=_resp(200)):
+        post_webhook("https://n8n.example/webhook/publish", {"a": 1}, label="/publish")
+
+
+def test_http_200_ignores_body():
+    """n8n onReceived may return a default body; only the status code matters."""
+    with patch(
+        "syndicator.webhook.httpx.post",
+        return_value=_resp(200, {"message": "Workflow was started"}),
+    ):
+        post_webhook("https://n8n.example/webhook/publish", {"a": 1})
 
 
 def test_missing_url_raises():
@@ -36,10 +44,10 @@ def test_retries_then_raises_on_persistent_failure():
     assert post.call_count == 3
 
 
-def test_unexpected_body_is_not_accepted():
+def test_http_error_is_retried():
     with (
         patch("syndicator.webhook.time.sleep"),
-        patch("syndicator.webhook.httpx.post", return_value=_resp(200, {"status": "error"})),
+        patch("syndicator.webhook.httpx.post", return_value=_resp(500)),
     ):
         with pytest.raises(WebhookError):
             post_webhook("https://n8n.example/webhook/publish", {"a": 1}, retries=2)

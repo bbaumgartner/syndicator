@@ -71,8 +71,8 @@ uv run syndicator version
 
 `syndicate` per invocation: generate + upload the global journey map once, then
 per post upload originals under `source/` → one `/reel` per video → `/publish` →
-write the `syndicated-at::` marker once every webhook returned
-`{"status":"accepted"}`. Already-marked posts are skipped (re-running would
+write the `syndicated-at::` marker once every webhook returned HTTP 200.
+Already-marked posts are skipped (re-running would
 create duplicate drafts). A `status:: online` post **without a `header::` image
 is refused** before any work (reported and skipped in batch; the others continue)
 — the site build requires a featured image and the intro posts are built from
@@ -120,9 +120,9 @@ already-published `status:: online` post so they are not re-drafted.
 ## Failure & recovery
 
 The `syndicated-at::` marker means **handed off**, not **published** (the n8n
-workflows respond early and run async). Recovery depends on the failure class:
+workflows acknowledge immediately and run async). Recovery depends on the failure class:
 
-- **Handoff failure** (a webhook never returns `accepted` after 3 local
+- **Handoff failure** (a webhook never returns HTTP 200 after 3 local
   retries): no marker is written, so the next `syndicate` re-runs the post.
   Duplicates are harmless (the site staging is idempotent; delete duplicate
   drafts by hand).
@@ -138,8 +138,10 @@ name, error, execution URL); that URL is the entry point for manual recovery.
 
 ## Troubleshooting
 
-- **Webhook not accepted / timeouts:** check the n8n workflow is active and the
-  URL in `syndicator.yaml` matches the production webhook.
+- **Webhook HTTP errors / timeouts:** check the n8n workflow is active and the
+  URL in `syndicator.yaml` matches the production webhook. Webhooks respond
+  immediately (`onReceived`); a long wait usually means n8n itself is unreachable,
+  not that the workflow is still queued.
 - **SFTP upload fails:** verify `sftp_key`, `sftp.host`/`sftp.user`, and that
   the `/syndicator/` base dir exists in the chroot (see the migration doc §8).
 - **Post refused for missing header:** add a `header::` image and re-run.

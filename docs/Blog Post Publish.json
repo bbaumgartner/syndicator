@@ -16,7 +16,7 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "publish",
-        "responseMode": "responseNode",
+        "responseMode": "onReceived",
         "options": {}
       },
       "id": "50db514b-76ca-4f03-9a74-28b2edbd6837",
@@ -28,21 +28,6 @@
         192
       ],
       "webhookId": "8dcea78d-b2de-49a7-8ebb-83a623cec475"
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "{\n  \"status\": \"accepted\"\n}",
-        "options": {}
-      },
-      "id": "71b844ca-cda9-422c-b134-dc6046b858f2",
-      "name": "Respond Accepted",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.5,
-      "position": [
-        -1376,
-        192
-      ]
     },
     {
       "parameters": {
@@ -678,7 +663,7 @@
       "main": [
         [
           {
-            "node": "Respond Accepted",
+            "node": "Prepare Blocks",
             "type": "main",
             "index": 0
           }
@@ -881,17 +866,6 @@
           },
           {
             "node": "Caption Intro X",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Respond Accepted": {
-      "main": [
-        [
-          {
-            "node": "Prepare Blocks",
             "type": "main",
             "index": 0
           }

@@ -16,7 +16,7 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "reel",
-        "responseMode": "responseNode",
+        "responseMode": "onReceived",
         "options": {}
       },
       "id": "fe8bbda5-f6e7-4a37-9ce7-47595f36bfa5",
@@ -28,21 +28,6 @@
         192
       ],
       "webhookId": "4e23d978-d4c3-4ed4-9803-0e31e00f0779"
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "{\n  \"status\": \"accepted\"\n}",
-        "options": {}
-      },
-      "id": "3629a558-8372-4f92-8564-c2b657141603",
-      "name": "Respond Accepted",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.5,
-      "position": [
-        -448,
-        192
-      ]
     },
     {
       "parameters": {
@@ -467,17 +452,6 @@
   ],
   "connections": {
     "Reel Webhook": {
-      "main": [
-        [
-          {
-            "node": "Respond Accepted",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Respond Accepted": {
       "main": [
         [
           {
