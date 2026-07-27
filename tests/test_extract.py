@@ -78,17 +78,23 @@ def test_charly_reel_section_text_marks_video_position():
         "charly-hueftschwung_1779210255901_0.mp4",
     ]
 
-    # First video: only text below it (the intro above is a boundary).
+    # First video: marker appears where the first clip sits in the post.
     first = post.section_text_for_video(videos[0])
-    assert first == "[VIDEO]\n\nCharly scheint aber wirklich eine besondere Wirkung auf die Menschen zu haben. Kein Tag vergeht an dem wir nicht ein Dutzend mal auf Charly angesprochen werden. Die Leute wollen alles wissen, inklusive wieviel denn so ein Hund kostet. Manchmal ist es fast ein bisschen zu viel und ich kann langsam erahnen, wie es sein muss wenn man berühmt ist. Immer dieselben Fragen, auch dann wenn man es eilig hat oder einfach gerade keine Lust."
+    assert first.count("[VIDEO]") == 1
+    assert first.startswith("Wie die meisten Hündeler glauben auch wir")
+    parts = first.split("\n\n[VIDEO]\n\n")
+    assert len(parts) == 2
+    assert "Charly scheint aber wirklich eine besondere Wirkung" in parts[1]
 
-    # Second video: text above *and* below it, with the marker in between.
+    # Second video: marker appears where the second clip sits.
     second = post.section_text_for_video(videos[1])
     assert second.count("[VIDEO]") == 1
     parts = second.split("\n\n[VIDEO]\n\n")
     assert len(parts) == 2
-    assert parts[0].startswith("Charly scheint aber wirklich")
-    assert parts[1].startswith("Insgesamt ist Charly aber ein unglaubliche Bereicherung")
+    assert parts[0].startswith("Wie die meisten Hündeler glauben auch wir")
+    assert parts[1].startswith(
+        "Insgesamt ist Charly aber ein unglaubliche Bereicherung"
+    )
 
 
 def test_athen_youtube_block():

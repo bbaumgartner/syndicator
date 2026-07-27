@@ -160,19 +160,29 @@ class BlogPost:
         return None
 
     def section_text_for_video(self, video: MediaRef, marker: str = REEL_VIDEO_MARKER) -> str:
-        blocks = self.blocks
-        start = 1 if (blocks and blocks[0].kind == "text") else 0
-        idx = next((i for i in range(start, len(blocks)) if blocks[i].media is video), None)
-        if idx is None:
-            return marker
-        lo = idx
-        while lo - 1 >= start and blocks[lo - 1].kind == "text":
-            lo -= 1
-        hi = idx
-        while hi + 1 < len(blocks) and blocks[hi + 1].kind == "text":
-            hi += 1
-        parts = [marker if i == idx else blocks[i].raw for i in range(lo, hi + 1)]
-        return "\n\n".join(parts)
+        """Build reel context with a single marker at the video's position.
+
+        Simpler than the previous "nearest text window" approach: we concatenate
+        all post titles + text blocks in document order, and place ``marker`` at
+        the specific video block. Other media blocks (images, other videos,
+        youtube embeds) are omitted.
+        """
+        parts: list[str] = []
+        found = False
+        for b in self.blocks:
+            if b.kind in ("title", "text"):
+                raw = b.raw.strip()
+                if raw:
+                    parts.append(raw)
+                continue
+            if b.kind == "media" and b.media is video:
+                parts.append(marker)
+                found = True
+                continue
+            # Omit other media (images, other videos, youtube) to keep context
+            # focused on prose + headings around the marker.
+
+        return marker if not found else "\n\n".join(parts)
 
 
 def _plain_inline(text: str) -> str:
