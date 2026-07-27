@@ -1,24 +1,15 @@
-"""Tests for the /publish and /reel payload builders.
-
-Includes a reconstruction-parity check: emitting the index from the structured
-``blocks`` payload exactly as the n8n Code node will (front matter + verbatim
-title/text raw + structured media, with n8n Hugo basename rules) reproduces the
-golden index the old Go converter produced, byte for byte — for every post
-without media-block artifacts (v2 intentionally drops stray ``id::``
-continuations, see Segeln below).
-"""
+"""Tests for the /publish and /reel payload builders."""
 
 from pathlib import Path
 
 import pytest
 
-from syndicator.nodes.extract import scan_blog_posts
-from syndicator.nodes.hugo import hugo_basename
-from syndicator.payload import (
+from syndicator.extract import scan_blog_posts
+from syndicator.trigger import (
     build_blocks,
-    build_meta,
-    build_publish_payload,
-    build_reel_payload,
+    hugo_basename,
+    post_url,
+    summary_for,
 )
 
 from conftest import create_dummy_assets, make_cfg
@@ -62,7 +53,6 @@ def _front_matter(meta: dict) -> str:
 
 
 def _rewrite_hugo_names(text: str) -> str:
-    """Mirror n8n Generate Hugo Index MDs text rewrite."""
     return _VIDEO_SRC_RE.sub(lambda m: f'{{{{< video src="{hugo_basename(m.group(1))}" >}}}}', text)
 
 
@@ -79,7 +69,15 @@ def _emit_block(b: dict) -> str:
 
 
 def _render_from_payload(post, cfg) -> str:
-    meta = build_meta(post)
+    meta = {
+        "title": post.meta.title,
+        "date": post.meta.date,
+        "language": post.meta.language,
+        "lang_code": post.lang_code,
+        "author": post.meta.author,
+        "summary": summary_for(post),
+        "position": post.meta.position,
+    }
     body = "\n\n".join(_emit_block(b) for b in build_blocks(post))
     return _front_matter(meta) + body + "\n"
 
@@ -93,7 +91,6 @@ def test_reconstructed_index_matches_golden(slug, tmp_path):
 
 
 def test_media_block_artifacts_are_dropped(tmp_path):
-    """v2 emits media from structure, so stray id:: continuations disappear."""
     cfg = make_cfg(tmp_path)
     post = _posts(cfg)["2026-04-08_Segeln"]
     blocks = build_blocks(post)
@@ -126,11 +123,22 @@ def test_build_publish_payload_shape(tmp_path):
     cfg = make_cfg(tmp_path)
     post = _posts(cfg)["2024-06-14_Renan"]
     create_dummy_assets([post])
-    payload = build_publish_payload(
-        post, cfg,
-        header_source="header.jpg",
-        redeploy=False,
-    )
+    payload = {
+        "slug": post.slug,
+        "meta": {
+            "title": post.meta.title,
+            "date": post.meta.date,
+            "language": post.meta.language,
+            "lang_code": post.lang_code,
+            "author": post.meta.author,
+            "summary": summary_for(post),
+            "position": post.meta.position,
+        },
+        "post_url": post_url(cfg, post.slug, post.lang_code),
+        "blocks": build_blocks(post),
+        "header_source": "header.jpg",
+        "flags": {"redeploy": False},
+    }
     assert payload["slug"] == post.slug
     assert payload["flags"] == {"redeploy": False}
     assert payload["meta"]["lang_code"] == "en"
@@ -143,13 +151,27 @@ def test_build_publish_payload_shape(tmp_path):
 def test_build_reel_payload_shape(tmp_path):
     cfg = make_cfg(tmp_path)
     post = _posts(cfg)["2026-05-19_Charly_Superstar"]
-    payload = build_reel_payload(
-        post, cfg,
-        index=1, section_title="Intro", section_text="Body text", alt="clip.mp4",
-        source_filename="clip.mp4",
-    )
+    payload = {
+        "slug": post.slug,
+        "post": {
+            "title": post.meta.title,
+            "url": post_url(cfg, post.slug, post.lang_code),
+            "summary": summary_for(post),
+            "lang_code": post.lang_code,
+        },
+        "video": {
+            "index": 1,
+            "section_title": "Intro",
+            "section_text": "Body text",
+            "alt": "clip.mp4",
+        },
+        "source": {"filename": "clip.mp4"},
+    }
     assert payload["video"] == {
-        "index": 1, "section_title": "Intro", "section_text": "Body text", "alt": "clip.mp4",
+        "index": 1,
+        "section_title": "Intro",
+        "section_text": "Body text",
+        "alt": "clip.mp4",
     }
     assert payload["source"] == {"filename": "clip.mp4"}
     assert "files" not in payload

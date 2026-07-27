@@ -2,10 +2,11 @@
 
 Publish pipeline for [sailingnomads.ch](https://www.sailingnomads.ch).
 
-**v2 (n8n migration).** Syndicator is now a **thin local trigger**. It is the
-only component that reads the private [Logseq](https://logseq.com) diary. It
-extracts `type:: blog` + `status:: online` posts, uploads **immutable originals**
-under `/syndicator/<slug>/source/` (plus the journey map), and fires two n8n
+**v2 (n8n migration).** Syndicator is a **thin local Python trigger** (stdlib
+dataclasses + argparse; no pydantic/typer). It is the only component that reads
+the private [Logseq](https://logseq.com) diary. It extracts `type:: blog` +
+`status:: online` posts, uploads **immutable originals** under
+`/syndicator/<slug>/source/` (plus the journey map), and fires two n8n
 webhooks. **Media adaptation** (Edit Image + FFmpeg + OpenAI crop-focus),
 translation, the Hugo render, captions and social drafts run in **n8n workflows**
 (including Adapt Reel / Adapt Publish sub-workflows). Hugo-ready output is built

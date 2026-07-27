@@ -1,15 +1,4 @@
-"""Resumable, idempotent SFTP uploader for the staging area.
-
-The staging server exposes a chrooted, key-only ``sftp`` user (§4.1). Every
-``sftp_path`` in local uploads is chroot-absolute. Webhook contracts pass
-basenames only; n8n derives the same layout when downloading/uploading.
-
-Design constraints (§4.1):
-- must work through OpenSSH ``internal-sftp`` (so paramiko, not rsync/lftp);
-- resumable: an interrupted upload is continued from its byte offset;
-- idempotent: a re-run overwrites in place;
-- never deletes (cleanup is manual on the server).
-"""
+"""Resumable SFTP uploader for the chrooted staging area."""
 
 from __future__ import annotations
 
@@ -29,8 +18,6 @@ _CHUNK = 32 * 1024
 
 
 class SftpUploader:
-    """A live SFTP session; upload files by chroot-absolute remote path."""
-
     def __init__(self, client: paramiko.SSHClient, sftp: paramiko.SFTPClient):
         self._client = client
         self._sftp = sftp
@@ -42,9 +29,8 @@ class SftpUploader:
             return None
 
     def ensure_dir(self, remote_dir: str) -> None:
-        """``mkdir -p`` for a chroot-absolute directory path."""
         parts = PurePosixPath(remote_dir).parts
-        current = PurePosixPath(parts[0]) if parts and parts[0] == "/" else PurePosixPath("/")
+        current = PurePosixPath("/")
         for part in parts:
             if part == "/":
                 continue
@@ -58,7 +44,6 @@ class SftpUploader:
                 self._sftp.mkdir(path)
 
     def upload(self, local_path: Path, remote_path: str) -> None:
-        """Upload one file to a chroot-absolute remote path (resume or overwrite)."""
         local_path = Path(local_path)
         local_size = local_path.stat().st_size
         self.ensure_dir(str(PurePosixPath(remote_path).parent))
@@ -93,7 +78,6 @@ class SftpUploader:
 
 @contextmanager
 def sftp_session(cfg: Config) -> Iterator[SftpUploader]:
-    """Open an SFTP session to the staging server using the configured key."""
     sftp_cfg = cfg.shared.sftp
     key_path = Path(cfg.local.sftp_key).expanduser()
     if not key_path.exists():

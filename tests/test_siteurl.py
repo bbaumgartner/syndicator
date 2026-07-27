@@ -1,8 +1,8 @@
-"""Tests for post URL computation (v2: no live verification)."""
+"""Tests for post URL computation."""
 
 from pathlib import Path
 
-from syndicator.siteurl import hugo_path_segment, lang_prefix, post_url
+from syndicator.trigger import hugo_path_segment, lang_prefix, post_url
 
 from conftest import make_cfg
 

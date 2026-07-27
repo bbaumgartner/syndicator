@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from syndicator.marker import is_syndicated, read_syndicated_at, set_syndicated_at
-from syndicator.nodes.extract import scan_blog_posts
+from syndicator.extract import scan_blog_posts
 
 from conftest import make_cfg
 

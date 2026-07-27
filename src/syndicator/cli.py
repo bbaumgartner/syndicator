@@ -1,78 +1,67 @@
-"""Syndicator command line interface (v2).
-
-Only two commands remain after the n8n migration: ``syndicate`` and
-``redeploy`` (§5). The daemon and all review/state commands are gone.
-"""
+"""CLI: syndicate, redeploy, version."""
 
 from __future__ import annotations
 
+import argparse
 import logging
-
-import typer
+import sys
 
 from . import __version__
-
-app = typer.Typer(
-    name="syndicator",
-    help="Thin local trigger: extract the Logseq diary, adapt media, upload over "
-    "SFTP and fire the n8n publish/reel webhooks.",
-    no_args_is_help=True,
-)
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
 
-@app.command()
-def version() -> None:
-    """Print the syndicator version."""
-    typer.echo(f"syndicator {__version__}")
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="syndicator",
+        description="Thin local trigger: extract Logseq, upload originals over SFTP, fire n8n webhooks.",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
 
+    sub.add_parser("version", help="Print the syndicator version")
 
-@app.command()
-def syndicate(
-    post: str = typer.Option(None, "--post", help="Only this post slug (default: all new online posts)."),
-) -> None:
-    """Syndicate new online posts: adapt media, upload, fire /reel + /publish, mark done.
+    p_syn = sub.add_parser(
+        "syndicate",
+        help="Syndicate new online posts (upload source/, /reel, /publish, mark done)",
+    )
+    p_syn.add_argument("--post", help="Only this post slug (default: all new online posts)")
 
-    With no ``--post``: every ``status:: online`` blog post without a
-    ``syndicated-at::`` marker. Already-marked posts are skipped (re-running would
-    create duplicate drafts). A post without a ``header::`` image is refused
-    (reported and skipped in batch, others continue).
-    """
+    p_re = sub.add_parser(
+        "redeploy",
+        help="Force a site-only rebuild of one post (no social, no marker)",
+    )
+    p_re.add_argument("--post", required=True, help="Post slug to redeploy")
+
+    args = parser.parse_args(argv)
+
+    if args.command == "version":
+        print(f"syndicator {__version__}")
+        return 0
+
     from .config import load_config
-    from .pipeline import syndicate as run_syndicate
+    from .trigger import redeploy, syndicate
 
     cfg = load_config()
-    report = run_syndicate(cfg, slug=post)
 
-    for slug in report.done:
-        typer.echo(f"  done      {slug}")
-    for slug in report.skipped_marked:
-        typer.echo(f"  skipped   {slug} (already syndicated)")
-    for slug in report.skipped_no_header:
-        typer.echo(f"  no-header {slug} (add a header:: image)")
-    for slug, reason in report.failed:
-        typer.echo(f"  FAILED    {slug}: {reason}")
-    if report.failed:
-        raise typer.Exit(1)
+    if args.command == "syndicate":
+        report = syndicate(cfg, slug=args.post)
+        for slug in report.done:
+            print(f"  done      {slug}")
+        for slug in report.skipped_marked:
+            print(f"  skipped   {slug} (already syndicated)")
+        for slug in report.skipped_no_header:
+            print(f"  no-header {slug} (add a header:: image)")
+        for slug, reason in report.failed:
+            print(f"  FAILED    {slug}: {reason}")
+        return 1 if report.failed else 0
 
+    if args.command == "redeploy":
+        redeploy(cfg, slug=args.post)
+        print(f"  redeploy  {args.post} (site rebuild handed off)")
+        return 0
 
-@app.command()
-def redeploy(
-    post: str = typer.Option(..., "--post", help="Post slug to redeploy (site only)."),
-) -> None:
-    """Force a site-only rebuild of one post in the mirrored SFTP tree.
-
-    No social drafts, no marker changes. Use this to recover from a site async
-    failure or to stage a site-only content edit before the manual commit.
-    """
-    from .config import load_config
-    from .pipeline import redeploy as run_redeploy
-
-    cfg = load_config()
-    run_redeploy(cfg, slug=post)
-    typer.echo(f"  redeploy  {post} (site rebuild handed off)")
+    return 1
 
 
 if __name__ == "__main__":
-    app()
+    sys.exit(main())

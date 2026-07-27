@@ -1,17 +1,9 @@
-"""Tests for the local media-rewriting helpers (v2 hugo node)."""
+"""Tests for content rewriting helpers used by staging + payloads."""
 
 from pathlib import Path
 
-from syndicator.nodes.extract import scan_blog_posts
-from syndicator.nodes.hugo import (
-    build_content,
-    bundle_media_plan,
-    collect_asset_copies,
-    hugo_basename,
-    transform_content,
-)
-
-from conftest import create_dummy_assets, make_cfg
+from syndicator.extract import scan_blog_posts
+from syndicator.trigger import build_content, collect_asset_copies, hugo_basename, transform_content
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -45,24 +37,3 @@ def test_transform_content_keeps_source_filenames():
 def test_transform_content_youtube_shortcode():
     content = "{{video https://youtu.be/FAIZtHHsbSM}}"
     assert transform_content(content) == "{{< youtube FAIZtHHsbSM >}}"
-
-
-def test_bundle_media_plan_pairs_content_assets_and_header(tmp_path):
-    cfg = make_cfg(tmp_path)
-    posts = {p.slug: p for p in scan_blog_posts(cfg.journals_dir, cfg.pages_dir)}
-    post = posts["2024-06-14_Renan"]
-    create_dummy_assets([post])
-    source_dir = post.source_path.parent
-
-    expected_content = [
-        (src, hugo_basename(name))
-        for src, name in collect_asset_copies(build_content(post), source_dir)
-        if src.exists()
-    ]
-    assert post.meta.header, "Renan fixture must set a header image"
-    header_src = (source_dir / post.meta.header).resolve()
-    assert header_src.exists(), "Renan fixture header image must exist"
-    expected_header = (header_src, f"featured{header_src.suffix}")
-
-    plan = bundle_media_plan(post)
-    assert plan == [*expected_content, expected_header]

@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from syndicator.nodes.extract import scan_blog_posts
-from syndicator.staging import stage_post
+from syndicator.extract import scan_blog_posts
+from syndicator.trigger import stage_post
 
 from conftest import create_dummy_assets, make_cfg
 

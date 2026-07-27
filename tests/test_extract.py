@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from syndicator.nodes.extract import extract_posts, scan_blog_posts
+from syndicator.extract import extract_posts, scan_blog_posts
 
 FIXTURES = Path(__file__).parent / "fixtures"
 JOURNALS = FIXTURES / "journals"

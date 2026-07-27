@@ -54,7 +54,7 @@ written to SFTP.
 - Hardcoded single 4:5 1080×1350 encode (full source duration). Later a
   parallel 9:16 Shorts encode can be added in this workflow; Reel Publish
   would then point YouTube at that path.
-- Crop math mirrors `syndicator.crop_math` (inlined in the Adapt workflow Code nodes; see `docs/Adapt Reel Media.json`)
+- Crop math is inlined in the Adapt workflow Code nodes (see `docs/Adapt Reel Media.json`)
 - OpenAI image analyze uses `prompts/crop_focus.md` semantics → `{x,y}` 0–1
 - Cover frames are extracted in **Reel Publish** from `video_4x5_local`
 
@@ -145,9 +145,9 @@ Blog Post Publish
 
 ## Blockers / follow-ups
 
-1. **SFTP parent directories:** FTP upload nodes do not auto-create nested
-   dirs in all server configs. The local client pre-creates
-   `/syndicator/<slug>/{header,reels}/` and the Hugo post dir before webhooks.
+1. **SFTP parent directories:** n8n’s SFTP upload recursively creates parent
+   dirs before `put` (Hugo post dir, `header/`, `reels/`, …). The local
+   trigger only creates parents for the originals it uploads under `source/`.
 2. **`readWriteFile` / ffmpeg temps:** Adapt workflows write under `/files/`
    inside the n8n container (allowlisted volume). Do not use `/tmp` or `$env`
    (`N8N_BLOCK_ENV_ACCESS_IN_NODE`). FFmpeg Studio needs filesystem paths.

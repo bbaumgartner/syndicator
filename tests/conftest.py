@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from syndicator.config import Config, LocalConfig, SharedConfig
+from syndicator.config import Config, LocalConfig, shared_from_dict
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -17,7 +17,7 @@ def make_cfg(tmp_path: Path) -> Config:
     for f in (FIXTURES / "pages").glob("*.md"):
         (saillog / "pages" / f.name).write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
 
-    shared = SharedConfig.model_validate(
+    shared = shared_from_dict(
         {
             "site": {"base_url": "https://example.org", "default_language": "en"},
             "sftp": {"host": "staging.example", "port": 22, "user": "sftp", "base_dir": "/syndicator"},

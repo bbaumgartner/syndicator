@@ -1,18 +1,4 @@
-"""The ``syndicated-at::`` marker on a blog's property block.
-
-This is the *only* pipeline state in v2 (§2 / §6 of the migration design). It
-means **handed off**, not published: the local client writes it once all
-webhooks for a post returned ``{"status":"accepted"}``. An already-marked post
-is skipped by the next ``syndicate`` (re-running would create duplicate drafts).
-
-Both Logseq source formats are supported, idempotently:
-
-- journal format: the property block is a bullet (``- type:: blog``) with
-  tab+two-space continuation lines; the marker is appended as a new continuation
-  line after the last existing property.
-- page format: column-0 properties at the top of the file; the marker is
-  appended after the last leading property line.
-"""
+"""The ``syndicated-at::`` marker on a blog's property block."""
 
 from __future__ import annotations
 
@@ -22,7 +8,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .model import BlogPost
+from .extract import BlogPost
 
 log = logging.getLogger(__name__)
 
@@ -34,7 +20,6 @@ MARKER_KEY = "syndicated-at"
 
 
 def now_iso() -> str:
-    """Current time as a timezone-aware ISO-8601 string (seconds precision)."""
     return datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
 
 
@@ -56,7 +41,6 @@ def _read_prop(lines: list[str], block: range, key: str) -> str:
 
 
 def _set_prop(lines: list[str], block: range, indent: str, key: str, value: str) -> bool:
-    """Insert or update a property inside the given line range. Returns True when modified."""
     for i in block:
         stripped = lines[i].lstrip("\t ")
         if not stripped.startswith(f"{key}::"):
@@ -72,7 +56,6 @@ def _set_prop(lines: list[str], block: range, indent: str, key: str, value: str)
 
 
 def _journal_block_range(lines: list[str], slug: str) -> tuple[range, str] | None:
-    """Line range of the matching post's property block plus its line prefix."""
     i = 0
     while i < len(lines):
         m = BULLET_RE.match(lines[i])
@@ -95,7 +78,6 @@ def _journal_block_range(lines: list[str], slug: str) -> tuple[range, str] | Non
 
 
 def _page_block_range(lines: list[str]) -> range | None:
-    """Line range of leading column-0 page properties, if it is a blog page."""
     end = 0
     while end < len(lines) and PAGE_PROP_RE.match(lines[end]):
         end += 1
@@ -121,7 +103,6 @@ def _write_source(path: Path, lines: list[str], trailing_newline: bool) -> None:
 
 
 def read_syndicated_at(post: BlogPost) -> str:
-    """Read the ``syndicated-at::`` marker, or an empty string when absent."""
     lines = post.source_path.read_text(encoding="utf-8").splitlines()
     located = _locate_blog_block(lines, post)
     if located is None:
@@ -135,7 +116,6 @@ def is_syndicated(post: BlogPost) -> bool:
 
 
 def set_syndicated_at(post: BlogPost, value: str | None = None) -> bool:
-    """Write the ``syndicated-at::`` marker (defaults to now). Returns True when written."""
     value = value or now_iso()
     path = post.source_path
     text = path.read_text(encoding="utf-8")

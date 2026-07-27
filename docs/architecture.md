@@ -118,16 +118,15 @@ edge means changing only the local `extract` boundary.
 
 Two cooperating layers with a small, explicit contract between them.
 
-**Local trigger (Python).** A pipeline of small modules, each *inputs →
-outputs*, all deterministic:
+**Local trigger (Python).** A small set of modules, each *inputs → outputs*,
+all deterministic:
 
-- `extract` — Logseq graph → `BlogPost` (the privacy boundary).
+- `extract` — Logseq graph → `BlogPost` (domain model + privacy boundary).
 - `journeymap` — Go tools → the global `journey-map.mp4` (deterministic, so
   git content-addressing dedupes it).
-- `staging` — copies immutable originals into `<slug>/source/` for SFTP.
-- `sftp_upload` — resumable, idempotent uploads; pre-creates n8n output dirs.
-- `payload` — builds the `/publish` and `/reel` JSON contracts (basenames +
-  slug; n8n derives SFTP layout paths).
+- `trigger` — stage originals into `<slug>/source/`, build `/publish` and
+  `/reel` payloads, orchestrate `syndicate` / `redeploy`.
+- `sftp` — resumable, idempotent uploads of originals under ``source/``.
 - `webhook` — POSTs with retries; expects `{"status":"accepted"}`.
 - `marker` — writes `syndicated-at::` after all webhooks were accepted.
 
@@ -159,14 +158,13 @@ bodies; n8n derives chroot-absolute SFTP paths from fixed layout conventions.
 
 | Concept | Realized in |
 |---|---|
-| Driver (CLI) | `cli.py` — `syndicate`, `redeploy` |
-| Local orchestrator | `pipeline.py` |
-| Domain model | `model.py` — `BlogPost`, `Section`, `MediaRef`, `Block`, `Meta` |
-| Local nodes | `nodes/` — `extract`, `journeymap`, `hugo` (media-rewriting helpers only); `crop_math.py` (n8n Code reference) |
-| Transport & contracts | `staging.py`, `sftp_upload.py`, `payload.py`, `webhook.py` |
+| Driver (CLI) | `cli.py` — argparse: `syndicate`, `redeploy`, `version` |
+| Orchestrator + contracts | `trigger.py` — staging, payload builders, `syndicate` / `redeploy` |
+| Domain model + extract | `extract.py` — `BlogPost`, `Section`, `MediaRef`, `Block`, `Meta` |
+| Journey map | `journeymap.py` — Go tool wrappers |
+| Transport | `sftp.py`, `webhook.py` |
 | Site commit | manual: recursively fetch `/syndicator/sailingnomads/` into the site checkout, then git commit/push |
 | Hand-off state | `marker.py` — the `syndicated-at::` property |
-| Local edge helpers | `siteurl.py` (builds `post_url`) |
 | Configuration | `config.py`: `syndicator.yaml` (shared) + `config.local.yaml` (machine paths, `sftp_key`) |
 | Cloud "nodes" | Adapt Hugo Media / Adapt Feature Image / Adapt Reel Media + Blog Post Publish / Reel Publish / Syndicator Error |
 
@@ -174,11 +172,9 @@ bodies; n8n derives chroot-absolute SFTP paths from fixed layout conventions.
 
 Translation, captioning, **media adaptation** (headers, site videos, reels,
 covers, crop-focus) and the Hugo front-matter/render live in n8n; the site
-commit is manual. Deleted local modules include the old
-`media_adapt` Pillow/ffmpeg path. `hugo.py` keeps only the media-rewriting
-helpers for the structured blocks payload. Crop geometry for the n8n Code
-nodes is documented in `crop_math.py` (Python mirror) and inlined in the
-Adapt workflow backups under `docs/*.json`.
+commit is manual. Media-rewriting helpers for the structured blocks payload
+live in `trigger.py`. Crop geometry for Adapt workflows is inlined in the
+n8n Code nodes (see `docs/*.json`).
 
 ### 5.3 Prompts & models
 

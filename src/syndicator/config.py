@@ -1,69 +1,57 @@
-"""Configuration loading.
-
-Two layers:
-- syndicator.yaml      shared, committed, identical on both machines
-- config.local.yaml    machine-specific paths, gitignored
-
-The repo root is located by walking up from this file, so the CLI works from
-any working directory.
-
-v2: translation, captions, media adaptation and the Hugo render live in n8n;
-the final site commit is manual. Local config keeps the SFTP staging target and
-the webhook URLs. Social/Hugo media geometry is hardcoded in the n8n Adapt
-workflows.
-"""
+"""Load shared + local YAML config into plain dataclasses."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
-class SiteConfig(BaseModel):
-    title: str = "Sailing Nomads"
+@dataclass
+class SiteConfig:
     base_url: str
+    title: str = "Sailing Nomads"
     default_language: str = "en"
 
 
-class SftpConfig(BaseModel):
+@dataclass
+class SftpConfig:
     host: str
     port: int = 22
     user: str = "sftp"
     base_dir: str = "/syndicator"
 
 
-class WebhooksConfig(BaseModel):
+@dataclass
+class WebhooksConfig:
     publish_url: str = ""
     reel_url: str = ""
 
 
-class SharedConfig(BaseModel):
+@dataclass
+class SharedConfig:
     site: SiteConfig
     sftp: SftpConfig
-    webhooks: WebhooksConfig = WebhooksConfig()
+    webhooks: WebhooksConfig = field(default_factory=WebhooksConfig)
 
 
-class LocalConfig(BaseModel):
-    # Logseq graph, synced between machines via Syncthing.
+@dataclass
+class LocalConfig:
     saillog_dir: Path
-    # Private key for the chrooted SFTP staging user.
     sftp_key: Path
-    # Old converter repo: source for the journeymap/animatemap Go tools.
     converter_repo_dir: Path | None = None
     journeymap_bin: str = ""
     animatemap_bin: str = ""
 
 
-class Config(BaseModel):
+@dataclass
+class Config:
     shared: SharedConfig
     local: LocalConfig
     repo_root: Path = REPO_ROOT
-
-    # --- derived paths -------------------------------------------------
 
     @property
     def journals_dir(self) -> Path:
@@ -72,6 +60,51 @@ class Config(BaseModel):
     @property
     def pages_dir(self) -> Path:
         return self.local.saillog_dir / "pages"
+
+
+def _site(raw: dict) -> SiteConfig:
+    return SiteConfig(
+        base_url=raw["base_url"],
+        title=raw.get("title", "Sailing Nomads"),
+        default_language=raw.get("default_language", "en"),
+    )
+
+
+def _sftp(raw: dict) -> SftpConfig:
+    return SftpConfig(
+        host=raw["host"],
+        port=int(raw.get("port", 22)),
+        user=raw.get("user", "sftp"),
+        base_dir=raw.get("base_dir", "/syndicator"),
+    )
+
+
+def _webhooks(raw: dict | None) -> WebhooksConfig:
+    raw = raw or {}
+    return WebhooksConfig(
+        publish_url=raw.get("publish_url", "") or "",
+        reel_url=raw.get("reel_url", "") or "",
+    )
+
+
+def shared_from_dict(data: dict) -> SharedConfig:
+    return SharedConfig(
+        site=_site(data["site"]),
+        sftp=_sftp(data["sftp"]),
+        webhooks=_webhooks(data.get("webhooks")),
+    )
+
+
+def local_from_dict(data: dict) -> LocalConfig:
+    key = data["sftp_key"]
+    conv = data.get("converter_repo_dir")
+    return LocalConfig(
+        saillog_dir=Path(data["saillog_dir"]),
+        sftp_key=Path(key).expanduser() if isinstance(key, str) else Path(key),
+        converter_repo_dir=Path(conv) if conv else None,
+        journeymap_bin=data.get("journeymap_bin", "") or "",
+        animatemap_bin=data.get("animatemap_bin", "") or "",
+    )
 
 
 def load_config(repo_root: Path | None = None) -> Config:
@@ -86,9 +119,6 @@ def load_config(repo_root: Path | None = None) -> Config:
             f"missing {local_path} — copy config.local.yaml.example and adjust paths"
         )
 
-    shared = SharedConfig.model_validate(yaml.safe_load(shared_path.read_text()))
-    local_raw = yaml.safe_load(local_path.read_text()) or {}
-    if isinstance(local_raw.get("sftp_key"), str):
-        local_raw["sftp_key"] = str(Path(local_raw["sftp_key"]).expanduser())
-    local = LocalConfig.model_validate(local_raw)
+    shared = shared_from_dict(yaml.safe_load(shared_path.read_text()) or {})
+    local = local_from_dict(yaml.safe_load(local_path.read_text()) or {})
     return Config(shared=shared, local=local, repo_root=root)
