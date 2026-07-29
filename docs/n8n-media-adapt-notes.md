@@ -41,8 +41,9 @@ Layout conventions (hardcoded in n8n Adapt / Hugo emit):
 
 Reel Publish calls **Adapt Reel Media** with `{ slug, index, source_filename }`,
 merges `video_4x5_sftp` + `video_4x5_local`, then **Extract Cover** once from
-the local 4:5 video → Caption FB/IG/X (same cover binary) → each platform
-downloads that same video from SFTP → Postiz upload/draft. Covers are never
+the local 4:5 video → Caption FB/IG/X (same cover binary) → FB/IG download
+that video from SFTP; X analyzes local duration and trims to 120s when over
+X’s reel limit (else SFTP download) → Postiz upload/draft. Covers are never
 written to SFTP.
 
 ### Adapt Reel Media I/O
@@ -127,7 +128,9 @@ Reel Publish
   Webhook /reel (onReceived) → Parse
     → Execute Adapt Reel Media → Merge Adapt Into Payload
       → Extract Cover (from video_4x5_local) → Caption FB | IG | X
-        → Download Reel (same video_4x5_sftp) → Postiz upload → Draft
+        → FB/IG: Download Reel (video_4x5_sftp) → Postiz upload → Draft
+        → X: Analyze duration → if >120s Trim to 120s else Download
+             → Postiz upload → Draft
 
 Blog Post Publish
   Webhook /publish (onReceived)
