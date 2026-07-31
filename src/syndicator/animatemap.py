@@ -35,8 +35,8 @@ FPS = 24
 MIN_HOLD_FRAMES = 0
 MAX_HOLD_FRAMES = 4
 INTRO_HOLD = 9
-ZOOM_IN_FRAMES = 18
-ZOOM_OUT_FRAMES = 18
+ZOOM_IN_FRAMES = 54
+ZOOM_OUT_FRAMES = 54
 OUTRO_HOLD = 24
 TRAVEL_FRAMES_MIN = 18
 TRAVEL_FRAMES_MAX = 48
@@ -50,16 +50,24 @@ PATH_RADIUS_R = 1.003
 CAM_DIST_WIDE = 3.6
 CAM_DIST_CLOSE_MIN = 1.10
 CAM_DIST_CLOSE_MAX = 1.28
+# Overview zoom: frame the journey mosaic tightly (not a full-globe pullback).
+OVERVIEW_FRAME_MARGIN = 1.08
+OVERVIEW_MIN_HALF_DEG = 1.8
+CAMERA_VFOV_DEG = 30.0
 LOOK_AHEAD = 0.0  # camera tracks the traveler exactly (look-ahead caused focus jumps)
 PITCH_OFFSET_DEG = 2.5
-MAX_TILES = 64
+MAX_TILES = 96
 TILE_ZOOM_MIN = 4
 TILE_ZOOM_MAX = 13
-# Show the journey mosaic only while closer than this (base globe otherwise).
-DETAIL_DIST_MAX = 1.85
+# Journey mosaic stays up through the route-overview outro.
+DETAIL_DIST_MAX = 3.0
 # Padding around the journey bbox when building the fixed detail mosaic.
-JOURNEY_PAD_DEG = 0.75
-JOURNEY_PAD_FRAC = 0.4
+JOURNEY_PAD_DEG = 0.6
+JOURNEY_PAD_FRAC = 0.25
+# Logo markers track the on-screen path width (not days-based size).
+MARKER_PATH_SCALE = 1.35
+MARKER_SIZE_MIN = 6
+MARKER_SIZE_MAX = 18
 # Lower CRF = sharper text in the H.264 encode.
 FFMPEG_CRF = 17
 
@@ -82,7 +90,7 @@ def load_earth_texture() -> Image.Image:
 
 
 def marker_size(days: int) -> int:
-    """Linearly interpolate between 30px (1 day) and 100px (≥30 days)."""
+    """Kept for compatibility; route markers use ``route_marker_size`` instead."""
     return _linear_interp(days, 30, 100)
 
 
@@ -96,16 +104,82 @@ def travel_frames_for_distance(angular_deg: float) -> int:
     return int(round(TRAVEL_FRAMES_MIN + t * (TRAVEL_FRAMES_MAX - TRAVEL_FRAMES_MIN)))
 
 
-def close_camera_distance(positions: list[Position]) -> float:
-    """Closer for short regional spans, slightly farther for long journeys."""
+def journey_span_deg(positions: list[Position]) -> float:
+    """Max angular separation between any two stops."""
     if len(positions) < 2:
-        return CAM_DIST_CLOSE_MIN
+        return 0.0
     span = 0.0
     for i, a in enumerate(positions):
         for b in positions[i + 1 :]:
             span = max(span, angular_distance_deg(a.lat, a.lng, b.lat, b.lng))
+    return span
+
+
+def close_camera_distance(positions: list[Position]) -> float:
+    """Closer for short regional spans, slightly farther for long journeys."""
+    if len(positions) < 2:
+        return CAM_DIST_CLOSE_MIN
+    span = journey_span_deg(positions)
     t = min(1.0, max(0.0, (span - 5.0) / 35.0))
     return CAM_DIST_CLOSE_MIN + t * (CAM_DIST_CLOSE_MAX - CAM_DIST_CLOSE_MIN)
+
+
+def journey_bbox_deg(positions: list[Position]) -> tuple[float, float, float, float]:
+    """Return (lat_min, lat_max, lng_min, lng_max) including mosaic padding."""
+    if not positions:
+        return 0.0, 0.0, 0.0, 0.0
+    lats = [p.lat for p in positions]
+    lngs = [p.lng for p in positions]
+    lat_min, lat_max = min(lats), max(lats)
+    lng_min, lng_max = min(lngs), max(lngs)
+    pad_lat = max(JOURNEY_PAD_DEG, (lat_max - lat_min) * JOURNEY_PAD_FRAC)
+    pad_lng = max(JOURNEY_PAD_DEG, (lng_max - lng_min) * JOURNEY_PAD_FRAC)
+    if lat_max - lat_min < 0.2:
+        pad_lat = max(pad_lat, 0.5)
+    if lng_max - lng_min < 0.2:
+        pad_lng = max(pad_lng, 0.5)
+    return (
+        max(-85.0, lat_min - pad_lat),
+        min(85.0, lat_max + pad_lat),
+        lng_min - pad_lng,
+        lng_max + pad_lng,
+    )
+
+
+def overview_camera_distance(positions: list[Position]) -> float:
+    """Distance that tightly frames the journey mosaic (fills the viewport)."""
+    close = close_camera_distance(positions)
+    if not positions:
+        return close
+    lat_min, lat_max, lng_min, lng_max = journey_bbox_deg(positions)
+    half_lat = max(OVERVIEW_MIN_HALF_DEG, (lat_max - lat_min) * 0.5)
+    half_lng = max(OVERVIEW_MIN_HALF_DEG, (lng_max - lng_min) * 0.5)
+    aspect = IMG_WIDTH / IMG_HEIGHT
+    half_vfov = math.radians(CAMERA_VFOV_DEG / 2.0)
+    half_hfov = math.atan(math.tan(half_vfov) * aspect)
+    # Camera altitude so the mosaic just fills vertical and horizontal FOV.
+    alt_lat = math.tan(math.radians(half_lat)) / math.tan(half_vfov)
+    alt_lng = math.tan(math.radians(half_lng)) / math.tan(half_hfov)
+    altitude = max(alt_lat, alt_lng) * OVERVIEW_FRAME_MARGIN
+    dist = EARTH_RADIUS + altitude
+    # Always a bit farther than the tracking shot, never a full-globe view.
+    dist = max(close * 1.04, dist)
+    dist = min(dist, CAM_DIST_WIDE * 0.55)
+    return dist
+
+
+def path_width_px(distance: float, img_h: int = IMG_HEIGHT) -> float:
+    """Approximate on-screen width of the path tube in output pixels."""
+    cam_to_surface = max(0.05, distance - EARTH_RADIUS)
+    return (2.0 * PATH_RADIUS / cam_to_surface) * (img_h / 2.0) / math.tan(
+        math.radians(CAMERA_VFOV_DEG / 2.0)
+    )
+
+
+def route_marker_size(distance: float, *, render_scale: int = 1) -> int:
+    """Logo size matched to the visible path line thickness."""
+    px = path_width_px(distance) * MARKER_PATH_SCALE * render_scale
+    return max(MARKER_SIZE_MIN * render_scale, min(MARKER_SIZE_MAX * render_scale, int(round(px))))
 
 
 def _ease_in_out(t: float) -> float:
@@ -240,7 +314,7 @@ def tile_bounds(z: int, x: int, y: int) -> tuple[float, float, float, float]:
     return lat(y), lng(x), lat(y + 1), lng(x + 1)
 
 
-def view_half_angle_deg(distance: float, vfov_deg: float = 30.0) -> float:
+def view_half_angle_deg(distance: float, vfov_deg: float = CAMERA_VFOV_DEG) -> float:
     """Approximate angular half-width of the camera footprint on the sphere."""
     altitude = max(0.001, distance - EARTH_RADIUS)
     half = math.degrees(math.atan(math.tan(math.radians(vfov_deg / 2.0)) * altitude))
@@ -301,21 +375,7 @@ def tiles_for_journey(
     """Fixed tile set covering the whole journey — stable for the entire close-up."""
     if not positions:
         return []
-    lats = [p.lat for p in positions]
-    lngs = [p.lng for p in positions]
-    lat_min, lat_max = min(lats), max(lats)
-    lng_min, lng_max = min(lngs), max(lngs)
-    pad_lat = max(JOURNEY_PAD_DEG, (lat_max - lat_min) * JOURNEY_PAD_FRAC)
-    pad_lng = max(JOURNEY_PAD_DEG, (lng_max - lng_min) * JOURNEY_PAD_FRAC)
-    # Ensure a usable footprint even for a single harbour.
-    if lat_max - lat_min < 0.2:
-        pad_lat = max(pad_lat, 0.5)
-    if lng_max - lng_min < 0.2:
-        pad_lng = max(pad_lng, 0.5)
-    lat_min = max(-85.0, lat_min - pad_lat)
-    lat_max = min(85.0, lat_max + pad_lat)
-    lng_min -= pad_lng
-    lng_max += pad_lng
+    lat_min, lat_max, lng_min, lng_max = journey_bbox_deg(positions)
 
     span = max(lat_max - lat_min, lng_max - lng_min, 0.5)
     # Choose z so ~8 tiles span the larger side.
@@ -593,9 +653,9 @@ class GlobeRenderer:
             return
         if visible == self._detail_visible:
             return
+        # Never mix globe + mosaic: exactly one of them is shown.
         self._detail_actor.SetVisibility(visible)
-        # Keep the base globe under the mosaic (mosaic is slightly larger radius).
-        self._sphere_actor.SetVisibility(True)
+        self._sphere_actor.SetVisibility(not visible)
         self._detail_visible = visible
 
     def _set_path(self, points: list[tuple[float, float]]) -> None:
@@ -634,7 +694,7 @@ class GlobeRenderer:
             tuple(focal.tolist()),
             tuple(view_up.tolist()),
         ]
-        self._plotter.camera.view_angle = 30.0
+        self._plotter.camera.view_angle = CAMERA_VFOV_DEG
 
         self._set_detail_visible(use_detail and distance <= DETAIL_DIST_MAX)
         self._set_path(path_points)
@@ -691,6 +751,7 @@ def build_frame_states(positions: list[Position]) -> list[_FrameState]:
         return []
 
     close_dist = close_camera_distance(positions)
+    overview_dist = overview_camera_distance(positions)
     center_lat, center_lng = journey_center(positions)
     states: list[_FrameState] = []
     completed_path: list[tuple[float, float]] = [(positions[0].lat, positions[0].lng)]
@@ -774,10 +835,10 @@ def build_frame_states(positions: list[Position]) -> list[_FrameState]:
     last_xyz = ll_to_xyz(last.lat, last.lng)
     center_xyz = ll_to_xyz(center_lat, center_lng)
 
-    # Zoom out to show the full route.
+    # Pull back only far enough to frame the full route on the tile mosaic.
     for f in range(ZOOM_OUT_FRAMES):
         t = _ease_in_out(1.0 if ZOOM_OUT_FRAMES <= 1 else (f + 1) / ZOOM_OUT_FRAMES)
-        dist = close_dist + t * (CAM_DIST_WIDE - close_dist)
+        dist = close_dist + t * (overview_dist - close_dist)
         focus_lat, focus_lng = xyz_to_ll(slerp(last_xyz, center_xyz, t))
         states.append(
             _FrameState(
@@ -787,9 +848,8 @@ def build_frame_states(positions: list[Position]) -> list[_FrameState]:
                 path_points=list(completed_path),
                 marker_indices=list(range(len(positions))),
                 traveler=None,
-                pitch=1.0 - t,
-                # Drop detail immediately when zooming out to avoid mosaic/z pops.
-                use_detail=False,
+                pitch=1.0 - 0.25 * t,
+                use_detail=True,
             )
         )
 
@@ -798,12 +858,12 @@ def build_frame_states(positions: list[Position]) -> list[_FrameState]:
             _FrameState(
                 focus_lat=center_lat,
                 focus_lng=center_lng,
-                distance=CAM_DIST_WIDE,
+                distance=overview_dist,
                 path_points=list(completed_path),
                 marker_indices=list(range(len(positions))),
                 traveler=None,
-                pitch=0.0,
-                use_detail=False,
+                pitch=0.75,
+                use_detail=True,
             )
         )
     return states
@@ -892,23 +952,17 @@ def generate_animation(
                     pitch=st.pitch,
                     use_detail=st.use_detail,
                 )
-                # Marker size shrinks a bit when very close; scale with render resolution.
-                ms = 0.55 + 0.45 * min(
-                    1.0,
-                    (st.distance - CAM_DIST_CLOSE_MIN)
-                    / max(1e-6, CAM_DIST_WIDE - CAM_DIST_CLOSE_MIN),
-                )
+                # Marker size tracks the on-screen path thickness.
+                size = route_marker_size(st.distance, render_scale=RENDER_SCALE)
                 for mi in st.marker_indices:
                     p = journey.positions[mi]
                     px, py, vis = renderer.project_ll(p.lat, p.lng)
                     if vis:
-                        size = max(16, int(round(marker_size(p.days) * ms * RENDER_SCALE)))
                         draw_marker(frame, cached_scale(size), px, py)
                 if st.traveler is not None:
                     tlat, tlng = st.traveler
                     px, py, vis = renderer.project_ll(tlat, tlng)
                     if vis:
-                        size = max(16, int(round(28 * ms * RENDER_SCALE)))
                         draw_marker(frame, cached_scale(size), px, py)
                 # Supersample downsample → sharper OSM labels than native 900×500.
                 if RENDER_SCALE != 1:

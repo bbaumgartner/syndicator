@@ -18,6 +18,7 @@ from syndicator.animatemap import (
     IMG_HEIGHT,
     IMG_WIDTH,
     INTRO_HOLD,
+    MARKER_SIZE_MAX,
     MAX_HOLD_FRAMES,
     MIN_HOLD_FRAMES,
     OUTRO_HOLD,
@@ -37,6 +38,8 @@ from syndicator.animatemap import (
     load_logo,
     marker_size,
     osm_zoom_for_distance,
+    overview_camera_distance,
+    route_marker_size,
     scale_image,
     slerp,
     solid_tile_fetcher,
@@ -128,7 +131,7 @@ def test_visible_tiles_empty_when_far():
 def test_visible_tiles_near_are_capped():
     tiles = visible_tiles(44.5, 15.0, CAM_DIST_CLOSE_MIN)
     assert tiles
-    assert len(tiles) <= 64
+    assert len(tiles) <= 96
     zs = {t[0] for t in tiles}
     assert len(zs) == 1
     assert TILE_ZOOM_MIN <= next(iter(zs)) <= 13
@@ -143,7 +146,7 @@ def test_tiles_for_journey_stable_and_covers_stops():
     b = tiles_for_journey(positions)
     assert a == b
     assert a
-    assert len(a) <= 64
+    assert len(a) <= 96
     # Single zoom level for the whole journey mosaic.
     assert len({t[0] for t in a}) == 1
 
@@ -211,7 +214,8 @@ def test_build_frame_states_single():
     assert states[0].marker_indices == [0]
     assert states[0].traveler is None
     assert states[0].distance == CAM_DIST_WIDE
-    assert states[-1].distance == CAM_DIST_WIDE
+    assert states[-1].distance == pytest.approx(overview_camera_distance(positions))
+    assert states[-1].distance < CAM_DIST_WIDE
 
 
 def test_build_frame_states_zooms_from_wide_to_close():
@@ -226,7 +230,7 @@ def test_build_frame_states_zooms_from_wide_to_close():
     # Mid-journey (after zoom-in, before zoom-out) stays close.
     mid = states[INTRO_HOLD + ZOOM_IN_FRAMES]
     assert mid.distance == pytest.approx(close_camera_distance(positions))
-    assert states[-1].distance == CAM_DIST_WIDE
+    assert states[-1].distance == pytest.approx(overview_camera_distance(positions))
 
 
 def test_build_frame_states_outro_shows_full_route():
@@ -235,14 +239,45 @@ def test_build_frame_states_outro_shows_full_route():
         Position(date="b", lat=43.5, lng=16.4, days=1),
     ]
     states = build_frame_states(positions)
-    assert states[-1].distance == CAM_DIST_WIDE
+    overview = overview_camera_distance(positions)
+    assert states[-1].distance == pytest.approx(overview)
+    assert overview < CAM_DIST_WIDE * 0.55
+    assert overview >= close_camera_distance(positions)
     assert states[-1].marker_indices == [0, 1]
+    assert states[-1].use_detail is True
     assert len(states[-1].path_points) >= 2
-    # Zoom-out segment increases distance toward wide.
+    # Zoom-out segment increases distance toward overview (not full globe).
     outro_start = len(states) - OUTRO_HOLD - ZOOM_OUT_FRAMES
     dists = [s.distance for s in states[outro_start : outro_start + ZOOM_OUT_FRAMES]]
-    assert dists[0] < dists[-1]
-    assert dists[-1] == pytest.approx(CAM_DIST_WIDE)
+    assert dists[0] <= dists[-1]
+    assert dists[-1] == pytest.approx(overview)
+    assert all(s.use_detail for s in states[outro_start:])
+
+
+def test_overview_camera_distance_fits_route_not_globe():
+    short = [
+        Position(date="a", lat=45.5, lng=13.6, days=1),
+        Position(date="b", lat=43.5, lng=16.4, days=1),
+    ]
+    long = [
+        Position(date="a", lat=40.0, lng=-74.0, days=1),
+        Position(date="b", lat=48.0, lng=2.0, days=1),
+    ]
+    assert overview_camera_distance(short) < overview_camera_distance(long)
+    assert overview_camera_distance(short) < CAM_DIST_WIDE * 0.55
+    assert overview_camera_distance(long) <= CAM_DIST_WIDE * 0.55
+    # Overview stays close to the tracking distance for short coastal routes.
+    assert overview_camera_distance(short) < close_camera_distance(short) * 1.5
+
+
+def test_route_marker_size_tracks_path_and_stays_small():
+    close = route_marker_size(CAM_DIST_CLOSE_MIN)
+    far = route_marker_size(2.0)
+    assert close <= MARKER_SIZE_MAX
+    assert far <= close
+    assert route_marker_size(CAM_DIST_CLOSE_MIN, render_scale=2) >= close
+    assert route_marker_size(CAM_DIST_CLOSE_MIN, render_scale=2) <= MARKER_SIZE_MAX * 2
+
 
 
 def test_journey_center_midpoint():
