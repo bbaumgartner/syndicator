@@ -1,7 +1,7 @@
-"""Render an animated journey map MP4 from clustered positions.
+"""Render an animated 3D journey globe MP4 from clustered positions.
 
-Ported from the Go ``animatemap`` tool. Fetches OSM tiles for a base map,
-animates logo markers flying in and bouncing, then assembles frames with ffmpeg.
+PyVista offscreen sphere with a low-res base texture for wide shots and OSM
+map tiles draped on the surface for sharp close-ups. Frames assembled with ffmpeg.
 """
 
 from __future__ import annotations
@@ -11,12 +11,15 @@ import math
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from importlib.resources import files
 from io import BytesIO
 from pathlib import Path
 
 import httpx
+import numpy as np
+import pyvista as pv
 from PIL import Image
 
 from .journeymap import JourneyMap, Position
@@ -25,25 +28,57 @@ log = logging.getLogger(__name__)
 
 IMG_WIDTH = 900
 IMG_HEIGHT = 500
+# Render at 2× then Lanczos-downsample for sharper map text.
+RENDER_SCALE = 2
 FPS = 24
-FLY_IN_FRAMES = 20
-FLY_IN_OVERLAP = 15
-FLY_IN_SCALE = 3.0
-BOUNCE_FRAMES = 12
-BOUNCE_AMP = 0.25
-MIN_HOLD_FRAMES = 6
-MAX_HOLD_FRAMES = 48
-FINAL_HOLD = 60
+# Timing is intentionally snappy (~2× prior durations); holds are brief so legs blend.
+MIN_HOLD_FRAMES = 0
+MAX_HOLD_FRAMES = 4
+INTRO_HOLD = 9
+ZOOM_IN_FRAMES = 18
+ZOOM_OUT_FRAMES = 18
+OUTRO_HOLD = 24
+TRAVEL_FRAMES_MIN = 18
+TRAVEL_FRAMES_MAX = 48
+PATH_SAMPLES = 64
+PATH_COLOR = (0, 130, 210)
+PATH_RADIUS = 0.0007
+EARTH_RADIUS = 1.0
+TILE_RADIUS = 1.0015
+PATH_RADIUS_R = 1.003
+# Camera distance from Earth centre (larger = farther / zoomed out).
+CAM_DIST_WIDE = 3.6
+CAM_DIST_CLOSE_MIN = 1.10
+CAM_DIST_CLOSE_MAX = 1.28
+LOOK_AHEAD = 0.0  # camera tracks the traveler exactly (look-ahead caused focus jumps)
+PITCH_OFFSET_DEG = 2.5
+MAX_TILES = 64
+TILE_ZOOM_MIN = 4
+TILE_ZOOM_MAX = 13
+# Show the journey mosaic only while closer than this (base globe otherwise).
+DETAIL_DIST_MAX = 1.85
+# Padding around the journey bbox when building the fixed detail mosaic.
+JOURNEY_PAD_DEG = 0.75
+JOURNEY_PAD_FRAC = 0.4
+# Lower CRF = sharper text in the H.264 encode.
+FFMPEG_CRF = 17
 
-_TILE_SIZE = 256
 _OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 _USER_AGENT = "syndicator/0.2 (https://github.com/bbaumgartner/syndicator; journey map)"
+
+TileFetcher = Callable[[int, int, int], Image.Image]
 
 
 def load_logo() -> Image.Image:
     path = files("syndicator") / "assets" / "logo.png"
     with path.open("rb") as f:
         return Image.open(f).convert("RGBA")
+
+
+def load_earth_texture() -> Image.Image:
+    path = files("syndicator") / "assets" / "earth.jpg"
+    with path.open("rb") as f:
+        return Image.open(f).convert("RGB")
 
 
 def marker_size(days: int) -> int:
@@ -55,13 +90,27 @@ def hold_frames_for_days(days: int) -> int:
     return _linear_interp(days, MIN_HOLD_FRAMES, MAX_HOLD_FRAMES)
 
 
-def bounce_multiplier(f: int, total: int, n_bounces: int, amplitude: float) -> float:
-    """Size multiplier for bounce frame ``f``; 1.0 at both endpoints."""
-    if total <= 0:
-        return 1.0
-    t = f / total
-    damped_sine = math.sin(n_bounces * math.pi * t) * (1 - t)
-    return 1 - amplitude * damped_sine
+def travel_frames_for_distance(angular_deg: float) -> int:
+    """More frames for longer great-circle legs."""
+    t = min(1.0, max(0.0, angular_deg / 40.0))
+    return int(round(TRAVEL_FRAMES_MIN + t * (TRAVEL_FRAMES_MAX - TRAVEL_FRAMES_MIN)))
+
+
+def close_camera_distance(positions: list[Position]) -> float:
+    """Closer for short regional spans, slightly farther for long journeys."""
+    if len(positions) < 2:
+        return CAM_DIST_CLOSE_MIN
+    span = 0.0
+    for i, a in enumerate(positions):
+        for b in positions[i + 1 :]:
+            span = max(span, angular_distance_deg(a.lat, a.lng, b.lat, b.lng))
+    t = min(1.0, max(0.0, (span - 5.0) / 35.0))
+    return CAM_DIST_CLOSE_MIN + t * (CAM_DIST_CLOSE_MAX - CAM_DIST_CLOSE_MIN)
+
+
+def _ease_in_out(t: float) -> float:
+    t = min(1.0, max(0.0, t))
+    return t * t * (3.0 - 2.0 * t)
 
 
 def _linear_interp(days: int, min_val: int, max_val: int) -> int:
@@ -74,111 +123,701 @@ def _linear_interp(days: int, min_val: int, max_val: int) -> int:
     return int(round(min_val + t * (max_val - min_val)))
 
 
-def mercator_y(lat: float) -> float:
-    """Web Mercator y in [0, 1]; 0 = north pole, 1 = south pole."""
-    lat_rad = lat * math.pi / 180
-    return (1 - math.log(math.tan(lat_rad) + 1 / math.cos(lat_rad)) / math.pi) / 2
+# ---- sphere math -----------------------------------------------------------
 
 
-def lat_lng_to_pixel(
-    lat: float,
-    lng: float,
-    zoom: int,
-    center_lat: float,
-    center_lng: float,
-    img_w: int,
-    img_h: int,
-) -> tuple[float, float]:
-    world_size = _TILE_SIZE * (2**zoom)
-    x = (lng + 180) / 360 * world_size - (center_lng + 180) / 360 * world_size + img_w / 2
-    y = mercator_y(lat) * world_size - mercator_y(center_lat) * world_size + img_h / 2
+def ll_to_xyz(lat: float, lng: float, radius: float = EARTH_RADIUS) -> np.ndarray:
+    """Lat/lng (degrees) → vector of length ``radius``."""
+    lat_r = math.radians(lat)
+    lng_r = math.radians(lng)
+    cl = math.cos(lat_r)
+    return np.array(
+        [cl * math.cos(lng_r), cl * math.sin(lng_r), math.sin(lat_r)],
+        dtype=np.float64,
+    ) * radius
+
+
+def xyz_to_ll(v: np.ndarray) -> tuple[float, float]:
+    """Vector → lat/lng (degrees)."""
+    n = np.linalg.norm(v)
+    if n < 1e-12:
+        return 0.0, 0.0
+    x, y, z = float(v[0] / n), float(v[1] / n), float(v[2] / n)
+    lat = math.degrees(math.asin(max(-1.0, min(1.0, z))))
+    lng = math.degrees(math.atan2(y, x))
+    return lat, lng
+
+
+def angular_distance_deg(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    a = ll_to_xyz(lat1, lng1)
+    b = ll_to_xyz(lat2, lng2)
+    dot = float(np.clip(np.dot(a, b), -1.0, 1.0))
+    return math.degrees(math.acos(dot))
+
+
+def slerp(a: np.ndarray, b: np.ndarray, t: float) -> np.ndarray:
+    """Spherical linear interpolation between vectors ``a`` and ``b``."""
+    a_n = a / np.linalg.norm(a)
+    b_n = b / np.linalg.norm(b)
+    dot = float(np.clip(np.dot(a_n, b_n), -1.0, 1.0))
+    omega = math.acos(dot)
+    if omega < 1e-9:
+        return a_n * np.linalg.norm(a)
+    so = math.sin(omega)
+    out = (math.sin((1 - t) * omega) * a_n + math.sin(t * omega) * b_n) / so
+    return out * ((1 - t) * np.linalg.norm(a) + t * np.linalg.norm(b))
+
+
+def great_circle_points(
+    lat1: float,
+    lng1: float,
+    lat2: float,
+    lng2: float,
+    n: int,
+) -> list[tuple[float, float]]:
+    """Sample ``n`` points (inclusive) along the short great-circle arc."""
+    if n < 2:
+        return [(lat1, lng1)]
+    a = ll_to_xyz(lat1, lng1)
+    b = ll_to_xyz(lat2, lng2)
+    return [xyz_to_ll(slerp(a, b, i / (n - 1))) for i in range(n)]
+
+
+def _camera_basis(lat: float, lng: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    forward = ll_to_xyz(lat, lng)
+    forward = forward / np.linalg.norm(forward)
+    up = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+    east = np.cross(up, forward)
+    en = np.linalg.norm(east)
+    if en < 1e-8:
+        up = np.array([0.0, 1.0, 0.0], dtype=np.float64)
+        east = np.cross(up, forward)
+        en = np.linalg.norm(east)
+    east /= en
+    north = np.cross(forward, east)
+    north /= np.linalg.norm(north)
+    return east, north, forward
+
+
+def apply_camera_pitch(lat: float, lng: float, pitch_deg: float = PITCH_OFFSET_DEG) -> tuple[float, float]:
+    """Shift look-at north of ``(lat, lng)`` for a slight orbital tilt."""
+    if abs(pitch_deg) < 1e-9:
+        return lat, lng
+    _east, north, forward = _camera_basis(lat, lng)
+    angle = math.radians(pitch_deg)
+    tilted = math.cos(angle) * forward + math.sin(angle) * north
+    tilted /= np.linalg.norm(tilted)
+    return xyz_to_ll(tilted)
+
+
+# ---- OSM tiles -------------------------------------------------------------
+
+
+def tile_cache_dir() -> Path:
+    return Path.home() / ".cache" / "syndicator" / "tiles"
+
+
+def latlng_to_tile(lat: float, lng: float, zoom: int) -> tuple[int, int]:
+    lat = max(-85.05112878, min(85.05112878, lat))
+    n = 2**zoom
+    x = int((lng + 180.0) / 360.0 * n) % n
+    lat_r = math.radians(lat)
+    y = int((1.0 - math.asinh(math.tan(lat_r)) / math.pi) / 2.0 * n)
+    y = max(0, min(n - 1, y))
     return x, y
 
 
-def choose_bounds_and_zoom(
+def tile_bounds(z: int, x: int, y: int) -> tuple[float, float, float, float]:
+    """Return (lat_north, lng_west, lat_south, lng_east) for a tile."""
+    n = 2**z
+
+    def lng(tx: int) -> float:
+        return tx / n * 360.0 - 180.0
+
+    def lat(ty: int) -> float:
+        return math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * ty / n))))
+
+    return lat(y), lng(x), lat(y + 1), lng(x + 1)
+
+
+def view_half_angle_deg(distance: float, vfov_deg: float = 30.0) -> float:
+    """Approximate angular half-width of the camera footprint on the sphere."""
+    altitude = max(0.001, distance - EARTH_RADIUS)
+    half = math.degrees(math.atan(math.tan(math.radians(vfov_deg / 2.0)) * altitude))
+    limb = math.degrees(math.asin(min(1.0, EARTH_RADIUS / max(distance, 1.001))))
+    return max(1.5, min(half * 1.2, limb))
+
+
+def osm_zoom_for_distance(distance: float) -> int:
+    """Map camera distance / footprint to an OSM zoom level."""
+    half = view_half_angle_deg(distance)
+    # Aim for roughly 8 tiles across the FOV.
+    across = max(4.0, math.sqrt(MAX_TILES))
+    tile_deg = max(1e-6, (2.0 * half) / across)
+    z = int(math.floor(math.log2(360.0 / tile_deg)))
+    return max(TILE_ZOOM_MIN, min(TILE_ZOOM_MAX, z))
+
+
+def visible_tiles(
+    focus_lat: float,
+    focus_lng: float,
+    distance: float,
+    *,
+    max_tiles: int = MAX_TILES,
+) -> list[tuple[int, int, int]]:
+    """List ``(z, x, y)`` OSM tiles covering a footprint around focus (legacy helper)."""
+    if distance >= DETAIL_DIST_MAX:
+        return []
+    half = view_half_angle_deg(distance) * 1.6
+    z = osm_zoom_for_distance(distance)
+    while z >= TILE_ZOOM_MIN:
+        lat_min = max(-85.0, focus_lat - half)
+        lat_max = min(85.0, focus_lat + half)
+        lng_pad = half / max(0.2, math.cos(math.radians(focus_lat)))
+        lng_min = focus_lng - lng_pad
+        lng_max = focus_lng + lng_pad
+        x0, y0 = latlng_to_tile(lat_max, lng_min, z)
+        x1, y1 = latlng_to_tile(lat_min, lng_max, z)
+        n = 2**z
+        if abs(x1 - x0) > n // 2:
+            xs = list(range(x0, n)) + list(range(0, x1 + 1))
+        else:
+            if x1 < x0:
+                x0, x1 = x1, x0
+            xs = list(range(x0, x1 + 1))
+        ys = list(range(min(y0, y1), max(y0, y1) + 1))
+        count = len(xs) * len(ys)
+        if count <= max_tiles or z == TILE_ZOOM_MIN:
+            return [(z, x % n, y) for y in ys for x in xs]
+        z -= 1
+    return []
+
+
+def tiles_for_journey(
     positions: list[Position],
+    *,
+    max_tiles: int = MAX_TILES,
+) -> list[tuple[int, int, int]]:
+    """Fixed tile set covering the whole journey — stable for the entire close-up."""
+    if not positions:
+        return []
+    lats = [p.lat for p in positions]
+    lngs = [p.lng for p in positions]
+    lat_min, lat_max = min(lats), max(lats)
+    lng_min, lng_max = min(lngs), max(lngs)
+    pad_lat = max(JOURNEY_PAD_DEG, (lat_max - lat_min) * JOURNEY_PAD_FRAC)
+    pad_lng = max(JOURNEY_PAD_DEG, (lng_max - lng_min) * JOURNEY_PAD_FRAC)
+    # Ensure a usable footprint even for a single harbour.
+    if lat_max - lat_min < 0.2:
+        pad_lat = max(pad_lat, 0.5)
+    if lng_max - lng_min < 0.2:
+        pad_lng = max(pad_lng, 0.5)
+    lat_min = max(-85.0, lat_min - pad_lat)
+    lat_max = min(85.0, lat_max + pad_lat)
+    lng_min -= pad_lng
+    lng_max += pad_lng
+
+    span = max(lat_max - lat_min, lng_max - lng_min, 0.5)
+    # Choose z so ~8 tiles span the larger side.
+    across = max(4.0, math.sqrt(max_tiles))
+    tile_deg = span / across
+    z = int(math.floor(math.log2(360.0 / max(tile_deg, 1e-6))))
+    z = max(TILE_ZOOM_MIN, min(TILE_ZOOM_MAX, z))
+
+    while z >= TILE_ZOOM_MIN:
+        x0, y0 = latlng_to_tile(lat_max, lng_min, z)
+        x1, y1 = latlng_to_tile(lat_min, lng_max, z)
+        n = 2**z
+        if abs(x1 - x0) > n // 2:
+            xs = list(range(x0, n)) + list(range(0, x1 + 1))
+        else:
+            if x1 < x0:
+                x0, x1 = x1, x0
+            xs = list(range(x0, x1 + 1))
+        ys = list(range(min(y0, y1), max(y0, y1) + 1))
+        count = len(xs) * len(ys)
+        if count <= max_tiles or z == TILE_ZOOM_MIN:
+            return [(z, x % n, y) for y in ys for x in xs]
+        z -= 1
+    return []
+
+
+def default_tile_fetcher(cache_dir: Path | None = None) -> TileFetcher:
+    """HTTP OSM tile fetcher with on-disk cache."""
+    root = cache_dir or tile_cache_dir()
+    client = httpx.Client(headers={"User-Agent": _USER_AGENT}, timeout=30.0)
+
+    def fetch(z: int, x: int, y: int) -> Image.Image:
+        path = root / str(z) / str(x) / f"{y}.png"
+        if path.exists():
+            with path.open("rb") as f:
+                return Image.open(f).convert("RGB")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        url = _OSM_TILE_URL.format(z=z, x=x, y=y)
+        resp = client.get(url)
+        resp.raise_for_status()
+        path.write_bytes(resp.content)
+        return Image.open(BytesIO(resp.content)).convert("RGB")
+
+    fetch.close = client.close  # type: ignore[attr-defined]
+    return fetch
+
+
+def solid_tile_fetcher(color: tuple[int, int, int] = (200, 210, 220)) -> TileFetcher:
+    """Offline stub that returns a solid-color 256×256 tile."""
+
+    def fetch(z: int, x: int, y: int) -> Image.Image:
+        return Image.new("RGB", (256, 256), color)
+
+    return fetch
+
+
+# ---- PyVista scene ---------------------------------------------------------
+
+
+def _equirect_sphere(texture_img: Image.Image, resolution: int = 90) -> tuple[pv.PolyData, pv.Texture]:
+    """Unit sphere with equirectangular UVs and the given texture."""
+    sphere = pv.Sphere(
+        radius=EARTH_RADIUS,
+        theta_resolution=resolution,
+        phi_resolution=resolution,
+    )
+    pts = sphere.points
+    lng = np.arctan2(pts[:, 1], pts[:, 0])
+    lat = np.arcsin(np.clip(pts[:, 2] / EARTH_RADIUS, -1.0, 1.0))
+    u = (lng + np.pi) / (2 * np.pi)
+    # OpenGL/VTK: V=1 samples the first image row (north in equirect sources).
+    v = 0.5 + lat / np.pi
+    sphere.active_texture_coordinates = np.column_stack([u, np.clip(v, 0.0, 1.0)])
+    arr = np.asarray(texture_img.convert("RGB"), dtype=np.uint8)
+    tex = pv.Texture(arr)
+    return sphere, tex
+
+
+def _mosaic_from_tiles(
+    tiles: list[tuple[int, int, int]],
+    fetcher: TileFetcher,
+) -> tuple[Image.Image, float, float, float, float] | None:
+    """Composite OSM tiles into one image; return (img, lat_n, lng_w, lat_s, lng_e)."""
+    if not tiles:
+        return None
+    z = tiles[0][0]
+    xs = sorted({t[1] for t in tiles})
+    ys = sorted({t[2] for t in tiles})
+    # Refuse pathological antimeridian wraps for the mosaic.
+    if max(xs) - min(xs) + 1 != len(xs):
+        return None
+    tile_w = tile_h = 256
+    mosaic = Image.new("RGB", (len(xs) * tile_w, len(ys) * tile_h))
+    x0, x1 = xs[0], xs[-1]
+    y0, y1 = ys[0], ys[-1]
+    for z_t, x, y in tiles:
+        if z_t != z:
+            continue
+        img = fetcher(z, x, y)
+        px = (x - x0) * tile_w
+        py = (y - y0) * tile_h
+        mosaic.paste(img.convert("RGB"), (px, py))
+    lat_n, lng_w, _, _ = tile_bounds(z, x0, y0)
+    _, _, lat_s, lng_e = tile_bounds(z, x1, y1)
+    return mosaic, lat_n, lng_w, lat_s, lng_e
+
+
+def _region_patch_mesh(
+    img: Image.Image,
+    lat_n: float,
+    lng_w: float,
+    lat_s: float,
+    lng_e: float,
+    subdivisions: int = 32,
+) -> tuple[pv.PolyData, pv.Texture]:
+    """Single textured patch on the sphere covering a lat/lng rectangle."""
+    if lng_e < lng_w:
+        lng_e += 360.0
+    nu = subdivisions + 1
+    nv = subdivisions + 1
+    lats = np.linspace(lat_n, lat_s, nv)
+    lngs = np.linspace(lng_w, lng_e, nu)
+    points = []
+    uvs = []
+    for iv, lat in enumerate(lats):
+        for iu, lng in enumerate(lngs):
+            wrapped = ((lng + 180) % 360) - 180
+            points.append(ll_to_xyz(lat, wrapped, TILE_RADIUS))
+            # Image row 0 is north; VTK V=1 samples first row.
+            uvs.append([iu / (nu - 1), 1.0 - iv / (nv - 1)])
+    points_a = np.asarray(points, dtype=np.float64)
+    uvs_a = np.asarray(uvs, dtype=np.float64)
+    faces = []
+    for iv in range(subdivisions):
+        for iu in range(subdivisions):
+            i0 = iv * nu + iu
+            i1 = i0 + 1
+            i2 = i0 + nu + 1
+            i3 = i0 + nu
+            faces.extend([3, i0, i1, i2])
+            faces.extend([3, i0, i2, i3])
+    mesh = pv.PolyData(points_a, faces=np.asarray(faces, dtype=np.int64))
+    mesh.active_texture_coordinates = uvs_a
+    mesh.compute_normals(cell_normals=False, point_normals=True, inplace=True)
+    tex = pv.Texture(np.asarray(img.convert("RGB"), dtype=np.uint8))
+    return mesh, tex
+
+
+def _path_polydata(points: list[tuple[float, float]]) -> pv.PolyData | None:
+    if len(points) < 2:
+        return None
+    xyz = np.array([ll_to_xyz(lat, lng, PATH_RADIUS_R) for lat, lng in points], dtype=np.float64)
+    return pv.lines_from_points(xyz)
+
+
+def _camera_pose(
+    focus_lat: float,
+    focus_lng: float,
+    distance: float,
+    *,
+    pitch: float = 0.0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return (position, focal_point, view_up) for PyVista.
+
+    ``pitch`` is 0..1, blending toward a mild northward look-at offset.
+    """
+    pitch = min(1.0, max(0.0, pitch))
+    if pitch > 1e-6:
+        max_pitch = min(PITCH_OFFSET_DEG, view_half_angle_deg(distance) * 0.35)
+        look_lat, look_lng = apply_camera_pitch(focus_lat, focus_lng, max_pitch * pitch)
+    else:
+        look_lat, look_lng = focus_lat, focus_lng
+    focal = ll_to_xyz(look_lat, look_lng, EARTH_RADIUS)
+    direction = focal / np.linalg.norm(focal)
+    position = direction * distance
+    _east, north, _fwd = _camera_basis(look_lat, look_lng)
+    view_up = north
+    return position, focal, view_up
+
+
+def world_to_pixel(
+    plotter: pv.Plotter,
+    xyz: np.ndarray,
     img_w: int,
     img_h: int,
-) -> tuple[float, float, int]:
-    """Arithmetic centre + largest zoom (≤15) where all points fit with padding."""
+) -> tuple[float, float, bool]:
+    """Project a world point to screenshot pixel coords; visible if on-screen and in front."""
+    ren = plotter.renderer
+    ren.SetWorldPoint(float(xyz[0]), float(xyz[1]), float(xyz[2]), 1.0)
+    ren.WorldToDisplay()
+    dx, dy, dz = ren.GetDisplayPoint()
+    rw, rh = ren.GetSize()
+    # Normalize in case display size differs from requested screenshot size.
+    if rw > 0 and rh > 0:
+        px = dx * img_w / rw
+        py = (rh - dy) * img_h / rh
+    else:
+        px, py = dx, img_h - dy
+    # dz in (0, 1) after projection; near 0 = closer to camera in some VTK setups,
+    # but WorldToDisplay returns display z where smaller is nearer. Require on-screen.
+    visible = 0.0 <= px <= img_w and 0.0 <= py <= img_h and 0.0 <= dz <= 1.0
+    return px, py, visible
+
+
+@dataclass
+class GlobeRenderer:
+    """Owns a reusable offscreen PyVista plotter for frame rendering."""
+
+    earth_texture: Image.Image
+    tile_fetcher: TileFetcher
+    img_w: int = IMG_WIDTH
+    img_h: int = IMG_HEIGHT
+
+    def __post_init__(self) -> None:
+        pv.OFF_SCREEN = True
+        self._plotter = pv.Plotter(
+            off_screen=True,
+            window_size=(self.img_w, self.img_h),
+        )
+        self._plotter.set_background("white")
+        self._sphere, self._base_tex = _equirect_sphere(self.earth_texture)
+        self._sphere_actor = self._plotter.add_mesh(
+            self._sphere,
+            texture=self._base_tex,
+            smooth_shading=True,
+            show_edges=False,
+        )
+        self._detail_actor = None
+        self._detail_ready = False
+        self._detail_visible = False
+        self._path_actor = None
+        self._last_path_len = -1
+        # Disable default lighting extremes for a flatter map look.
+        self._plotter.remove_all_lights()
+        light = pv.Light(position=(5, 5, 5), light_type="scene light")
+        light.intensity = 0.85
+        self._plotter.add_light(light)
+        fill = pv.Light(position=(-3, -2, 4), light_type="scene light")
+        fill.intensity = 0.35
+        self._plotter.add_light(fill)
+
+    def close(self) -> None:
+        self._plotter.close()
+        close = getattr(self.tile_fetcher, "close", None)
+        if callable(close):
+            close()
+
+    def prepare_journey_detail(self, positions: list[Position]) -> None:
+        """Build one fixed OSM mosaic for the journey (no per-frame rebuilds)."""
+        if self._detail_actor is not None:
+            self._plotter.remove_actor(self._detail_actor, render=False)
+            self._detail_actor = None
+        self._detail_ready = False
+        self._detail_visible = False
+        tiles = tiles_for_journey(positions)
+        if not tiles:
+            return
+        mosaic = _mosaic_from_tiles(tiles, self.tile_fetcher)
+        if mosaic is None:
+            return
+        img, lat_n, lng_w, lat_s, lng_e = mosaic
+        mesh, tex = _region_patch_mesh(img, lat_n, lng_w, lat_s, lng_e)
+        self._detail_actor = self._plotter.add_mesh(
+            mesh,
+            texture=tex,
+            smooth_shading=True,
+            show_edges=False,
+        )
+        self._detail_actor.SetVisibility(False)
+        self._detail_ready = True
+
+    def _set_detail_visible(self, visible: bool) -> None:
+        if not self._detail_ready or self._detail_actor is None:
+            self._sphere_actor.SetVisibility(True)
+            return
+        if visible == self._detail_visible:
+            return
+        self._detail_actor.SetVisibility(visible)
+        # Keep the base globe under the mosaic (mosaic is slightly larger radius).
+        self._sphere_actor.SetVisibility(True)
+        self._detail_visible = visible
+
+    def _set_path(self, points: list[tuple[float, float]]) -> None:
+        # Skip rebuild when the stroked path hasn't grown (avoids per-hold flicker).
+        if len(points) == self._last_path_len and self._path_actor is not None:
+            return
+        if self._path_actor is not None:
+            self._plotter.remove_actor(self._path_actor, render=False)
+            self._path_actor = None
+        poly = _path_polydata(points)
+        self._last_path_len = len(points)
+        if poly is None:
+            return
+        tube = poly.tube(radius=PATH_RADIUS, n_sides=12)
+        self._path_actor = self._plotter.add_mesh(
+            tube,
+            color=PATH_COLOR,
+            smooth_shading=True,
+        )
+
+    def render_frame(
+        self,
+        *,
+        focus_lat: float,
+        focus_lng: float,
+        distance: float,
+        path_points: list[tuple[float, float]],
+        pitch: float,
+        use_detail: bool,
+    ) -> Image.Image:
+        pos, focal, view_up = _camera_pose(
+            focus_lat, focus_lng, distance, pitch=pitch
+        )
+        self._plotter.camera_position = [
+            tuple(pos.tolist()),
+            tuple(focal.tolist()),
+            tuple(view_up.tolist()),
+        ]
+        self._plotter.camera.view_angle = 30.0
+
+        self._set_detail_visible(use_detail and distance <= DETAIL_DIST_MAX)
+        self._set_path(path_points)
+
+        self._plotter.render()
+        shot = self._plotter.screenshot(return_img=True, transparent_background=False)
+        return Image.fromarray(shot).convert("RGBA")
+
+    def project_ll(
+        self,
+        lat: float,
+        lng: float,
+    ) -> tuple[float, float, bool]:
+        return world_to_pixel(
+            self._plotter,
+            ll_to_xyz(lat, lng, PATH_RADIUS_R),
+            self.img_w,
+            self.img_h,
+        )
+
+
+# ---- timeline --------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _FrameState:
+    focus_lat: float
+    focus_lng: float
+    distance: float
+    path_points: list[tuple[float, float]]
+    marker_indices: list[int]
+    traveler: tuple[float, float] | None
+    pitch: float
+    use_detail: bool
+
+
+def journey_center(positions: list[Position]) -> tuple[float, float]:
+    """Geographic centre used to frame the full route on zoom-out."""
     if not positions:
-        return 0.0, 0.0, 1
-
-    min_lat = max_lat = positions[0].lat
-    min_lng = max_lng = positions[0].lng
-    for p in positions[1:]:
-        min_lat = min(min_lat, p.lat)
-        max_lat = max(max_lat, p.lat)
-        min_lng = min(min_lng, p.lng)
-        max_lng = max(max_lng, p.lng)
-
-    center_lat = (min_lat + max_lat) / 2
-    center_lng = (min_lng + max_lng) / 2
-
-    padding = 80.0
-    for z in range(15, 0, -1):
-        if all(
-            padding <= x <= img_w - padding and padding <= y <= img_h - padding
-            for p in positions
-            for x, y in [lat_lng_to_pixel(p.lat, p.lng, z, center_lat, center_lng, img_w, img_h)]
-        ):
-            return center_lat, center_lng, z
-    return center_lat, center_lng, 1
+        return 0.0, 0.0
+    if len(positions) == 1:
+        return positions[0].lat, positions[0].lng
+    # Average unit vectors to avoid antimeridian / pole issues.
+    acc = np.zeros(3, dtype=np.float64)
+    for p in positions:
+        acc += ll_to_xyz(p.lat, p.lng)
+    acc /= np.linalg.norm(acc)
+    return xyz_to_ll(acc)
 
 
-def render_base_map(
-    center_lat: float,
-    center_lng: float,
-    zoom: int,
-    *,
-    img_w: int = IMG_WIDTH,
-    img_h: int = IMG_HEIGHT,
-    client: httpx.Client | None = None,
-) -> Image.Image:
-    """Fetch OSM tiles and composite a base map centred at the given point."""
-    world_size = _TILE_SIZE * (2**zoom)
-    cx = (center_lng + 180) / 360 * world_size
-    cy = mercator_y(center_lat) * world_size
-    left = cx - img_w / 2
-    top = cy - img_h / 2
+def build_frame_states(positions: list[Position]) -> list[_FrameState]:
+    """Expand journey into per-frame camera / path / marker state."""
+    if not positions:
+        return []
 
-    x0 = int(math.floor(left / _TILE_SIZE))
-    y0 = int(math.floor(top / _TILE_SIZE))
-    x1 = int(math.floor((left + img_w - 1) / _TILE_SIZE))
-    y1 = int(math.floor((top + img_h - 1) / _TILE_SIZE))
-    n = 2**zoom
+    close_dist = close_camera_distance(positions)
+    center_lat, center_lng = journey_center(positions)
+    states: list[_FrameState] = []
+    completed_path: list[tuple[float, float]] = [(positions[0].lat, positions[0].lng)]
+    p0_lat, p0_lng = positions[0].lat, positions[0].lng
 
-    canvas = Image.new("RGBA", (img_w, img_h))
-    own_client = client is None
-    if own_client:
-        client = httpx.Client(headers={"User-Agent": _USER_AGENT}, timeout=30.0)
-    assert client is not None
-    try:
-        for ty in range(y0, y1 + 1):
-            if ty < 0 or ty >= n:
-                continue
-            for tx in range(x0, x1 + 1):
-                wrapped_x = tx % n
-                url = _OSM_TILE_URL.format(z=zoom, x=wrapped_x, y=ty)
-                resp = client.get(url)
-                resp.raise_for_status()
-                tile = Image.open(BytesIO(resp.content)).convert("RGBA")
-                px = int(tx * _TILE_SIZE - left)
-                py = int(ty * _TILE_SIZE - top)
-                canvas.paste(tile, (px, py))
-    finally:
-        if own_client:
-            client.close()
-    return canvas
+    for _ in range(INTRO_HOLD):
+        states.append(
+            _FrameState(
+                focus_lat=p0_lat,
+                focus_lng=p0_lng,
+                distance=CAM_DIST_WIDE,
+                path_points=list(completed_path),
+                marker_indices=[0],
+                traveler=None,
+                pitch=0.0,
+                use_detail=False,
+            )
+        )
+
+    for f in range(ZOOM_IN_FRAMES):
+        t = _ease_in_out(1.0 if ZOOM_IN_FRAMES <= 1 else (f + 1) / ZOOM_IN_FRAMES)
+        dist = CAM_DIST_WIDE + t * (close_dist - CAM_DIST_WIDE)
+        states.append(
+            _FrameState(
+                focus_lat=p0_lat,
+                focus_lng=p0_lng,
+                distance=dist,
+                path_points=list(completed_path),
+                marker_indices=[0],
+                traveler=None,
+                pitch=t,
+                # Only show detail once fully zoomed — avoids mid-zoom mosaic pops.
+                use_detail=dist <= DETAIL_DIST_MAX and t > 0.92,
+            )
+        )
+
+    for i in range(len(positions) - 1):
+        a, b = positions[i], positions[i + 1]
+        dist_deg = angular_distance_deg(a.lat, a.lng, b.lat, b.lng)
+        n_travel = travel_frames_for_distance(dist_deg)
+        leg = great_circle_points(a.lat, a.lng, b.lat, b.lng, PATH_SAMPLES)
+        a_xyz = ll_to_xyz(a.lat, a.lng)
+        b_xyz = ll_to_xyz(b.lat, b.lng)
+
+        for f in range(n_travel):
+            # Linear progress — easing per leg caused visible slowdown/jump at waypoints.
+            t = 1.0 if n_travel <= 1 else (f + 1) / n_travel
+            trav_lat, trav_lng = xyz_to_ll(slerp(a_xyz, b_xyz, t))
+            end_idx = max(1, int(round(t * (len(leg) - 1))))
+            progressive = completed_path + leg[1 : end_idx + 1]
+            states.append(
+                _FrameState(
+                    focus_lat=trav_lat,
+                    focus_lng=trav_lng,
+                    distance=close_dist,
+                    path_points=progressive,
+                    marker_indices=list(range(i + 1)),
+                    traveler=(trav_lat, trav_lng),
+                    pitch=1.0,
+                    use_detail=True,
+                )
+            )
+
+        completed_path = completed_path + leg[1:]
+        hold_n = hold_frames_for_days(b.days)
+        for _ in range(hold_n):
+            states.append(
+                _FrameState(
+                    focus_lat=b.lat,
+                    focus_lng=b.lng,
+                    distance=close_dist,
+                    path_points=list(completed_path),
+                    marker_indices=list(range(i + 2)),
+                    traveler=None,
+                    pitch=1.0,
+                    use_detail=True,
+                )
+            )
+
+    last = positions[-1]
+    last_xyz = ll_to_xyz(last.lat, last.lng)
+    center_xyz = ll_to_xyz(center_lat, center_lng)
+
+    # Zoom out to show the full route.
+    for f in range(ZOOM_OUT_FRAMES):
+        t = _ease_in_out(1.0 if ZOOM_OUT_FRAMES <= 1 else (f + 1) / ZOOM_OUT_FRAMES)
+        dist = close_dist + t * (CAM_DIST_WIDE - close_dist)
+        focus_lat, focus_lng = xyz_to_ll(slerp(last_xyz, center_xyz, t))
+        states.append(
+            _FrameState(
+                focus_lat=focus_lat,
+                focus_lng=focus_lng,
+                distance=dist,
+                path_points=list(completed_path),
+                marker_indices=list(range(len(positions))),
+                traveler=None,
+                pitch=1.0 - t,
+                # Drop detail immediately when zooming out to avoid mosaic/z pops.
+                use_detail=False,
+            )
+        )
+
+    for _ in range(OUTRO_HOLD):
+        states.append(
+            _FrameState(
+                focus_lat=center_lat,
+                focus_lng=center_lng,
+                distance=CAM_DIST_WIDE,
+                path_points=list(completed_path),
+                marker_indices=list(range(len(positions))),
+                traveler=None,
+                pitch=0.0,
+                use_detail=False,
+            )
+        )
+    return states
+
+
+def total_frames(positions: list[Position]) -> int:
+    return len(build_frame_states(positions)) if positions else OUTRO_HOLD
 
 
 def scale_image(src: Image.Image, size: int) -> Image.Image:
-    """Scale ``src`` to a square of ``size`` px (Catmull-Rom / bicubic)."""
     return src.resize((size, size), Image.Resampling.BICUBIC)
 
 
 def draw_marker(frame: Image.Image, scaled: Image.Image, px: float, py: float) -> None:
-    """Alpha-composite a logo centred at pixel (px, py), clipped to the frame."""
     dx = int(round(px)) - scaled.width // 2
     dy = int(round(py)) - scaled.height // 2
     src_x = max(0, -dx)
@@ -193,41 +832,17 @@ def draw_marker(frame: Image.Image, scaled: Image.Image, px: float, py: float) -
     frame.paste(cropped, (dst_x, dst_y), cropped)
 
 
-def position_start_frames(positions: list[Position]) -> list[int]:
-    """Global frame index where each position's fly-in begins."""
-    if not positions:
-        return []
-    offset = FLY_IN_FRAMES - FLY_IN_OVERLAP
-    return [i * offset for i in range(len(positions))]
-
-
-def total_frames(positions: list[Position]) -> int:
-    if not positions:
-        return FINAL_HOLD
-    starts = position_start_frames(positions)
-    last = len(positions) - 1
-    last_end = starts[last] + FLY_IN_FRAMES + BOUNCE_FRAMES + hold_frames_for_days(positions[last].days)
-    return last_end + FINAL_HOLD
-
-
-@dataclass
-class _MarkerState:
-    px: float
-    py: float
-    final_size: int
-    final_logo: Image.Image
-
-
 def generate_animation(
     journey: JourneyMap,
     output_path: Path | str,
     *,
-    base_map: Image.Image | None = None,
+    earth_texture: Image.Image | None = None,
     logo: Image.Image | None = None,
+    tile_fetcher: TileFetcher | None = None,
 ) -> None:
     """Render ``journey`` to an H.264 MP4 at ``output_path``.
 
-    ``base_map`` and ``logo`` may be injected for tests (skips OSM fetch / asset load).
+    ``earth_texture``, ``logo``, and ``tile_fetcher`` may be injected for tests.
     """
     if shutil.which("ffmpeg") is None:
         raise RuntimeError("ffmpeg not found on $PATH. Install it with: brew install ffmpeg")
@@ -239,28 +854,15 @@ def generate_animation(
 
     if logo is None:
         logo = load_logo()
+    if earth_texture is None:
+        log.info("Loading Earth texture...")
+        earth_texture = load_earth_texture()
+    own_fetcher = tile_fetcher is None
+    if tile_fetcher is None:
+        tile_fetcher = default_tile_fetcher()
 
-    center_lat, center_lng, zoom = choose_bounds_and_zoom(
-        journey.positions, IMG_WIDTH, IMG_HEIGHT
-    )
-    if base_map is None:
-        log.info("Rendering base map (zoom %d, centre %.4f,%.4f)...", zoom, center_lat, center_lng)
-        base_map = render_base_map(center_lat, center_lng, zoom)
-    else:
-        base_map = base_map.convert("RGBA").resize((IMG_WIDTH, IMG_HEIGHT), Image.Resampling.BICUBIC)
-
-    states: list[_MarkerState] = []
-    for p in journey.positions:
-        px, py = lat_lng_to_pixel(
-            p.lat, p.lng, zoom, center_lat, center_lng, IMG_WIDTH, IMG_HEIGHT
-        )
-        fs = marker_size(p.days)
-        states.append(
-            _MarkerState(px=px, py=py, final_size=fs, final_logo=scale_image(logo, fs))
-        )
-
-    starts = position_start_frames(journey.positions)
-    total = total_frames(journey.positions)
+    states = build_frame_states(journey.positions)
+    total = len(states)
     scaled_cache: dict[int, Image.Image] = {}
 
     def cached_scale(size: int) -> Image.Image:
@@ -268,42 +870,59 @@ def generate_animation(
             scaled_cache[size] = scale_image(logo, size)
         return scaled_cache[size]
 
-    with tempfile.TemporaryDirectory(prefix="animatemap_") as tmp:
-        tmp_dir = Path(tmp)
-        for global_f in range(total):
-            if global_f % 30 == 0:
-                log.info("  frame %d / %d", global_f, total)
-            frame = base_map.copy()
+    renderer = GlobeRenderer(
+        earth_texture=earth_texture,
+        tile_fetcher=tile_fetcher,
+        img_w=IMG_WIDTH * RENDER_SCALE,
+        img_h=IMG_HEIGHT * RENDER_SCALE,
+    )
+    try:
+        log.info("Preparing journey map tiles...")
+        renderer.prepare_journey_detail(journey.positions)
+        with tempfile.TemporaryDirectory(prefix="animatemap_") as tmp:
+            tmp_dir = Path(tmp)
+            for fi, st in enumerate(states):
+                if fi % 30 == 0:
+                    log.info("  frame %d / %d", fi, total)
+                frame = renderer.render_frame(
+                    focus_lat=st.focus_lat,
+                    focus_lng=st.focus_lng,
+                    distance=st.distance,
+                    path_points=st.path_points,
+                    pitch=st.pitch,
+                    use_detail=st.use_detail,
+                )
+                # Marker size shrinks a bit when very close; scale with render resolution.
+                ms = 0.55 + 0.45 * min(
+                    1.0,
+                    (st.distance - CAM_DIST_CLOSE_MIN)
+                    / max(1e-6, CAM_DIST_WIDE - CAM_DIST_CLOSE_MIN),
+                )
+                for mi in st.marker_indices:
+                    p = journey.positions[mi]
+                    px, py, vis = renderer.project_ll(p.lat, p.lng)
+                    if vis:
+                        size = max(16, int(round(marker_size(p.days) * ms * RENDER_SCALE)))
+                        draw_marker(frame, cached_scale(size), px, py)
+                if st.traveler is not None:
+                    tlat, tlng = st.traveler
+                    px, py, vis = renderer.project_ll(tlat, tlng)
+                    if vis:
+                        size = max(16, int(round(28 * ms * RENDER_SCALE)))
+                        draw_marker(frame, cached_scale(size), px, py)
+                # Supersample downsample → sharper OSM labels than native 900×500.
+                if RENDER_SCALE != 1:
+                    frame = frame.resize((IMG_WIDTH, IMG_HEIGHT), Image.Resampling.LANCZOS)
+                frame.convert("RGB").save(tmp_dir / f"frame_{fi:04d}.png")
 
-            for i, start in enumerate(starts):
-                local_f = global_f - start
-                if local_f < 0:
-                    continue
-                st = states[i]
-                anim_len = FLY_IN_FRAMES + BOUNCE_FRAMES + hold_frames_for_days(journey.positions[i].days)
-
-                if local_f >= anim_len:
-                    draw_marker(frame, st.final_logo, st.px, st.py)
-                    continue
-                if local_f < FLY_IN_FRAMES:
-                    t = 1.0 if FLY_IN_FRAMES <= 1 else local_f / (FLY_IN_FRAMES - 1)
-                    scale = FLY_IN_SCALE - t * t * (FLY_IN_SCALE - 1)
-                    size = int(round(st.final_size * scale))
-                elif local_f < FLY_IN_FRAMES + BOUNCE_FRAMES:
-                    mult = bounce_multiplier(local_f - FLY_IN_FRAMES, BOUNCE_FRAMES, 3, BOUNCE_AMP)
-                    size = int(round(st.final_size * mult))
-                else:
-                    draw_marker(frame, st.final_logo, st.px, st.py)
-                    continue
-
-                if size < 1:
-                    size = 1
-                draw_marker(frame, cached_scale(size), st.px, st.py)
-
-            frame.save(tmp_dir / f"frame_{global_f:04d}.png")
-
-        log.info("Assembling %d frames into %s...", total, output_path)
-        _run_ffmpeg(tmp_dir, output_path)
+            log.info("Assembling %d frames into %s...", total, output_path)
+            _run_ffmpeg(tmp_dir, output_path)
+    finally:
+        renderer.close()
+        if own_fetcher:
+            close = getattr(tile_fetcher, "close", None)
+            if callable(close):
+                close()
 
 
 def _run_ffmpeg(frames_dir: Path, output_path: Path) -> None:
@@ -320,8 +939,10 @@ def _run_ffmpeg(frames_dir: Path, output_path: Path) -> None:
         "libx264",
         "-pix_fmt",
         "yuv420p",
+        "-preset",
+        "slow",
         "-crf",
-        "23",
+        str(FFMPEG_CRF),
         str(output_path),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)

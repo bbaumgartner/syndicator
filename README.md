@@ -43,9 +43,11 @@ cp config.local.yaml.example config.local.yaml      # adjust paths + sftp_key!
 
 Requirements:
 
-- `ffmpeg` on `$PATH` (used locally to assemble the journey-map MP4). Pillow is
-  installed via `uv sync`. Video/image **adapt** for reels still runs on the n8n
-  host via `n8n-nodes-ffmpeg-studio` + Edit Image.
+- `ffmpeg` on `$PATH` (used locally to assemble the journey-map MP4). Pillow,
+  numpy and pyvista are installed via `uv sync`. Journey-map rendering needs
+  OpenGL offscreen support and fetches OSM map tiles at render time. Video/image
+  **adapt** for reels still runs on the n8n host via `n8n-nodes-ffmpeg-studio` +
+  Edit Image.
 - The Syncthing-synced Logseq graph (`saillog_dir`).
 - A local clone of the Hugo site repo with push access — the site commit is a
   manual step in that checkout.
