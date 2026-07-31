@@ -6,9 +6,3 @@ saillog_dir: /path/to/saillog
 # Private key for the chrooted SFTP staging user (see ~/.ssh/config; the staging
 # server exposes a chrooted, key-only "sftp" user).
 sftp_key: ~/.ssh/sftp_client_ed25519
-
-# Old converter repo: source for the animatemap Go tool (journey positions are
-# extracted in-process by syndicator; only the map animation still needs this).
-converter_repo_dir: /path/to/logseq-to-hugo-converter
-# Optional prebuilt animatemap binary; leave empty to build/run from converter_repo_dir.
-animatemap_bin: ""

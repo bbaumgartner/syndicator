@@ -42,8 +42,6 @@ class SharedConfig:
 class LocalConfig:
     saillog_dir: Path
     sftp_key: Path
-    converter_repo_dir: Path | None = None
-    animatemap_bin: str = ""
 
 
 @dataclass
@@ -96,12 +94,9 @@ def shared_from_dict(data: dict) -> SharedConfig:
 
 def local_from_dict(data: dict) -> LocalConfig:
     key = data["sftp_key"]
-    conv = data.get("converter_repo_dir")
     return LocalConfig(
         saillog_dir=Path(data["saillog_dir"]),
         sftp_key=Path(key).expanduser() if isinstance(key, str) else Path(key),
-        converter_repo_dir=Path(conv) if conv else None,
-        animatemap_bin=data.get("animatemap_bin", "") or "",
     )
 
 

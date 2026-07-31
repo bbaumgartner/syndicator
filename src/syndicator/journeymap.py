@@ -1,18 +1,10 @@
-"""Build journey.json from Logseq journals, then animate it with animatemap.
-
-Position extraction (formerly the Go ``journeymap`` tool) lives here in Python.
-The map animation still shells out to the Go ``animatemap`` binary from the
-converter repo.
-"""
+"""Extract journey positions from Logseq journals and render the animated map."""
 
 from __future__ import annotations
 
 import json
 import logging
 import re
-import shutil
-import subprocess
-import tempfile
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -154,71 +146,23 @@ def write_journey_json(journey: JourneyMap, output_path: Path | str) -> None:
     output_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
-def _resolve_animatemap(cfg: Config) -> list[str] | None:
-    configured = cfg.local.animatemap_bin
-    if configured:
-        path = Path(configured).expanduser()
-        if path.exists():
-            return [str(path)]
-        log.warning("configured animatemap binary missing: %s", path)
-
-    repo = cfg.local.converter_repo_dir
-    if repo is None or not Path(repo).exists():
-        log.error("converter_repo_dir not configured/found — cannot run animatemap")
-        return None
-
-    bin_dir = cfg.repo_root / "bin"
-    cached = bin_dir / "animatemap"
-    if cached.exists():
-        return [str(cached)]
-
-    if shutil.which("go"):
-        bin_dir.mkdir(exist_ok=True)
-        try:
-            subprocess.run(
-                ["go", "build", "-o", str(cached), "./cmd/animatemap"],
-                cwd=repo,
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            log.info("built animatemap -> %s", cached)
-            return [str(cached)]
-        except subprocess.CalledProcessError as err:
-            log.error("go build animatemap failed: %s", err.stderr)
-            return ["go", "run", "./cmd/animatemap"]
-
-    return None
-
-
 def generate_journey_map(cfg: Config, out_mp4: Path) -> bool:
-    """Extract positions from journals and render ``out_mp4`` via animatemap."""
-    am = _resolve_animatemap(cfg)
-    if am is None:
-        return False
+    """Extract positions from journals and render ``out_mp4``."""
+    from .animatemap import generate_animation
 
     journey = extract_positions(cfg.journals_dir)
     if not journey.positions:
         log.info("no journey positions found — skipping animation")
         return False
 
-    cwd = cfg.local.converter_repo_dir if am[0] == "go" else None
+    log.info("rendering journey map with %d positions", len(journey.positions))
     out_mp4.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with tempfile.TemporaryDirectory() as tmp:
-            journey_json = Path(tmp) / "journey.json"
-            write_journey_json(journey, journey_json)
-            log.info("Wrote %d journey positions to %s", len(journey.positions), journey_json)
-            result = subprocess.run(
-                am + [str(journey_json), str(out_mp4)],
-                check=True,
-                capture_output=True,
-                text=True,
-                cwd=cwd,
-            )
-            if result.stdout.strip():
-                log.info("animatemap: %s", result.stdout.strip().splitlines()[-1])
-        return out_mp4.exists()
-    except subprocess.CalledProcessError as err:
-        log.error("journey map generation failed: %s\n%s", err, err.stderr)
+        generate_animation(journey, out_mp4)
+    except Exception as err:
+        log.error("journey map generation failed: %s", err)
         return False
+    if out_mp4.exists():
+        log.info("journey animation written to %s", out_mp4)
+        return True
+    return False
