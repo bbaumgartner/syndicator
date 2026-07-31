@@ -65,9 +65,9 @@ DETAIL_DIST_MAX = 3.0
 JOURNEY_PAD_DEG = 0.6
 JOURNEY_PAD_FRAC = 0.25
 # Logo markers track the on-screen path width (not days-based size).
-MARKER_PATH_SCALE = 1.35
-MARKER_SIZE_MIN = 6
-MARKER_SIZE_MAX = 18
+MARKER_PATH_SCALE = 5.0
+MARKER_SIZE_MIN = 24
+MARKER_SIZE_MAX =72
 # Lower CRF = sharper text in the H.264 encode.
 FFMPEG_CRF = 17
 
