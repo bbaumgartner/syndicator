@@ -29,6 +29,7 @@ from syndicator.animatemap import (
     build_frame_states,
     close_camera_distance,
     generate_animation,
+    great_circle_arch_xyz,
     great_circle_points,
     hold_frames_for_days,
     journey_center,
@@ -41,6 +42,9 @@ from syndicator.animatemap import (
     lat_to_mercator_y_norm,
     osm_zoom_for_distance,
     overview_camera_distance,
+    path_arch_peak,
+    PATH_ARCH_MAX,
+    PATH_RADIUS_R,
     route_marker_size,
     scale_image,
     slerp,
@@ -103,6 +107,25 @@ def test_great_circle_midpoint_roughly_halfway():
     assert abs(pts[0][0]) < 1e-6 and abs(pts[0][1]) < 1e-6
     assert abs(pts[-1][1] - 90.0) < 1e-4
     assert abs(pts[2][1] - 45.0) < 1.0
+
+
+def test_path_arch_peak_scales_and_caps():
+    assert path_arch_peak(0.0) > 0.0
+    assert path_arch_peak(40.0) > path_arch_peak(5.0)
+    assert path_arch_peak(1e6) == PATH_ARCH_MAX
+
+
+def test_great_circle_arch_lifts_midpoint():
+    import numpy as np
+
+    pts = great_circle_arch_xyz(45.0, 13.0, 43.5, 16.4, 17)
+    assert len(pts) == 17
+    r0 = float(np.linalg.norm(pts[0]))
+    r_mid = float(np.linalg.norm(pts[8]))
+    r1 = float(np.linalg.norm(pts[-1]))
+    assert abs(r0 - PATH_RADIUS_R) < 1e-9
+    assert abs(r1 - PATH_RADIUS_R) < 1e-9
+    assert r_mid > r0 + 0.005
 
 
 def test_angular_distance_quarter():

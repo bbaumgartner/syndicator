@@ -46,6 +46,10 @@ PATH_RADIUS = 0.0007
 EARTH_RADIUS = 1.0
 TILE_RADIUS = 1.0015
 PATH_RADIUS_R = 1.003
+# Great-circle legs lift into a sine arch (flight-path style).
+PATH_ARCH_BASE = 0.012
+PATH_ARCH_PER_DEG = 0.001
+PATH_ARCH_MAX = 0.08
 # Camera distance from Earth centre (larger = farther / zoomed out).
 CAM_DIST_WIDE = 3.6
 CAM_DIST_CLOSE_MIN = 1.10
@@ -255,6 +259,35 @@ def great_circle_points(
     a = ll_to_xyz(lat1, lng1)
     b = ll_to_xyz(lat2, lng2)
     return [xyz_to_ll(slerp(a, b, i / (n - 1))) for i in range(n)]
+
+
+def path_arch_peak(angular_deg: float) -> float:
+    """Peak radial lift above ``PATH_RADIUS_R`` for a leg of the given length."""
+    peak = PATH_ARCH_BASE + PATH_ARCH_PER_DEG * max(0.0, angular_deg)
+    return min(PATH_ARCH_MAX, peak)
+
+
+def great_circle_arch_xyz(
+    lat1: float,
+    lng1: float,
+    lat2: float,
+    lng2: float,
+    n: int,
+) -> list[np.ndarray]:
+    """Sample ``n`` XYZ points along a great-circle flight arch (sine lift)."""
+    if n < 2:
+        return [ll_to_xyz(lat1, lng1, PATH_RADIUS_R)]
+    a = ll_to_xyz(lat1, lng1)
+    b = ll_to_xyz(lat2, lng2)
+    peak = path_arch_peak(angular_distance_deg(lat1, lng1, lat2, lng2))
+    out: list[np.ndarray] = []
+    for i in range(n):
+        t = i / (n - 1)
+        direction = slerp(a, b, t)
+        direction = direction / np.linalg.norm(direction)
+        radius = PATH_RADIUS_R + peak * math.sin(math.pi * t)
+        out.append(direction * radius)
+    return out
 
 
 def _camera_basis(lat: float, lng: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -550,10 +583,10 @@ def _region_patch_mesh(
     return mesh, tex
 
 
-def _path_polydata(points: list[tuple[float, float]]) -> pv.PolyData | None:
+def _path_polydata(points: list[np.ndarray]) -> pv.PolyData | None:
     if len(points) < 2:
         return None
-    xyz = np.array([ll_to_xyz(lat, lng, PATH_RADIUS_R) for lat, lng in points], dtype=np.float64)
+    xyz = np.asarray(points, dtype=np.float64)
     return pv.lines_from_points(xyz)
 
 
@@ -684,7 +717,7 @@ class GlobeRenderer:
         self._sphere_actor.SetVisibility(not visible)
         self._detail_visible = visible
 
-    def _set_path(self, points: list[tuple[float, float]]) -> None:
+    def _set_path(self, points: list[np.ndarray]) -> None:
         # Skip rebuild when the stroked path hasn't grown (avoids per-hold flicker).
         if len(points) == self._last_path_len and self._path_actor is not None:
             return
@@ -708,7 +741,7 @@ class GlobeRenderer:
         focus_lat: float,
         focus_lng: float,
         distance: float,
-        path_points: list[tuple[float, float]],
+        path_points: list[np.ndarray],
         pitch: float,
         use_detail: bool,
     ) -> Image.Image:
@@ -741,6 +774,9 @@ class GlobeRenderer:
             self.img_h,
         )
 
+    def project_xyz(self, xyz: np.ndarray) -> tuple[float, float, bool]:
+        return world_to_pixel(self._plotter, xyz, self.img_w, self.img_h)
+
 
 # ---- timeline --------------------------------------------------------------
 
@@ -750,9 +786,9 @@ class _FrameState:
     focus_lat: float
     focus_lng: float
     distance: float
-    path_points: list[tuple[float, float]]
+    path_points: list[np.ndarray]
     marker_indices: list[int]
-    traveler: tuple[float, float] | None
+    traveler: np.ndarray | None
     pitch: float
     use_detail: bool
 
@@ -780,7 +816,9 @@ def build_frame_states(positions: list[Position]) -> list[_FrameState]:
     overview_dist = overview_camera_distance(positions)
     center_lat, center_lng = journey_center(positions)
     states: list[_FrameState] = []
-    completed_path: list[tuple[float, float]] = [(positions[0].lat, positions[0].lng)]
+    completed_path: list[np.ndarray] = [
+        ll_to_xyz(positions[0].lat, positions[0].lng, PATH_RADIUS_R)
+    ]
     p0_lat, p0_lng = positions[0].lat, positions[0].lng
 
     for _ in range(INTRO_HOLD):
@@ -818,7 +856,7 @@ def build_frame_states(positions: list[Position]) -> list[_FrameState]:
         a, b = positions[i], positions[i + 1]
         dist_deg = angular_distance_deg(a.lat, a.lng, b.lat, b.lng)
         n_travel = travel_frames_for_distance(dist_deg)
-        leg = great_circle_points(a.lat, a.lng, b.lat, b.lng, PATH_SAMPLES)
+        leg = great_circle_arch_xyz(a.lat, a.lng, b.lat, b.lng, PATH_SAMPLES)
         a_xyz = ll_to_xyz(a.lat, a.lng)
         b_xyz = ll_to_xyz(b.lat, b.lng)
 
@@ -835,7 +873,7 @@ def build_frame_states(positions: list[Position]) -> list[_FrameState]:
                     distance=close_dist,
                     path_points=progressive,
                     marker_indices=list(range(i + 1)),
-                    traveler=(trav_lat, trav_lng),
+                    traveler=leg[end_idx],
                     pitch=1.0,
                     use_detail=True,
                 )
@@ -986,8 +1024,7 @@ def generate_animation(
                     if vis:
                         draw_marker(frame, cached_scale(size), px, py)
                 if st.traveler is not None:
-                    tlat, tlng = st.traveler
-                    px, py, vis = renderer.project_ll(tlat, tlng)
+                    px, py, vis = renderer.project_xyz(st.traveler)
                     if vis:
                         draw_marker(frame, cached_scale(size), px, py)
                 # Supersample downsample → sharper OSM labels than native 900×500.
