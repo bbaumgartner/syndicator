@@ -43,10 +43,10 @@ cp config.local.yaml.example config.local.yaml      # adjust paths + sftp_key!
 
 Requirements:
 
-- `go` (the journeymap/animatemap tools are built/run from the converter repo
-  referenced in `config.local.yaml`). Local ffmpeg/Pillow are **not** required
-  for syndication; video/image adapt runs on the n8n host via
-  `n8n-nodes-ffmpeg-studio` + Edit Image.
+- `go` (only for the `animatemap` tool, built/run from the converter repo
+  referenced in `config.local.yaml`; journey positions are extracted in Python).
+  Local ffmpeg/Pillow are **not** required for syndication; video/image adapt
+  runs on the n8n host via `n8n-nodes-ffmpeg-studio` + Edit Image.
 - The Syncthing-synced Logseq graph (`saillog_dir`).
 - A local clone of the Hugo site repo with push access — the site commit is a
   manual step in that checkout.

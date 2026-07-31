@@ -43,7 +43,6 @@ class LocalConfig:
     saillog_dir: Path
     sftp_key: Path
     converter_repo_dir: Path | None = None
-    journeymap_bin: str = ""
     animatemap_bin: str = ""
 
 
@@ -102,7 +101,6 @@ def local_from_dict(data: dict) -> LocalConfig:
         saillog_dir=Path(data["saillog_dir"]),
         sftp_key=Path(key).expanduser() if isinstance(key, str) else Path(key),
         converter_repo_dir=Path(conv) if conv else None,
-        journeymap_bin=data.get("journeymap_bin", "") or "",
         animatemap_bin=data.get("animatemap_bin", "") or "",
     )
 

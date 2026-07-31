@@ -11,5 +11,5 @@ dist/
 config.local.yaml
 .env
 
-# Locally built Go binaries (journeymap/animatemap)
+# Locally built Go binaries (animatemap)
 bin/

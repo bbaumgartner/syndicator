@@ -7,8 +7,8 @@ saillog_dir: /path/to/saillog
 # server exposes a chrooted, key-only "sftp" user).
 sftp_key: ~/.ssh/sftp_client_ed25519
 
-# Old converter repo: source for the journeymap/animatemap Go tools.
+# Old converter repo: source for the animatemap Go tool (journey positions are
+# extracted in-process by syndicator; only the map animation still needs this).
 converter_repo_dir: /path/to/logseq-to-hugo-converter
-# Optional prebuilt binaries; leave empty to use "go run" from converter_repo_dir.
-journeymap_bin: ""
+# Optional prebuilt animatemap binary; leave empty to build/run from converter_repo_dir.
 animatemap_bin: ""
