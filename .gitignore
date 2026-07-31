@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .ruff_cache/
+.vscode
 dist/
 
 # Machine-specific configuration and secrets
