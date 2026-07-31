@@ -301,6 +301,19 @@ def latlng_to_tile(lat: float, lng: float, zoom: int) -> tuple[int, int]:
     return x, y
 
 
+def lat_to_mercator_y_norm(lat: float) -> float:
+    """Latitude degrees → Web Mercator Y in [0, 1] (0 = north)."""
+    lat = max(-85.05112878, min(85.05112878, lat))
+    lat_r = math.radians(lat)
+    return (1.0 - math.asinh(math.tan(lat_r)) / math.pi) / 2.0
+
+
+def mercator_y_norm_to_lat(y_norm: float) -> float:
+    """Web Mercator Y in [0, 1] (0 = north) → latitude degrees."""
+    y_norm = min(1.0, max(0.0, y_norm))
+    return math.degrees(math.atan(math.sinh(math.pi * (1.0 - 2.0 * y_norm))))
+
+
 def tile_bounds(z: int, x: int, y: int) -> tuple[float, float, float, float]:
     """Return (lat_north, lng_west, lat_south, lng_east) for a tile."""
     n = 2**z
@@ -308,10 +321,12 @@ def tile_bounds(z: int, x: int, y: int) -> tuple[float, float, float, float]:
     def lng(tx: int) -> float:
         return tx / n * 360.0 - 180.0
 
-    def lat(ty: int) -> float:
-        return math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * ty / n))))
-
-    return lat(y), lng(x), lat(y + 1), lng(x + 1)
+    return (
+        mercator_y_norm_to_lat(y / n),
+        lng(x),
+        mercator_y_norm_to_lat((y + 1) / n),
+        lng(x + 1),
+    )
 
 
 def view_half_angle_deg(distance: float, vfov_deg: float = CAMERA_VFOV_DEG) -> float:
@@ -457,8 +472,8 @@ def _equirect_sphere(texture_img: Image.Image, resolution: int = 90) -> tuple[pv
 def _mosaic_from_tiles(
     tiles: list[tuple[int, int, int]],
     fetcher: TileFetcher,
-) -> tuple[Image.Image, float, float, float, float] | None:
-    """Composite OSM tiles into one image; return (img, lat_n, lng_w, lat_s, lng_e)."""
+) -> tuple[Image.Image, int, int, int, int, int] | None:
+    """Composite OSM tiles; return (img, z, x0, x1, y0, y1) inclusive tile indices."""
     if not tiles:
         return None
     z = tiles[0][0]
@@ -478,34 +493,45 @@ def _mosaic_from_tiles(
         px = (x - x0) * tile_w
         py = (y - y0) * tile_h
         mosaic.paste(img.convert("RGB"), (px, py))
-    lat_n, lng_w, _, _ = tile_bounds(z, x0, y0)
-    _, _, lat_s, lng_e = tile_bounds(z, x1, y1)
-    return mosaic, lat_n, lng_w, lat_s, lng_e
+    return mosaic, z, x0, x1, y0, y1
 
 
 def _region_patch_mesh(
     img: Image.Image,
-    lat_n: float,
-    lng_w: float,
-    lat_s: float,
-    lng_e: float,
-    subdivisions: int = 32,
+    z: int,
+    x0: int,
+    x1: int,
+    y0: int,
+    y1: int,
+    subdivisions: int = 48,
 ) -> tuple[pv.PolyData, pv.Texture]:
-    """Single textured patch on the sphere covering a lat/lng rectangle."""
+    """Textured patch for an OSM mosaic; vertices follow Web Mercator, not linear lat.
+
+    OSM tiles are Mercator: equal image rows ≠ equal latitude. Using linear lat
+    shifts features north/south by tens of km at mid-latitudes.
+    """
+    n = 2**z
+    lng_w = x0 / n * 360.0 - 180.0
+    lng_e = (x1 + 1) / n * 360.0 - 180.0
     if lng_e < lng_w:
         lng_e += 360.0
+    y_north = y0 / n
+    y_south = (y1 + 1) / n
+
     nu = subdivisions + 1
     nv = subdivisions + 1
-    lats = np.linspace(lat_n, lat_s, nv)
     lngs = np.linspace(lng_w, lng_e, nu)
     points = []
     uvs = []
-    for iv, lat in enumerate(lats):
+    for iv in range(nv):
+        t = iv / (nv - 1)  # 0 at image top / geographic north of mosaic
+        y_norm = y_north + t * (y_south - y_north)
+        lat = mercator_y_norm_to_lat(float(y_norm))
         for iu, lng in enumerate(lngs):
             wrapped = ((lng + 180) % 360) - 180
             points.append(ll_to_xyz(lat, wrapped, TILE_RADIUS))
             # Image row 0 is north; VTK V=1 samples first row.
-            uvs.append([iu / (nu - 1), 1.0 - iv / (nv - 1)])
+            uvs.append([iu / (nu - 1), 1.0 - t])
     points_a = np.asarray(points, dtype=np.float64)
     uvs_a = np.asarray(uvs, dtype=np.float64)
     faces = []
@@ -636,8 +662,8 @@ class GlobeRenderer:
         mosaic = _mosaic_from_tiles(tiles, self.tile_fetcher)
         if mosaic is None:
             return
-        img, lat_n, lng_w, lat_s, lng_e = mosaic
-        mesh, tex = _region_patch_mesh(img, lat_n, lng_w, lat_s, lng_e)
+        img, z, x0, x1, y0, y1 = mosaic
+        mesh, tex = _region_patch_mesh(img, z, x0, x1, y0, y1)
         self._detail_actor = self._plotter.add_mesh(
             mesh,
             texture=tex,

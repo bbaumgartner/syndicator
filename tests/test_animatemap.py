@@ -37,6 +37,8 @@ from syndicator.animatemap import (
     load_earth_texture,
     load_logo,
     marker_size,
+    mercator_y_norm_to_lat,
+    lat_to_mercator_y_norm,
     osm_zoom_for_distance,
     overview_camera_distance,
     route_marker_size,
@@ -121,6 +123,43 @@ def test_tile_bounds_ordering():
     lat_n, lng_w, lat_s, lng_e = tile_bounds(3, 4, 2)
     assert lat_n > lat_s
     assert lng_e > lng_w
+
+
+def test_mercator_y_roundtrip():
+    for lat in (-60.0, -20.0, 0.0, 20.0, 45.0, 60.0):
+        y = lat_to_mercator_y_norm(lat)
+        assert abs(mercator_y_norm_to_lat(y) - lat) < 1e-6
+
+
+def test_mercator_mosaic_mid_not_linear_lat():
+    # Over a multi-tile mid-latitude span, image-row midpoint ≠ geographic midpoint.
+    # Linear lat draping would put logo markers tens of km north of OSM features.
+    z, y0, y1 = 6, 20, 28
+    n = 2**z
+    lat_n, _, _, _ = tile_bounds(z, 0, y0)
+    _, _, lat_s, _ = tile_bounds(z, 0, y1)
+    y_mid = (y0 + y1 + 1) / 2 / n
+    merc_mid = mercator_y_norm_to_lat(y_mid)
+    linear_mid = (lat_n + lat_s) / 2
+    assert abs(merc_mid - linear_mid) > 0.5  # > ~50 km
+
+
+def test_region_patch_uses_mercator_rows():
+    from syndicator.animatemap import _region_patch_mesh
+    from PIL import Image
+
+    img = Image.new("RGB", (256, 256), (128, 128, 128))
+    z, x0, x1, y0, y1 = 8, 136, 136, 90, 90
+    mesh, _tex = _region_patch_mesh(img, z, x0, x1, y0, y1, subdivisions=2)
+    # Middle row of vertices (iv=1 of 0..2) should sit at mercator mid-lat.
+    n = 2**z
+    expect_lat = mercator_y_norm_to_lat((y0 + 0.5) / n)
+    # 3x3 grid, row iv=1 starts at index 3
+    mid = mesh.points[3 + 1]  # center of middle row
+    from syndicator.animatemap import xyz_to_ll
+
+    got_lat, _ = xyz_to_ll(mid)
+    assert abs(got_lat - expect_lat) < 0.02
 
 
 def test_visible_tiles_empty_when_far():
