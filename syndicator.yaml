@@ -3,7 +3,8 @@
 #
 # v2: the local client extracts the diary, uploads immutable originals under
 # <base>/<slug>/source/, and fires the n8n webhooks. Media adaptation (Edit Image
-# + FFmpeg + OpenAI crop-focus), translation, captions and Hugo render live in n8n.
+# + OpenAI crop-focus for stills; pyautoflip saliency sidecar for reels),
+# translation, captions and Hugo render live in n8n.
 
 site:
     title: "Sailing Nomads"

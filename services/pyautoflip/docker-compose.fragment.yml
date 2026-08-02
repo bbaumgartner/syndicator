@@ -1,0 +1,24 @@
+# Example pyautoflip service for a host compose that already has n8n.
+#
+# On bellair (~/n8n/compose.yaml) the media mount is a bind mount, not n8n_data:
+#   n8n:  ./local-files:/files
+# so pyautoflip must use the SAME bind mount.
+#
+# build: must point at syndicator's services/pyautoflip (this repo), e.g.
+#   ../git/syndicator/services/pyautoflip
+# or an absolute path — NOT ./services/pyautoflip under ~/n8n (that path does not exist).
+
+services:
+  pyautoflip:
+    build: ../git/syndicator/services/pyautoflip   # adjust to your syndicator checkout
+    restart: unless-stopped
+    volumes:
+      - ./local-files:/files                      # SAME as n8n's /files mount
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s

@@ -7,9 +7,10 @@ dataclasses + argparse; no pydantic/typer). It is the only component that reads
 the private [Logseq](https://logseq.com) diary. It extracts `type:: blog` +
 `status:: online` posts, uploads **immutable originals** under
 `/syndicator/<slug>/source/` (plus the journey map), and fires two n8n
-webhooks. **Media adaptation** (Edit Image + FFmpeg + OpenAI crop-focus),
-translation, the Hugo render, captions and social drafts run in **n8n workflows**
-(including Adapt Reel / Adapt Publish sub-workflows). Hugo-ready output is built
+webhooks. **Media adaptation** (Edit Image + OpenAI crop-focus for stills; pyautoflip
+saliency sidecar for reels), translation, the Hugo render, captions and social
+drafts run in **n8n workflows** (including Adapt Reel / Adapt Publish
+sub-workflows). Hugo-ready output is built
 by n8n under `/syndicator/sailingnomads/`, from where the owner fetches it into
 the site checkout and commits by hand. Social posts land as **Postiz drafts**.
 
@@ -46,8 +47,9 @@ Requirements:
 - `ffmpeg` on `$PATH` (used locally to assemble the journey-map MP4). Pillow,
   numpy and pyvista are installed via `uv sync`. Journey-map rendering needs
   OpenGL offscreen support and fetches OSM map tiles at render time. Video/image
-  **adapt** for reels still runs on the n8n host via `n8n-nodes-ffmpeg-studio` +
-  Edit Image.
+  **adapt** for reels runs on the n8n host via the **pyautoflip** sidecar
+  ([`services/pyautoflip/`](services/pyautoflip/)) for saliency-aware reframing;
+  still images use Edit Image + OpenAI crop-focus.
 - The Syncthing-synced Logseq graph (`saillog_dir`).
 - A local clone of the Hugo site repo with push access — the site commit is a
   manual step in that checkout.
