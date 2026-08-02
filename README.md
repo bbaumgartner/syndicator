@@ -6,7 +6,7 @@ Publish pipeline for [sailingnomads.ch](https://www.sailingnomads.ch).
 dataclasses + argparse; no pydantic/typer). It is the only component that reads
 the private [Logseq](https://logseq.com) diary. It extracts `type:: blog` +
 `status:: online` posts, uploads **immutable originals** under
-`/syndicator/<slug>/source/` (plus the journey map), and fires two n8n
+`/syndicator/<slug>/source/`, and fires two n8n
 webhooks. **Media adaptation** (Edit Image + OpenAI crop-focus for stills; pyautoflip
 saliency sidecar for reels), translation, the Hugo render, captions and social
 drafts run in **n8n workflows** (including Adapt Reel / Adapt Publish
@@ -44,12 +44,6 @@ cp config.local.yaml.example config.local.yaml      # adjust paths + sftp_key!
 
 Requirements:
 
-- `ffmpeg` on `$PATH` (used locally to assemble the journey-map MP4). Pillow,
-  numpy and pyvista are installed via `uv sync`. Journey-map rendering needs
-  OpenGL offscreen support and fetches OSM map tiles at render time. Video/image
-  **adapt** for reels runs on the n8n host via the **pyautoflip** sidecar
-  ([`services/pyautoflip/`](services/pyautoflip/)) for saliency-aware reframing;
-  still images use Edit Image + OpenAI crop-focus.
 - The Syncthing-synced Logseq graph (`saillog_dir`).
 - A local clone of the Hugo site repo with push access — the site commit is a
   manual step in that checkout.
@@ -57,9 +51,16 @@ Requirements:
   the host in `syndicator.yaml` (`sftp.host`).
 - The two n8n production webhook URLs, filled into `syndicator.yaml`
   (`webhooks.publish_url` / `webhooks.reel_url`) once the workflows are active.
+- Video/image **adapt** for reels runs on the n8n host via the **pyautoflip**
+  sidecar ([`services/pyautoflip/`](services/pyautoflip/)) for saliency-aware
+  reframing; still images use Edit Image + OpenAI crop-focus.
 
 No `OPENAI_API_KEY` is needed locally; crop-focus, translation and captions use
 the OpenAI credential stored in n8n. See [docs/n8n-media-adapt-notes.md](docs/n8n-media-adapt-notes.md).
+
+The homepage journey-map video is **not** produced by syndicator — use the
+separate [journeymap](https://github.com/bbaumgartner/journeymap) tool and
+commit `static/journey-map.mp4` in the sailingnomads checkout.
 
 ## Commands
 
@@ -72,9 +73,9 @@ uv run syndicator redeploy --post <slug>    # site-only rebuild (re-translates),
 uv run syndicator version
 ```
 
-`syndicate` per invocation: generate + upload the global journey map once, then
-per post upload originals under `source/` → one `/reel` per video → `/publish` →
-write the `syndicated-at::` marker once every webhook returned HTTP 200.
+`syndicate` per invocation: per post upload originals under `source/` → one
+`/reel` per video → `/publish` → write the `syndicated-at::` marker once every
+webhook returned HTTP 200.
 Already-marked posts are skipped (re-running would
 create duplicate drafts). A `status:: online` post **without a `header::` image
 is refused** before any work (reported and skipped in batch; the others continue)
@@ -90,12 +91,11 @@ already laid out on SFTP like the repository:
 
 ```text
 /syndicator/sailingnomads/
-├── content/posts/<slug>/
-│   ├── index.de.md
-│   ├── index.en.md
-│   ├── …
-│   └── <all post media>
-└── static/journey-map.mp4
+└── content/posts/<slug>/
+    ├── index.de.md
+    ├── index.en.md
+    ├── …
+    └── <all post media>
 ```
 
 Fetch `/syndicator/sailingnomads/` recursively into the existing

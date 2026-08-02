@@ -13,16 +13,11 @@ from urllib.parse import quote
 
 from .config import Config
 from .extract import VIDEO_EXTENSIONS, BlogPost
-from .journeymap import generate_journey_map
 from .marker import is_syndicated, read_syndicated_at, set_syndicated_at
 from .sftp import SftpUploader, sftp_session
 from .webhook import WebhookError, post_webhook
 
 log = logging.getLogger(__name__)
-
-JOURNEY_MAP_FILENAME = "journey-map.mp4"
-JOURNEY_MAP_REPO_PATH = "static/journey-map.mp4"
-SITE_STAGING_DIR = "sailingnomads"
 
 ASSET_RE = re.compile(r"!\[(.*?)\]\((.*?assets/)(.*?)\)(?:\{[^}]*\})?")
 LOGSEQ_VIDEO_RE = re.compile(r"\{\{video\s+(https?://[^\s}]+)\s*\}\}")
@@ -106,10 +101,6 @@ def transform_content(content: str) -> str:
 
 def _base(cfg: Config) -> str:
     return cfg.shared.sftp.base_dir.rstrip("/")
-
-
-def journey_map_remote(cfg: Config) -> str:
-    return f"{_base(cfg)}/{SITE_STAGING_DIR}/{JOURNEY_MAP_REPO_PATH}"
 
 
 def source_remote(cfg: Config, slug: str, name: str) -> str:
@@ -275,12 +266,7 @@ def syndicate(cfg: Config, slug: str | None = None) -> SyndicateReport:
     report = SyndicateReport()
     with tempfile.TemporaryDirectory(prefix="syndicator-") as tmp_root:
         tmp = Path(tmp_root)
-        jm_path = tmp / JOURNEY_MAP_FILENAME
-        has_journey_map = generate_journey_map(cfg, jm_path)
-
         with sftp_session(cfg) as sftp:
-            if has_journey_map:
-                sftp.upload(jm_path, journey_map_remote(cfg))
             for post in posts:
                 _syndicate_one(cfg, sftp, post, tmp, report)
 
@@ -384,13 +370,9 @@ def redeploy(cfg: Config, slug: str) -> None:
 
     with tempfile.TemporaryDirectory(prefix="syndicator-") as tmp_root:
         tmp = Path(tmp_root)
-        jm_path = tmp / JOURNEY_MAP_FILENAME
-        has_journey_map = generate_journey_map(cfg, jm_path)
         staged = stage_post(post, cfg, tmp / slug, include_social=False)
 
         with sftp_session(cfg) as sftp:
-            if has_journey_map:
-                sftp.upload(jm_path, journey_map_remote(cfg))
             _upload_all(sftp, staged)
             post_webhook(
                 cfg.shared.webhooks.publish_url,
