@@ -26,9 +26,10 @@ POST /reframe
 Paths must stay under `/files` (or `$PYAUTOFLIP_FILES_ROOT`). Response includes
 `output_path`, `width`, `height`, and `duration_ms`.
 
-**Note:** requesting `"4:5"` in saliency mode currently yields **3:4** upstream
-(`_aspect_ratio_to_tuple` quirk). We keep the `"4:5"` label for path naming
-(`reels/4x5/`). `"9:16"` is unaffected.
+**Upstream workarounds** (applied in `app.py` before `reframe_video`):
+
+- Disable saliency split-screen (`needs_split_screen` → always false); keep single-crop.
+- Fix `"4:5"` mapping (`_aspect_ratio_to_tuple` would otherwise fall back to **3:4**).
 
 ## Wire into the n8n host
 

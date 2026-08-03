@@ -15,6 +15,8 @@ FILES_ROOT = Path(os.environ.get("PYAUTOFLIP_FILES_ROOT", "/files")).resolve()
 
 app = FastAPI(title="pyautoflip sidecar", version="1.0.0")
 
+_pyautoflip_patched = False
+
 
 class ReframeRequest(BaseModel):
     input_path: str
@@ -44,6 +46,39 @@ def _resolve_under_files(raw: str) -> Path:
     return path
 
 
+def _patch_pyautoflip() -> None:
+    """Work around upstream saliency quirks until pyautoflip ships fixes.
+
+    1. Never render split-screen; keep saliency single-crop windows instead.
+    2. Map 4:5 correctly (upstream `_aspect_ratio_to_tuple` falls back to 3:4).
+    """
+    global _pyautoflip_patched
+    if _pyautoflip_patched:
+        return
+
+    from pyautoflip.cropping.saliency_cropper import SaliencyCropper
+
+    def _never_split_screen(self) -> bool:  # noqa: ARG001
+        return False
+
+    def _aspect_ratio_to_tuple(self) -> tuple[int, int]:
+        ratio_map = {
+            0.5625: (9, 16),
+            0.8: (4, 5),
+            1.0: (1, 1),
+            0.75: (3, 4),
+            1.7778: (16, 9),
+        }
+        for ratio, dims in ratio_map.items():
+            if abs(self.target_aspect_ratio - ratio) < 0.01:
+                return dims
+        return (int(self.target_aspect_ratio * 16), 16)
+
+    SaliencyCropper.needs_split_screen = _never_split_screen  # type: ignore[method-assign]
+    SaliencyCropper._aspect_ratio_to_tuple = _aspect_ratio_to_tuple  # type: ignore[method-assign]
+    _pyautoflip_patched = True
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -61,6 +96,8 @@ def reframe(body: ReframeRequest) -> ReframeResponse:
 
     # Import lazily so /health stays cheap before models are warm.
     from pyautoflip import reframe_video
+
+    _patch_pyautoflip()
 
     started = time.perf_counter()
     try:
