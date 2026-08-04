@@ -1,155 +1,199 @@
 # Syndicator
 
-Publish pipeline for [sailingnomads.ch](https://www.sailingnomads.ch).
+**Syndicate** interface: accept blog posts from any editor, stage originals on
+SFTP, adapt media, render a Hugo tree, and create social drafts (via n8n + Postiz).
 
-**v2 (n8n migration).** Syndicator is a **thin local Python trigger** (stdlib
-dataclasses + argparse; no pydantic/typer). It is the only component that reads
-the private [Logseq](https://logseq.com) diary. It extracts `type:: blog` +
-`status:: online` posts, uploads **immutable originals** under
-`/syndicator/<slug>/source/`, and fires two n8n
-webhooks. **Media adaptation** (Edit Image + OpenAI crop-focus for stills; pyautoflip
-saliency sidecar for reels), translation, the Hugo render, captions and social
-drafts run in **n8n workflows** (including Adapt Reel / Adapt Publish
-sub-workflows). Hugo-ready output is built
-by n8n under `/syndicator/sailingnomads/`, from where the owner fetches it into
-the site checkout and commits by hand. Social posts land as **Postiz drafts**.
+This repository documents the public contract and hosts the **pyautoflip**
+sidecar used for reel reframing. It does **not** read Logseq or any other
+editor format. Logseq users should use
+[logseq-blogger](https://github.com/bbaumgartner/logseq-blogger), which
+implements the logseq-blog input format and calls this interface.
 
 ```
-Logseq  →  syndicate (local)  →  SFTP source/  →  n8n (adapt + publish)  →  Postiz
-                                       ↓ sailingnomads/
-                               fetch + git push  →  GitHub (site deploy)
+Any blog editor  →  SFTP source/ + webhooks  →  n8n (adapt + publish)  →  Postiz
+                              ↓ hugo-site/
+                      fetch + git push  →  Hugo site deploy
 ```
 
 - **1 intro post per blog post** per platform (header image + English summary).
 - **1 reel per video** in the post (English caption from the cover frame).
-- **Link placement:** Facebook captions include the blog URL; Instagram and X
-  do not (IG can't link in-post, X links hurt reach) — bio CTA instead.
-- Languages on the site: `en` / `de` / `es` / `fr` / `it` + pirate (`arrr`).
-- Platforms at launch: **Facebook page + Instagram + X**, all via Postiz.
+- Platforms: **Facebook + Instagram + X** via Postiz (as configured in n8n).
 
-The concepts and boundaries are described in
-[docs/architecture.md](docs/architecture.md). This README
-covers operating the local trigger.
+---
 
-## Setup (local trigger)
+## The syndicate interface
 
-One-time, per machine (Mac first; stays Linux-compatible for the server later):
+Callers invoke syndicate by (1) uploading immutable originals over SFTP, then
+(2) POSTing JSON to the Blog Post Publish and Reel Publish webhooks. n8n
+responds with HTTP 2xx as soon as the request is accepted (`onReceived`) and
+continues asynchronously.
 
-```bash
-git clone git@github.com:bbaumgartner/syndicator.git ~/git/syndicator && cd ~/git/syndicator
-curl -LsSf https://astral.sh/uv/install.sh | sh     # if uv is missing
-uv sync
-cp config.local.yaml.example config.local.yaml      # adjust paths + sftp_key!
-```
+### Invocation order
 
-Requirements:
+1. Upload all files for the post under `<base>/<slug>/source/`.
+2. For each local video: `POST` **Reel Publish** (zero or more calls).
+3. `POST` **Blog Post Publish** once.
 
-- The Syncthing-synced Logseq graph (`saillog_dir`).
-- A local clone of the Hugo site repo with push access — the site commit is a
-  manual step in that checkout.
-- An SSH key for the chrooted `sftp` staging user (`sftp_key`), reachable at
-  the host in `syndicator.yaml` (`sftp.host`).
-- The two n8n production webhook URLs, filled into `syndicator.yaml`
-  (`webhooks.publish_url` / `webhooks.reel_url`) once the workflows are active.
-- Video/image **adapt** for reels runs on the n8n host via the **pyautoflip**
-  sidecar ([`services/pyautoflip/`](services/pyautoflip/)) for saliency-aware
-  reframing; still images use Edit Image + OpenAI crop-focus.
+Do not fire webhooks before the referenced source files exist on SFTP.
 
-No `OPENAI_API_KEY` is needed locally; crop-focus, translation and captions use
-the OpenAI credential stored in n8n. See [docs/n8n-media-adapt-notes.md](docs/n8n-media-adapt-notes.md).
+### SFTP layout
 
-The homepage journey-map video is **not** produced by syndicator — use the
-separate [journeymap](https://github.com/bbaumgartner/journeymap) tool and
-commit `static/journey-map.mp4` in the sailingnomads checkout.
+Base directory is typically `/syndicator` (chrooted SFTP user).
 
-## Commands
-
-Only two commands remain:
-
-```bash
-uv run syndicator syndicate                 # all new online posts (no marker yet)
-uv run syndicator syndicate --post <slug>   # only that post
-uv run syndicator redeploy --post <slug>    # site-only rebuild (re-translates), no drafts
-uv run syndicator version
-```
-
-`syndicate` per invocation: per post upload originals under `source/` → one
-`/reel` per video → `/publish` → write the `syndicated-at::` marker once every
-webhook returned HTTP 200.
-Already-marked posts are skipped (re-running would
-create duplicate drafts). A `status:: online` post **without a `header::` image
-is refused** before any work (reported and skipped in batch; the others continue)
-— the site build requires a featured image and the intro posts are built from
-header crops produced in n8n.
-
-`redeploy` ignores the marker and re-runs the site only (`flags.redeploy: true`
-→ n8n overwrites the Hugo files in the mirrored staging tree, but creates no
-drafts).
-
-The second half of a publish is **manual by design**. The complete Hugo tree is
-already laid out on SFTP like the repository:
+**Client writes (immutable originals):**
 
 ```text
-/syndicator/sailingnomads/
-└── content/posts/<slug>/
-    ├── index.de.md
-    ├── index.en.md
-    ├── …
-    └── <all post media>
+<base>/<slug>/source/
+├── header.<ext>          # featured image (required for publish)
+├── photo.jpg             # body assets by basename
+└── clip.mp4
 ```
 
-Fetch `/syndicator/sailingnomads/` recursively into the existing
-`/Users/benno/git/sailingnomads/` checkout, review `git diff`, then commit and
-push. There is no manifest or rearranging step.
+| Path | Role |
+|------|------|
+| `<base>/<slug>/source/<filename>` | Original media uploaded by the caller |
+| `<base>/<slug>/source/header.<ext>` | Featured/header image (basename convention) |
 
-## Daily workflow
+**n8n writes (downstream; not a client write):**
 
-### New blog post
+```text
+<base>/hugo-site/
+└── content/posts/<slug>/
+    ├── index.<lang>.md
+    ├── …
+    └── <post media>
+```
 
-1. Write in Logseq as usual, add a `header::` image, set `status:: online`.
-2. Run `uv run syndicator syndicate` (optionally `--post <slug>`).
-3. Once n8n has finished (a few minutes), fetch
-   `/syndicator/sailingnomads/` into the local `sailingnomads` checkout,
-   review, commit and push — that takes the site live. Intro + reel **drafts**
-   appear in the **Postiz calendar**.
-4. In Postiz: edit captions if needed, tag locations, and **schedule** each
-   draft. Nothing reaches a platform until you schedule it there.
+Operators fetch `/syndicator/hugo-site/` into their Hugo site checkout, review,
+commit, and push. Social derivatives (header crops, reel encodings) may also
+appear under `<base>/<slug>/` as produced by Adapt workflows.
 
-### Cutover (once)
+Auth: key-only SFTP for a chrooted staging user.
 
-Before the first batch `syndicate`, **hand-seed** `syndicated-at::` on every
-already-published `status:: online` post so they are not re-drafted.
+### Blog Post Publish
 
-## Failure & recovery
+`POST` JSON to the configured publish webhook URL (path `/webhook/publish`).
 
-The `syndicated-at::` marker means **handed off**, not **published** (the n8n
-workflows acknowledge immediately and run async). Recovery depends on the failure class:
+Any HTTP 2xx means accepted. Response body is ignored. Callers typically retry
+a few times with backoff on transport/HTTP errors.
 
-- **Handoff failure** (a webhook never returns HTTP 200 after 3 local
-  retries): no marker is written, so the next `syndicate` re-runs the post.
-  Duplicates are harmless (the site staging is idempotent; delete duplicate
-  drafts by hand).
-- **Site async failure** (render / translate in n8n): run
-  `redeploy --post <slug>` — it ignores the marker and overwrites that post in
-  the mirrored Hugo staging tree.
-- **Social async failure** (Postiz drafts): no CLI path by design. Re-run the
-  failed execution in n8n (the failure email carries the execution URL) or fix
-  the draft directly in Postiz.
+```json
+{
+  "slug": "2024-06-14_Renan",
+  "meta": {
+    "title": "Renan",
+    "date": "2024-06-14",
+    "language": "english",
+    "lang_code": "en",
+    "author": "Benno",
+    "summary": "Short summary…",
+    "position": "38.98000,1.430000"
+  },
+  "post_url": "https://example.org/posts/2024-06-14_renan/",
+  "blocks": [
+    {"kind": "text", "raw": "First paragraph…"},
+    {"kind": "title", "raw": "### The Idea", "heading_level": 3},
+    {
+      "kind": "media",
+      "media": {
+        "kind": "image",
+        "source_filename": "photo.jpg",
+        "alt": "photo"
+      }
+    },
+    {
+      "kind": "youtube",
+      "media": {"kind": "youtube", "youtube_id": "FAIZtHHsbSM"}
+    },
+    {
+      "kind": "media",
+      "media": {
+        "kind": "video",
+        "source_filename": "clip.mp4",
+        "alt": "clip"
+      }
+    }
+  ],
+  "header_source": "header.jpg",
+  "flags": {"redeploy": false}
+}
+```
 
-The `Syndicator Error` n8n workflow emails every production failure (workflow
-name, error, execution URL); that URL is the entry point for manual recovery.
+| Field | Meaning |
+|-------|---------|
+| `slug` | Post id; must match the SFTP directory name under `<base>/` |
+| `meta.*` | Title, date, language word + `lang_code`, author, summary, position |
+| `post_url` | Canonical URL for the post (caller-computed) |
+| `blocks[]` | Ordered content; kinds `title`, `text`, `youtube`, `media` |
+| `blocks[].media.source_filename` | Basename already present under `…/source/` |
+| `header_source` | Basename of the header file under `…/source/` (e.g. `header.jpg`) |
+| `flags.redeploy` | `false` = full publish (site + social drafts); `true` = site-only rebuild, no drafts |
 
-## Troubleshooting
+### Reel Publish
 
-- **Webhook HTTP errors / timeouts:** check the n8n workflow is active and the
-  URL in `syndicator.yaml` matches the production webhook. Webhooks respond
-  immediately (`onReceived`); a long wait usually means n8n itself is unreachable,
-  not that the workflow is still queued.
-- **SFTP upload fails:** verify `sftp_key`, `sftp.host`/`sftp.user`, and that
-  the `/syndicator/` base dir exists in the chroot (see the migration doc §8).
-- **Post refused for missing header:** add a `header::` image and re-run.
-- **Caption/model or translation quality:** the cloud prompts and model names
-  live on the n8n OpenAI nodes (authoritative for the cloud steps); the local
-  `prompts/` + `syndicator.yaml` only cover the local crop-focus model.
-- **Staging area fills up:** nobody deletes automatically; purge the SFTP
-  `/syndicator/` tree periodically by hand (e.g. a cron `find -mtime` job).
+`POST` JSON to the configured reel webhook URL (path `/webhook/reel`).
+One call per local video. The file named in `source.filename` must already exist
+under `<base>/<slug>/source/`.
+
+```json
+{
+  "slug": "2024-06-14_Renan",
+  "post": {
+    "title": "Renan",
+    "url": "https://example.org/posts/2024-06-14_renan/",
+    "summary": "Short summary…",
+    "lang_code": "en"
+  },
+  "video": {
+    "index": 1,
+    "section_title": "The Player",
+    "section_text": "Prose with a [VIDEO] marker at the clip…",
+    "alt": "dingy.mp4"
+  },
+  "source": {"filename": "dingy.mp4"}
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `video.index` | 1-based index of this video in the post |
+| `video.section_title` | Nearest section heading, if any |
+| `video.section_text` | Caption context; conventionally includes a `[VIDEO]` marker |
+| `source.filename` | Basename under `…/source/` |
+
+### Effects
+
+After acceptance, n8n asynchronously:
+
+- Adapts stills and reels (Edit Image / OpenAI crop-focus; pyautoflip for saliency reframing)
+- Translates and writes Hugo bundles under `<base>/hugo-site/content/posts/<slug>/`
+- Creates **Postiz drafts** for intro posts and reels (unless `flags.redeploy: true`)
+
+There is **no editor-side marker** in this interface. Callers (e.g. logseq-blogger)
+own their own “already handed off” state.
+
+---
+
+## Server-side pieces in this repo
+
+### pyautoflip sidecar
+
+HTTP wrapper around saliency-aware video reframing for the n8n Adapt Reel Media
+workflow. See [`services/pyautoflip/README.md`](services/pyautoflip/README.md)
+for the `/health` and `/reframe` API and how to wire it into the n8n compose
+stack. This is an implementation detail of reel adapt, not part of the public
+webhook contract above.
+
+### Operating notes
+
+- Activate the Blog Post Publish and Reel Publish n8n workflows and point
+  callers at the production webhook URLs.
+- Staging is not garbage-collected automatically; purge `/syndicator/`
+  periodically (e.g. `find -mtime`).
+- Align the n8n Hugo output directory with this contract: `<base>/hugo-site/`
+  (not a site-specific name).
+
+## Related
+
+- [logseq-blogger](https://github.com/bbaumgartner/logseq-blogger) — Logseq
+  `type:: blog` client of this interface

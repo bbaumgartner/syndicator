@@ -1,13 +1,16 @@
-# Python
+# Editor / OS
+.DS_Store
+.vscode/
+
+# Leftover local Python tooling (pyautoflip builds use Docker)
 .venv/
 __pycache__/
 *.pyc
 .pytest_cache/
 .ruff_cache/
-.vscode
 dist/
 
-# Machine-specific configuration and secrets
-config.local.yaml
+# Secrets
 .env
-
+config.local.yaml
+.mypy_cache/

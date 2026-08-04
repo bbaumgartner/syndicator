@@ -98,6 +98,5 @@ docker build -t syndicator-pyautoflip:local .
 
 ## n8n workflow
 
-**Adapt Reel Media** (`y9TTx7N8Iygn88ry`) calls this service. A validated SDK
-reference of the graph lives in [`adapt-reel-media.workflow.js`](adapt-reel-media.workflow.js)
-(for rebuilds; the live workflow is edited in n8n).
+**Adapt Reel Media** (`y9TTx7N8Iygn88ry`) calls this service. The live workflow
+is edited in n8n.
