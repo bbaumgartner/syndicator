@@ -28,8 +28,8 @@ Paths must stay under `/files` (or `$PYAUTOFLIP_FILES_ROOT`). Response includes
 
 **Upstream workarounds** (applied in `app.py` before `reframe_video`):
 
-- Disable saliency split-screen (`needs_split_screen` → always false); keep single-crop.
-- Fix `"4:5"` mapping (`_aspect_ratio_to_tuple` would otherwise fall back to **3:4**).
+- Disable saliency split-screen (`needs_split_screen` → always false); keep single-crop. [pyautoflip issue](https://github.com/AhmedHisham1/pyautoflip/issues/7)
+- Fix `"4:5"` mapping (`_aspect_ratio_to_tuple` would otherwise fall back to **3:4**) [pyautoflip issue](https://github.com/AhmedHisham1/pyautoflip/issues/6).
 
 ## Wire into the n8n host
 
