@@ -1,0 +1,394 @@
+{
+  "name": "Adapt Reel Media",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "slug"
+            },
+            {
+              "name": "index",
+              "type": "number"
+            },
+            {
+              "name": "source_filename"
+            }
+          ]
+        }
+      },
+      "id": "6024007e-b60d-4d7d-8367-2a5170c677b0",
+      "name": "Adapt Reel Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nconst slug = String(j.slug || 'unknown');\nconst index = Number(j.index || 1);\nconst source_filename = String(j.source_filename || '').trim();\nconst source_sftp_path = '/syndicator/' + slug + '/source/' + source_filename;\nconst base = '/files';\nconst safeSlug = slug.split('').map((c) => /[a-zA-Z0-9_]/.test(c) ? c : '_').join('').slice(0, 60);\nconst stamp = safeSlug + '-' + index + '-' + Date.now();\nconst source_local = base + '/syndicator-source-' + stamp + '.mp4';\nreturn [{ json: {\n  slug: slug,\n  index: index,\n  source_filename: source_filename,\n  source_sftp_path: source_sftp_path,\n  source_local: source_local,\n  video_4x5_local: base + '/syndicator-video-' + stamp + '-4x5.mp4',\n  video_9x16_local: base + '/syndicator-video-' + stamp + '-9x16.mp4',\n  video_4x5_sftp: '/syndicator/' + slug + '/reels/4x5/' + index + '.mp4',\n  video_9x16_sftp: '/syndicator/' + slug + '/reels/9x16/' + index + '.mp4',\n} }];"
+      },
+      "id": "46f8dd7d-9ead-45cf-ad9c-a6e0be30a879",
+      "name": "Resolve Paths",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "protocol": "sftp",
+        "path": "={{ $json.source_sftp_path }}",
+        "options": {}
+      },
+      "id": "1467dfaf-5f3d-453b-bb1d-d906c42bcb5a",
+      "name": "Download Source",
+      "type": "n8n-nodes-base.ftp",
+      "typeVersion": 1,
+      "position": [
+        448,
+        -16
+      ],
+      "credentials": {
+        "sftp": {
+          "id": "FBrOT9WTXTtyPdxi",
+          "name": "FTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $('Resolve Paths').item.json.source_local }}",
+        "options": {}
+      },
+      "id": "499b8c19-3f2a-4705-adc8-bf470e9b02ce",
+      "name": "Write Source Local",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "protocol": "sftp",
+        "operation": "upload",
+        "path": "={{ $('Plan Reframe').item.json.video_4x5_sftp }}",
+        "options": {}
+      },
+      "id": "f199b77d-8e6d-4ba8-b837-28b255e24536",
+      "name": "Upload Reel",
+      "type": "n8n-nodes-base.ftp",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        -112
+      ],
+      "credentials": {
+        "sftp": {
+          "id": "FBrOT9WTXTtyPdxi",
+          "name": "FTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const trigger = $('Adapt Reel Trigger').first().json;\nconst plan = $('Plan Reframe').first().json;\nreturn [{\n  json: {\n    slug: trigger.slug,\n    index: trigger.index,\n    source_filename: trigger.source_filename,\n    video_4x5_sftp: plan.video_4x5_sftp,\n    video_4x5_local: plan.video_4x5_local,\n    video_9x16_sftp: plan.video_9x16_sftp,\n    video_9x16_local: plan.video_9x16_local,\n  },\n}];"
+      },
+      "id": "1f70fba6-eebb-40ea-ba42-813c951b3bf4",
+      "name": "Build Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "protocol": "sftp",
+        "operation": "upload",
+        "path": "={{ $('Plan Reframe').item.json.video_9x16_sftp }}",
+        "options": {}
+      },
+      "id": "0ed402a8-830f-420e-bb82-3183564bb162",
+      "name": "Upload Reel 9:16",
+      "type": "n8n-nodes-base.ftp",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        80
+      ],
+      "credentials": {
+        "sftp": {
+          "id": "FBrOT9WTXTtyPdxi",
+          "name": "FTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "90ae4bda-f534-4b1a-a73b-6ea1a3c0d80e",
+      "name": "Merge Variants",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1792,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $('Resolve Paths').first().json;\nreturn [{ json: {\n  ...p,\n  method: 'saliency',\n  motion_threshold: 0.5,\n  padding_method: 'blur',\n} }];"
+      },
+      "id": "f6947faa-d588-4dfc-8126-7bca606226f4",
+      "name": "Plan Reframe",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://pyautoflip:8080/reframe",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ input_path: $json.source_local, output_path: $json.video_4x5_local, aspect_ratio: '4:5', method: $json.method, motion_threshold: $json.motion_threshold, padding_method: $json.padding_method }) }}",
+        "options": {
+          "timeout": 900000
+        }
+      },
+      "id": "11c637e5-a516-4200-b4dd-aff10958cbf5",
+      "name": "Reframe 4:5",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1120,
+        -112
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://pyautoflip:8080/reframe",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ input_path: $json.source_local, output_path: $json.video_9x16_local, aspect_ratio: '9:16', method: $json.method, motion_threshold: $json.motion_threshold, padding_method: $json.padding_method }) }}",
+        "options": {
+          "timeout": 900000
+        }
+      },
+      "id": "47fb782c-bc30-4950-85b2-4d8d98941fcb",
+      "name": "Reframe 9:16",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1120,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "fileSelector": "={{ $json.output_path }}",
+        "options": {
+          "dataPropertyName": "data"
+        }
+      },
+      "id": "db04f570-f012-44d9-aa13-6c3484e55a9f",
+      "name": "Read Reel 4:5",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        1344,
+        -112
+      ]
+    },
+    {
+      "parameters": {
+        "fileSelector": "={{ $json.output_path }}",
+        "options": {
+          "dataPropertyName": "data"
+        }
+      },
+      "id": "8e5b2a15-8a7a-408d-8c67-3e22367afc79",
+      "name": "Read Reel 9:16",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        1344,
+        80
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Adapt Reel Trigger": {
+      "main": [
+        [
+          {
+            "node": "Resolve Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Paths": {
+      "main": [
+        [
+          {
+            "node": "Download Source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Source": {
+      "main": [
+        [
+          {
+            "node": "Write Source Local",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Reel": {
+      "main": [
+        [
+          {
+            "node": "Merge Variants",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Reel 9:16": {
+      "main": [
+        [
+          {
+            "node": "Merge Variants",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Variants": {
+      "main": [
+        [
+          {
+            "node": "Build Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Source Local": {
+      "main": [
+        [
+          {
+            "node": "Plan Reframe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Reframe": {
+      "main": [
+        [
+          {
+            "node": "Reframe 4:5",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Reframe 9:16",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reframe 4:5": {
+      "main": [
+        [
+          {
+            "node": "Read Reel 4:5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reframe 9:16": {
+      "main": [
+        [
+          {
+            "node": "Read Reel 9:16",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Reel 4:5": {
+      "main": [
+        [
+          {
+            "node": "Upload Reel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Reel 9:16": {
+      "main": [
+        [
+          {
+            "node": "Upload Reel 9:16",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true,
+    "errorWorkflow": "O6fHa4LyBB7P71nU",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "8cefc5a7-d530-4994-8ab3-0f48b158919e",
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "instanceId": "91b62e007400f324d5abda851b7466b395e6ae8249f94b33aa082b387b7fb350"
+  },
+  "nodeGroups": [],
+  "id": "y9TTx7N8Iygn88ry",
+  "tags": []
+}

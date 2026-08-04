@@ -1,0 +1,1363 @@
+{
+  "name": "Blog Post Publish",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "publish",
+        "options": {}
+      },
+      "id": "50db514b-76ca-4f03-9a74-28b2edbd6837",
+      "name": "Publish Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1600,
+        384
+      ],
+      "webhookId": "8dcea78d-b2de-49a7-8ebb-83a623cec475"
+    },
+    {
+      "parameters": {
+        "jsCode": "const src = $('Publish Webhook').first().json.body ?? $('Publish Webhook').first().json;\nconst lang = src.meta.lang_code || 'de';\nconst blocks = (src.blocks || []).map((b) => {\n  if (b.kind !== 'title' && b.kind !== 'text') return b;\n  const out = { kind: b.kind, [lang]: b.raw ?? b[lang] ?? '' };\n  if (b.heading_level != null) out.heading_level = b.heading_level;\n  return out;\n});\nreturn [{\n  json: {\n    slug: src.slug,\n    meta: src.meta,\n    source_lang: lang,\n    title: src.meta.title,\n    blocks,\n    translate_items: blocks.flatMap((b, i) =>\n      b.kind === 'title' || b.kind === 'text' ? [{ index: i, kind: b.kind, text: b[lang] }] : []\n    ),\n  },\n}];"
+      },
+      "id": "e404e3a5-e352-4cfc-bbeb-6abdf97752de",
+      "name": "Prepare Blocks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1376,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-5.4-mini"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "=You are an expert translator and localizer for a personal sailing and travel blog. Translate the post TITLE and each text/title block item from {{ {de:\"German\",en:\"English\",es:\"Spanish\",fr:\"French\",it:\"Italian\"}[$(\"Prepare Blocks\").item.json.source_lang] }} into every natural target language in en, es, fr, it that is not the source language {{ $(\"Prepare Blocks\").item.json.source_lang }}. Preserve ALL markdown exactly: links, headings, bold, italic, lists, tables. In image syntax ![alt](filename) you may translate the alt text but the filename in parentheses must stay byte for byte identical. Never change file paths or URLs. Keep proper nouns, place names and certification codes. Write fluent natural language that reads like a native blogger. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to readers. Return ONLY a JSON object of the form {\"translations\":[{\"lang_code\":\"en\",\"title\":\"...\",\"items\":[{\"index\":0,\"text\":\"...\"}]}]} with one entry per target language. Each items array must include every provided index with the translated text. Do not include the source language. Do not include pirate speak (arrr). Do not add any disclaimer line; it is appended later."
+            },
+            {
+              "content": "=TITLE:\n{{ $(\"Prepare Blocks\").item.json.title }}\n\nITEMS:\n{{ JSON.stringify($(\"Prepare Blocks\").item.json.translate_items) }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 16000,
+          "textFormat": {
+            "textOptions": {
+              "type": "json_object"
+            }
+          }
+        }
+      },
+      "id": "4e2ab00d-de21-415c-84b0-ec6bbda6b971",
+      "name": "Natural Language Translation",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        -1152,
+        384
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "MadfM6xwVCQEZSpV",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $(\"Publish Webhook\").item.json.body.flags.redeploy }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              },
+              "id": "a19e19e2-f058-4f2a-83c9-3cd21ba3675c"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1090e09f-2afe-444b-b2ea-5aba17fd83cf",
+      "name": "Skip Social If Redeploy",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -224,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "protocol": "sftp",
+        "path": "={{ $('Adapt Feature Image').item.json.header.facebook }}",
+        "options": {}
+      },
+      "id": "7ca330c5-d1f5-4bc2-a93f-8385682fbf6f",
+      "name": "Download Header FB",
+      "type": "n8n-nodes-base.ftp",
+      "typeVersion": 1,
+      "position": [
+        704,
+        192
+      ],
+      "credentials": {
+        "sftp": {
+          "id": "FBrOT9WTXTtyPdxi",
+          "name": "FTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "uploadFile",
+        "binaryProperty": "data"
+      },
+      "id": "b3c2d485-fcf5-446f-bce0-8c3a4b702427",
+      "name": "Upload Intro FB",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        928,
+        192
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "mkv19KbAM7doUSaU",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "type": "draft",
+        "date": "={{ $now.plus(1, \"days\").toISO() }}",
+        "posts": {
+          "post": [
+            {
+              "integrationId": "cmrmbindh050spg0ypnszg5ag",
+              "group": "={{ $(\"Publish Webhook\").item.json.body.slug }}-intro",
+              "settings": {
+                "setting": [
+                  {
+                    "key": "__type",
+                    "stringValue": "facebook"
+                  },
+                  {
+                    "key": "post_type",
+                    "stringValue": "post"
+                  }
+                ]
+              },
+              "value": {
+                "contentItem": [
+                  {
+                    "content": "={{ $('Caption Intro FB').item.json.output[0].content[0].text }}\n\n{{ $(\"Publish Webhook\").item.json.body.post_url }}",
+                    "image": {
+                      "imageItem": [
+                        {
+                          "id": "={{ $json.id }}",
+                          "path": "={{ $json.path }}"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "e246e3de-0d94-4ee4-a633-6ed3696e7261",
+      "name": "Create Intro FB Draft",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        1152,
+        192
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "mkv19KbAM7doUSaU",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "protocol": "sftp",
+        "path": "={{ $('Adapt Feature Image').item.json.header.instagram }}",
+        "options": {}
+      },
+      "id": "6c6bd7a8-85ac-4642-a0ed-b7651e667aa3",
+      "name": "Download Header IG",
+      "type": "n8n-nodes-base.ftp",
+      "typeVersion": 1,
+      "position": [
+        704,
+        384
+      ],
+      "credentials": {
+        "sftp": {
+          "id": "FBrOT9WTXTtyPdxi",
+          "name": "FTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "uploadFile",
+        "binaryProperty": "data"
+      },
+      "id": "5c43cc84-b8c7-40d8-adf3-84c6894e6c85",
+      "name": "Upload Intro IG",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        928,
+        384
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "mkv19KbAM7doUSaU",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "type": "draft",
+        "date": "={{ $now.plus(1, \"days\").toISO() }}",
+        "posts": {
+          "post": [
+            {
+              "integrationId": "cmrmbjfkp00win60ybjz64sxw",
+              "group": "={{ $(\"Publish Webhook\").item.json.body.slug }}-intro",
+              "settings": {
+                "setting": [
+                  {
+                    "key": "__type",
+                    "stringValue": "instagram"
+                  },
+                  {
+                    "key": "post_type",
+                    "stringValue": "post"
+                  }
+                ]
+              },
+              "value": {
+                "contentItem": [
+                  {
+                    "content": "={{ $('Caption Intro IG').item.json.output[0].content[0].text }}",
+                    "image": {
+                      "imageItem": [
+                        {
+                          "id": "={{ $json.id }}",
+                          "path": "={{ $json.path }}"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "ae8c9865-804f-487e-b081-ece115e498b4",
+      "name": "Create Intro IG Draft",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        1152,
+        384
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "mkv19KbAM7doUSaU",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "protocol": "sftp",
+        "path": "={{ $('Adapt Feature Image').item.json.header.x }}",
+        "options": {}
+      },
+      "id": "654e05e6-b06e-462c-9f82-e2f9e0428fa7",
+      "name": "Download Header X",
+      "type": "n8n-nodes-base.ftp",
+      "typeVersion": 1,
+      "position": [
+        704,
+        576
+      ],
+      "credentials": {
+        "sftp": {
+          "id": "FBrOT9WTXTtyPdxi",
+          "name": "FTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "uploadFile",
+        "binaryProperty": "data"
+      },
+      "id": "437bf9d8-7b06-4097-bd3f-e61d7a4e399e",
+      "name": "Upload Intro X",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        928,
+        576
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "mkv19KbAM7doUSaU",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "type": "draft",
+        "date": "={{ $now.plus(1, \"days\").toISO() }}",
+        "posts": {
+          "post": [
+            {
+              "integrationId": "cmrmbk0b9050zpg0ytkz5uy0r",
+              "group": "={{ $(\"Publish Webhook\").item.json.body.slug }}-intro",
+              "settings": {
+                "setting": [
+                  {
+                    "key": "__type",
+                    "stringValue": "x"
+                  },
+                  {
+                    "key": "who_can_reply_post",
+                    "stringValue": "everyone"
+                  }
+                ]
+              },
+              "value": {
+                "contentItem": [
+                  {
+                    "content": "={{ $('Caption Intro X').item.json.output[0].content[0].text }}",
+                    "image": {
+                      "imageItem": [
+                        {
+                          "id": "={{ $json.id }}",
+                          "path": "={{ $json.path }}"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "d0c30e04-5d43-4090-a805-aaf1f29c3eff",
+      "name": "Create Intro X Draft",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        1152,
+        576
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "mkv19KbAM7doUSaU",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-5.4-mini"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "=You write a Facebook intro post for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Goal: make people click through to the blog post. Write in English. You get the blog post TITLE, SUMMARY, CONTENT and an optional POSITION HINT. Summarize the whole post and make people want to read it. Write 2 to 4 short, warm, personal paragraphs with a strong first-line hook. A tasteful emoji is fine. End with a light call to action. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends. Do NOT include any URL. After the caption, add 0 to 3 relevant hashtags on their own final line, each starting with #. Return ONLY the caption text followed by that hashtag line."
+            },
+            {
+              "content": "=TITLE:\n{{ $('Publish Webhook').item.json.body.meta.title }}\n\nSUMMARY:\n{{ $('Publish Webhook').item.json.body.meta.summary }}\n\nCONTENT:\n{{ $('Publish Webhook').item.json.body.blocks.filter(item => item.kind == 'text').map(item => item.raw).join('\\n') }}\n\nPOSITION HINT:\n{{ $('Publish Webhook').item.json.body.meta.position }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 800
+        }
+      },
+      "id": "b9f35c3c-120a-43c7-85ab-0b481554b7ea",
+      "name": "Caption Intro FB",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        352,
+        192
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "MadfM6xwVCQEZSpV",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-5.4-mini"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "=You write an Instagram intro caption for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Goal: reach, saves and profile visits; the blog link lives in the bio. Write in English. You get the blog post TITLE, SUMMARY, CONTENT and an optional POSITION HINT. Summarize the whole post and make people want to read it. The first line must hook within about 125 characters. Short airy paragraphs, emojis welcome but not overloaded. End with a question or a save-this nudge. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends. Do NOT include any URL or a link-in-bio call to action. After the caption, add 5 to 8 specific hashtags on their own final line, each starting with #, mixing niche sailing and travel tags with location tags, avoiding banned or spammy tags. Return ONLY the caption text followed by that hashtag line."
+            },
+            {
+              "content": "=TITLE:\n{{ $('Publish Webhook').item.json.body.meta.title }}\n\nSUMMARY:\n{{ $('Publish Webhook').item.json.body.meta.summary }}\n\nCONTENT:\n{{ $('Publish Webhook').item.json.body.blocks.filter(item => item.kind == 'text').map(item => item.raw).join('\\n') }}\n\nPOSITION HINT:\n{{ $('Publish Webhook').item.json.body.meta.position }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 800
+        }
+      },
+      "id": "67644765-2fa4-47bd-9f00-812e5c8e8358",
+      "name": "Caption Intro IG",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        352,
+        384
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "MadfM6xwVCQEZSpV",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-5.4-mini"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "=You write an X (Twitter) intro post for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Goal: grow the audience and earn interest in the blog. Write in English. You get the blog post TITLE, SUMMARY, CONTENT and an optional POSITION HINT. Summarize the whole post in one punchy thought: a hook, a vivid detail or a dry observation. Plain language, at most one emoji. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends. Do NOT include any URL. End the post with 0 to 2 short relevant hashtags, each starting with #. The entire post including the hashtags must be at most 240 characters. Return ONLY the post text followed by the hashtags."
+            },
+            {
+              "content": "=TITLE:\n{{ $('Publish Webhook').item.json.body.meta.title }}\n\nSUMMARY:\n{{ $('Publish Webhook').item.json.body.meta.summary }}\n\nCONTENT:\n{{ $('Publish Webhook').item.json.body.blocks.filter(item => item.kind == 'text').map(item => item.raw).join('\\n') }}\n\nPOSITION HINT:\n{{ $('Publish Webhook').item.json.body.meta.position }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 300
+        }
+      },
+      "id": "83299979-23e7-4c25-9a9a-a1ca15d21ca6",
+      "name": "Caption Intro X",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        352,
+        576
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "MadfM6xwVCQEZSpV",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Ye be a foul-mouthed, barnacle-covered sea dog of a rewriter. Rewrite the followin' English blog text items into the most extreme, over-the-top pirate speak imaginable, like a mad captain three sheets to the wind on the high seas.\n\nVOICE (avoid LLM tells):\n- Do not use the em dash. Use a comma, full stop, colon, or rephrase instead.\n- Avoid words and phrases common in AI-generated text, such as: delve, tapestry, nestled, vibrant, crucial, furthermore, moreover, it's worth noting, in conclusion, showcase, underscore, leverage, embark on a journey, robust, seamless, multifaceted, pivotal, foster, realm, landscape (figurative).\n- Sound like a person writing for readers, not an assistant drafting a summary.\n\nSTYLE:\n- Keep the same meaning, structure, and humor as the original; only the voice changes.\n- Go EXTREME with pirate speak; every sentence must drip with nautical swagger:\n  - Replace you/your with ye/yer throughout\n  - Replace my/I/me with me throughout\n  - Replace is/are/was with be throughout\n  - Replace the with th' frequently\n  - Pepper every few sentences with outbursts like ARRR!, BLIMEY!, SHIVER ME TIMBERS!, AVAST!, BY DAVY JONES' LOCKER!\n  - Replace mundane words with nautical equivalents where it fits (house to vessel, car to horseless carriage, toilet to the poop deck, travel to voyage, money to doubloons, etc.)\n  - Add dramatic pirate interjections mid-paragraph occasionally\n\nRULES:\n1. Preserve ALL markdown formatting exactly (links, images, headers, bold, italic, lists, tables, etc.)\n2. In image syntax ![alt](filename.jpg), you may change alt text but the filename inside parentheses must stay byte-for-byte identical to the source\n3. Keep proper nouns, place names, and certification codes unchanged\n4. Do not change file paths or URLs\n5. Keep the original title unchanged\n6. Return ONLY a JSON object of the form {\"translations\":[{\"lang_code\":\"arrr\",\"title\":\"...\",\"items\":[{\"index\":0,\"text\":\"...\"}]}]}. The items array must cover every English item index. No explanations or notes. Do not add any disclaimer line; it is appended later."
+            },
+            {
+              "content": "=The previous step returned natural-language translations as JSON. Find the entry with lang_code \"en\". Rewrite ONLY that English items[].text into pirate speak. Keep this title unchanged:\n{{ $(\"Prepare Blocks\").item.json.title }}\n\nPREVIOUS STEP OUTPUT:\n{{ JSON.stringify($json) }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 16000,
+          "textFormat": {
+            "textOptions": {
+              "type": "json_object"
+            }
+          },
+          "temperature": 0.9
+        }
+      },
+      "id": "ba5604a4-761b-4ed7-bb46-b84b32875766",
+      "name": "Pirate Speak Generator",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        -800,
+        384
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "MadfM6xwVCQEZSpV",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const { slug, meta, blocks, titles, source_lang: src } = $('Assemble Multilingual Blocks').item.json;\nconst q = JSON.stringify;\nconst VIDEO_RE = /\\.(mp4|mov|m4v|webm|avi|mkv|mpeg|mpg)$/i;\nfunction hugoBasename(name) {\n  const n = String(name || '');\n  if (!n) return n;\n  if (VIDEO_RE.test(n)) return n.replace(/\\.[^.]+$/, '') + '.mp4';\n  return n;\n}\nfunction rewriteHugoNames(text) {\n  return String(text || '')\n    .replace(/\\{\\{<\\s*video\\s+src=\"([^\"]+)\"\\s*>\\}\\}/g, (_, s) => `{{< video src=\"${hugoBasename(s)}\" >}}`)\n    .replace(/!\\[([^\\]]*)\\]\\(([^)]+)\\)/g, (full, alt, file) => {\n      if (!VIDEO_RE.test(file)) return full;\n      return `![${alt}](${hugoBasename(file)})`;\n    });\n}\nconst fm = (t, s) => `+++\\ndate = ${q(meta.date)}\\nlastmod = ${q(meta.date)}\\ndraft = false\\ntitle = ${q(t)}\\nsummary = ${q(s)}\\n[params]\\n  author = ${q(meta.author)}\\n+++\\n\\n`;\nconst emit = (b, lang) => {\n  if (b.kind === 'title' || b.kind === 'text') return rewriteHugoNames(b[lang] || '');\n  if (b.kind === 'youtube') return `{{< youtube ${b.media.youtube_id} >}}`;\n  const m = b.media;\n  const name = hugoBasename(m.source_filename || '');\n  return m.kind === 'video' ? `{{< video src=\"${name}\" >}}` : `![${m.alt || ''}](${name})`;\n};\nconst body = (lang) => blocks.map((b) => emit(b, lang)).filter(Boolean).join('\\n\\n');\nconst firstPara = (bd) => {\n  const out = [];\n  for (const line of bd.split('\\n')) {\n    const t = line.trim();\n    if (!out.length && !t) continue;\n    if (out.length && (!t || t[0] === '#' || t === '---' || t === '***' || t === '___')) break;\n    out.push(line);\n  }\n  return out.join(' ').trim();\n};\nconst DISC = {\n  en: '*This blog post has been automatically translated by a Large Language Model.',\n  de: '*Dieser Blogbeitrag wurde automatisch von einem Large Language Model uebersetzt.',\n  es: '*Esta publicacion de blog ha sido traducida automaticamente por un Large Language Model.',\n  fr: '*Cet article de blog a ete traduit automatiquement par un Large Language Model.',\n  it: '*Questo post del blog e stato tradotto automaticamente da un Large Language Model.',\n  arrr: \"*Arrr, this here blog post be rewritten in the tongue o' pirates by a Large Language Model, ye scallywag!*\",\n};\nreturn [{\n  json: {\n    indexFiles: Object.keys(titles).map((code) => {\n      const b = body(code).replace(/[\\s\\r\\n]+$/, '');\n      const full = code === src ? b : `${b}\\n\\n---\\n\\n${DISC[code] || ''}`;\n      const summary = code === src ? (meta.summary || firstPara(full)) : firstPara(full);\n      return { repo_path: `content/posts/${slug}/index.${code}.md`, content: fm(titles[code] || meta.title, summary) + full + '\\n' };\n    }),\n  },\n}];"
+      },
+      "id": "87e5c0d9-dc1a-4cd7-a831-5beb7f9435bd",
+      "name": "Generate Hugo Index MDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        64,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const prep = $('Prepare Blocks').item.json;\nconst parseTr = (j) => {\n  let t = j?.output?.[0]?.content?.[0]?.text ?? j;\n  if (typeof t === 'string') t = JSON.parse(t);\n  return t.translations || [];\n};\nconst LANG_NAMES = { en: 'english', de: 'german', es: 'spanish', fr: 'french', it: 'italian', arrr: 'pirate' };\nconst blocks = prep.blocks.map((b) => ({ ...b }));\nconst titles = { [prep.source_lang]: prep.title };\nfor (const tr of [...parseTr($('Natural Language Translation').item.json), ...parseTr($('Pirate Speak Generator').item.json)]) {\n  const code = tr.lang_code;\n  if (!code || code === prep.source_lang) continue;\n  titles[code] = code === 'arrr' ? prep.title : (tr.title || prep.title);\n  for (const { index: i, text } of tr.items || []) {\n    if (blocks[i] && (blocks[i].kind === 'title' || blocks[i].kind === 'text')) blocks[i][code] = text ?? '';\n  }\n}\nconst flat = {};\nfor (const code of Object.keys(titles)) {\n  const name = LANG_NAMES[code];\n  if (!name) continue;\n  const title = titles[code] || '';\n  const body = blocks\n    .filter((b) => b.kind === 'title' || b.kind === 'text')\n    .map((b) => b[code] || '')\n    .filter(Boolean)\n    .join('\\n\\n');\n  flat[`${name}_text`] = [title, body].filter(Boolean).join('\\n\\n');\n}\nreturn [{ json: { slug: prep.slug, meta: prep.meta, source_lang: prep.source_lang, blocks, titles, ...flat } }];"
+      },
+      "id": "26ef7f10-7b46-4a2b-a384-4ba59d34e2c2",
+      "name": "Assemble Multilingual Blocks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const root = '/syndicator/hugo-site';\nreturn $('Generate Hugo Index MDs').first().json.indexFiles.map((f) => ({\n  json: {\n    sftp_path: `${root}/${f.repo_path}`,\n    content: f.content,\n  },\n}));"
+      },
+      "id": "1301589f-ac65-4019-985e-ebe2768c5c53",
+      "name": "Stage Site Files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "protocol": "sftp",
+        "operation": "upload",
+        "path": "={{ $json.sftp_path }}",
+        "binaryData": false,
+        "fileContent": "={{ $json.content }}",
+        "options": {}
+      },
+      "id": "9429c516-3ce2-4936-8879-3bd6d59746f7",
+      "name": "Upload Site Files",
+      "type": "n8n-nodes-base.ftp",
+      "typeVersion": 1,
+      "position": [
+        704,
+        0
+      ],
+      "credentials": {
+        "sftp": {
+          "id": "FBrOT9WTXTtyPdxi",
+          "name": "FTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "OGa6Xa8GxkSmA7Cr",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/OGa6Xa8GxkSmA7Cr",
+          "cachedResultName": "Adapt Hugo Media"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "slug": "={{ ($('Publish Webhook').item.json.body || $('Publish Webhook').item.json).slug }}",
+            "blocks": "={{ ($('Publish Webhook').item.json.body || $('Publish Webhook').item.json).blocks || [] }}",
+            "header_source": "={{ ($('Publish Webhook').item.json.body || $('Publish Webhook').item.json).header_source || '' }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "slug",
+              "displayName": "slug",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "blocks",
+              "displayName": "blocks",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "array",
+              "removed": false
+            },
+            {
+              "id": "header_source",
+              "displayName": "header_source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "c1744b55-8707-4599-b78e-2b40d6f6569e",
+      "name": "Adapt Hugo Media",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        -224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "8NOGn9jgOoV0fw0u",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/8NOGn9jgOoV0fw0u",
+          "cachedResultName": "Adapt Feature Image"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "slug": "={{ ($('Publish Webhook').item.json.body || $('Publish Webhook').item.json).slug }}",
+            "header_source": "={{ ($('Publish Webhook').item.json.body || $('Publish Webhook').item.json).header_source || '' }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "slug",
+              "displayName": "slug",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "header_source",
+              "displayName": "header_source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "15b5bb5e-180b-4e31-896c-f181f2d29705",
+      "name": "Adapt Feature Image",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        64,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.6-luna",
+          "mode": "list",
+          "cachedResultName": "GPT-5.6-LUNA"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a social media copywriter. Analyze the text below and identify only topics that are genuinely controversial or debate-provoking. Do not invent controversy that isn't there.\n\nFor each controversial topic found, generate one X (Twitter) post that:\n\n* Takes a sharp, opinionated, slightly provocative tone (not neutral or bland)\n* Is written in first person, as if posted by the author of the source text\n* Includes 3-5 relevant hashtags at the end of the post text\n* Has a total length (post text including hashtags) of 240 characters or fewer — count characters precisely and revise until each post fits\n\nRespond with only valid JSON, no markdown code fences, no commentary, no explanation before or after. Use exactly this schema:\n\n{\n  \"posts\": [\n    {\n      \"post_text\": \"string, the full post including hashtags, max 240 characters\",\n      \"hashtags\": [\"string\", \"string\", \"...\"]\n    }\n  ]\n}\n\nIf no controversial topics are found, respond with:\n\n{\"posts\": []}"
+            },
+            {
+              "content": "=Source text:\n\"\"\"\n{{ $json.english_text }}\n\"\"\""
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 2000,
+          "textFormat": {
+            "textOptions": {
+              "type": "json_object"
+            }
+          }
+        }
+      },
+      "id": "64161c3d-81bb-40d2-9ff8-653a8641af70",
+      "name": "Analyze Controversy X",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        0,
+        768
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "MadfM6xwVCQEZSpV",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "output.0.content.0.text.posts",
+        "options": {}
+      },
+      "id": "1003f4c8-7327-4fca-ab38-3b17deb61b5b",
+      "name": "Split Controversy Posts",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        416,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "type": "draft",
+        "date": "={{ $now.plus(2 + $itemIndex, \"days\").toISO() }}",
+        "posts": {
+          "post": [
+            {
+              "integrationId": "cmrmbk0b9050zpg0ytkz5uy0r",
+              "group": "={{ $('Publish Webhook').item.json.body.slug }}-controversy-{{ $itemIndex }}",
+              "settings": {
+                "setting": [
+                  {
+                    "key": "__type",
+                    "stringValue": "x"
+                  },
+                  {
+                    "key": "who_can_reply_post",
+                    "stringValue": "everyone"
+                  }
+                ]
+              },
+              "value": {
+                "contentItem": [
+                  {
+                    "content": "={{ $json.post_text }}"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "7ca47311-a300-4b89-b20a-b72c378c5d65",
+      "name": "Create Controversy X Draft",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        704,
+        768
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "mkv19KbAM7doUSaU",
+          "name": "Postiz account"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "Natural Language Translation": [
+      {
+        "json": {
+          "output": [
+            {
+              "id": "msg_08d5f9dc36e2084d006a6c5f6f6ce08191ba0b0e730f83071a",
+              "type": "message",
+              "status": "completed",
+              "content": [
+                {
+                  "type": "output_text",
+                  "annotations": [],
+                  "logprobs": [],
+                  "text": {
+                    "translations": [
+                      {
+                        "lang_code": "en",
+                        "title": "Pride and Prejudice",
+                        "items": [
+                          {
+                            "index": 0,
+                            "text": "We have both been to Hungary quite a few times. I had a development team at Siemens in Budapest, and Alex has distant relatives in Hungary."
+                          },
+                          {
+                            "index": 1,
+                            "text": "### Budapest"
+                          },
+                          {
+                            "index": 7,
+                            "text": "Pride is taking place in Budapest this weekend. Last year, the Orban government banned Pride, much to the city government’s annoyance. To enforce the ban, fines of 500 euros were threatened for each participant. The result was a march of 200,000 people and a landslide victory for the opposition in the following elections, which brought an end to 16 years of Orban."
+                          },
+                          {
+                            "index": 8,
+                            "text": "Of course, it would be presumptuous to claim that Pride brought down the government. But it was a final clear sign that people had had enough of the restrictions imposed by a corrupt government whose arrogance bordered on megalomania."
+                          },
+                          {
+                            "index": 9,
+                            "text": "Laszlo, with whom I worked at Siemens and whom we are meeting for coffee, thinks the new government has different goals, but is just as arrogant. Maybe a remnant from the K&K era?"
+                          },
+                          {
+                            "index": 10,
+                            "text": "In Budapest, everything is forbidden, and there is always some priggish person who makes sure to point out the rules to you in no uncertain terms. We already feel right at home. With a dog, this city is an obstacle course: I know perfectly well whether my dog can ride an escalator. Why is it always the right-wing conservatives who talk the loudest about freedom, personal responsibility, and independence, but then cover everything in rules, right down to who you are allowed to love and who you are not."
+                          },
+                          {
+                            "index": 11,
+                            "text": "### Hot"
+                          },
+                          {
+                            "index": 19,
+                            "text": "It is hot in Europe. The heatwave has moved east and is hitting us full force now. Heat records are falling all over the place this year, once again. These days, there seems to be a once-in-a-century summer every decade. Where have all the climate deniers gone? Somehow they have gone very quiet. Thanks for nothing."
+                          },
+                          {
+                            "index": 20,
+                            "text": "Visiting a city when it is nearly 40 degrees outside is not much fun. For Charly, it can also get dangerous quickly. So in Budapest we spend the afternoons in the hotel room. A shame, because it is a beautiful city with breathtaking architecture."
+                          },
+                          {
+                            "index": 21,
+                            "text": "### Flights"
+                          },
+                          {
+                            "index": 26,
+                            "text": "On Monday we are driving west from Budapest to Lake Balaton and then on to Vienna. Before Vienna, though, we are making a stop in Sooss to visit my school friend Flüge, who has been living here for 10 years."
+                          },
+                          {
+                            "index": 27,
+                            "text": "Just before Vienna, we will also celebrate the 200,000th birthday of our Schleppi, which is starting to show a bit of age-related weariness."
+                          }
+                        ]
+                      },
+                      {
+                        "lang_code": "es",
+                        "title": "Orgullo y prejuicio",
+                        "items": [
+                          {
+                            "index": 0,
+                            "text": "Los dos hemos estado en Hungría bastantes veces. Yo tenía un equipo de desarrollo en Siemens en Budapest, y Alex tiene parientes lejanos en Hungría."
+                          },
+                          {
+                            "index": 1,
+                            "text": "### Budapest"
+                          },
+                          {
+                            "index": 7,
+                            "text": "Este fin de semana se celebra el Pride en Budapest. El año pasado, el gobierno de Orban prohibió el Pride, para disgusto del gobierno de la ciudad. Para hacer cumplir la prohibición, amenazaron con multas de 500 euros a cada participante. El resultado fue una marcha de 200.000 personas y una victoria aplastante de la oposición en las elecciones posteriores, que puso fin a 16 años de Orban."
+                          },
+                          {
+                            "index": 8,
+                            "text": "Claro que sería exagerado afirmar que el Pride provocó la caída del gobierno. Pero fue una última señal clara de que la gente estaba harta de las restricciones impuestas por un gobierno corrupto, cuya arrogancia rozaba la megalomanía."
+                          },
+                          {
+                            "index": 9,
+                            "text": "Laszlo, con quien trabajé en Siemens y con quien quedamos para tomar un café, opina que el nuevo gobierno tiene otros objetivos, pero que es igual de arrogante. ¿Quizá un vestigio de la época k.u.k.?"
+                          },
+                          {
+                            "index": 10,
+                            "text": "En Budapest todo está prohibido, y siempre hay algún hortera que se encarga de recordarte las prohibiciones con mucho énfasis. Ya casi nos sentimos como en casa. Con un perro, esta ciudad es un suplicio: yo ya sé si mi perro puede subir en escaleras mecánicas. ¿Por qué son siempre los conservadores de derechas los que más hablan de libertad, responsabilidad personal e independencia, pero luego lo regulan todo, hasta quién puede amar a quién y quién no?"
+                          },
+                          {
+                            "index": 11,
+                            "text": "### Calor"
+                          },
+                          {
+                            "index": 19,
+                            "text": "Hace calor en Europa. La ola de calor se ha desplazado hacia el este y ahora nos golpea de lleno. Este año vuelven a caer récords de temperatura, una vez más. A estas alturas, casi cada década parece traer un verano del siglo. ¿Dónde se han metido todos los negacionistas del clima? De pronto están muy callados. Gracias por nada."
+                          },
+                          {
+                            "index": 20,
+                            "text": "Visitar una ciudad con casi 40 grados de temperatura no apetece mucho. Para Charly también puede volverse peligroso muy rápido. Así que en Budapest pasamos las tardes en la habitación del hotel. Una pena, porque es una ciudad preciosa, con una arquitectura impresionante."
+                          },
+                          {
+                            "index": 21,
+                            "text": "### Vuelos"
+                          },
+                          {
+                            "index": 26,
+                            "text": "El lunes salimos de Budapest hacia el oeste, rumbo al lago Balatón, y desde allí seguimos hasta Viena. Pero antes de Viena hacemos una parada en Sooss para visitar a mi amigo de la escuela Flüge, que lleva viviendo aquí 10 años."
+                          },
+                          {
+                            "index": 27,
+                            "text": "Justo antes de Viena también celebraremos el cumpleaños número 200.000 de nuestro Schleppi, que ya empieza a mostrar un poco de cansancio por la edad."
+                          }
+                        ]
+                      },
+                      {
+                        "lang_code": "fr",
+                        "title": "Orgueil et préjugés",
+                        "items": [
+                          {
+                            "index": 0,
+                            "text": "Nous sommes tous les deux déjà allés plusieurs fois en Hongrie. J’avais une équipe de développement chez Siemens à Budapest, et Alex a de la famille éloignée en Hongrie."
+                          },
+                          {
+                            "index": 1,
+                            "text": "### Budapest"
+                          },
+                          {
+                            "index": 7,
+                            "text": "Ce week-end, c’est la Pride à Budapest. L’an dernier, le gouvernement Orban a interdit la Pride, au grand mécontentement de la municipalité. Pour faire appliquer l’interdiction, des amendes de 500 euros par participant ont été brandies. Le résultat a été une marche de 200 000 personnes et une victoire écrasante de l’opposition lors des élections suivantes, ce qui a mis fin à 16 ans d’Orban."
+                          },
+                          {
+                            "index": 8,
+                            "text": "Bien sûr, ce serait présomptueux d’affirmer que la Pride a renversé le gouvernement. Mais c’était un dernier signal clair montrant que les gens en avaient assez d’être infantilisés par un gouvernement corrompu, dont l’arrogance frôlait la mégalomanie."
+                          },
+                          {
+                            "index": 9,
+                            "text": "Laszlo, avec qui j’ai travaillé chez Siemens et que nous allons retrouver autour d’un café, pense que le nouveau gouvernement a d’autres objectifs, mais qu’il est tout aussi arrogant. Peut-être un reste de l’époque k.u.k.?"
+                          },
+                          {
+                            "index": 10,
+                            "text": "À Budapest, tout est interdit, et il y a toujours quelque petit bourgeois pour vous rappeler les interdictions avec insistance. On se sent déjà presque chez nous. Avec un chien, cette ville est un parcours du combattant: je sais bien moi-même si mon chien peut prendre un escalator. Pourquoi est-ce toujours les conservateurs de droite qui parlent le plus fort de liberté, de responsabilité individuelle et d’indépendance, mais qui ensuite couvrent tout de règles, jusqu’à décider qui on a le droit d’aimer et qui non."
+                          },
+                          {
+                            "index": 11,
+                            "text": "### Chaud"
+                          },
+                          {
+                            "index": 19,
+                            "text": "Il fait chaud en Europe. La vague de chaleur s’est déplacée vers l’est et nous frappe maintenant de plein fouet. Les records de chaleur tombent cette année, une fois de plus. À ce rythme, il y a presque un été du siècle tous les dix ans. Où sont donc passés tous les climatosceptiques? Ils sont étrangement très silencieux. Merci pour rien."
+                          },
+                          {
+                            "index": 20,
+                            "text": "Visiter une ville avec près de 40 degrés, ce n’est pas très agréable. Pour Charly, cela peut aussi devenir dangereux très vite. À Budapest, nous passons donc les après-midis dans la chambre d’hôtel. Dommage, car c’est une très belle ville à l’architecture à couper le souffle."
+                          },
+                          {
+                            "index": 21,
+                            "text": "### Vols"
+                          },
+                          {
+                            "index": 26,
+                            "text": "Lundi, nous partons de Budapest vers l’ouest en direction du lac Balaton, puis de là vers Vienne. Avant Vienne, nous faisons toutefois une halte à Sooss pour rendre visite à mon ami d’école Flüge, qui vit ici depuis 10 ans."
+                          },
+                          {
+                            "index": 27,
+                            "text": "Juste avant Vienne, nous fêterons aussi le 200 000e anniversaire de notre Schleppi, qui commence à montrer une certaine lassitude de l’âge."
+                          }
+                        ]
+                      },
+                      {
+                        "lang_code": "it",
+                        "title": "Orgoglio e pregiudizio",
+                        "items": [
+                          {
+                            "index": 0,
+                            "text": "Siamo stati entrambi in Ungheria parecchie volte. Io avevo un team di sviluppo alla Siemens a Budapest, e Alex ha parenti lontani in Ungheria."
+                          },
+                          {
+                            "index": 1,
+                            "text": "### Budapest"
+                          },
+                          {
+                            "index": 7,
+                            "text": "Questo fine settimana a Budapest c’è il Pride. L’anno scorso il governo Orban ha vietato il Pride, con grande disappunto del governo cittadino. Per far rispettare il divieto, sono state minacciate multe da 500 euro per ogni partecipante. Il risultato è stata una marcia di 200.000 persone e una vittoria schiacciante dell’opposizione alle elezioni successive, che ha messo fine a 16 anni di Orban."
+                          },
+                          {
+                            "index": 8,
+                            "text": "Certo, sarebbe azzardato sostenere che il Pride abbia fatto cadere il governo. Ma è stato un ultimo segnale chiaro che la gente era stufa dei soprusi di un governo corrotto, la cui arroganza rasentava la megalomania."
+                          },
+                          {
+                            "index": 9,
+                            "text": "Laszlo, con cui ho lavorato alla Siemens e che incontriamo per un caffè, pensa che il nuovo governo abbia obiettivi diversi, ma sia altrettanto arrogante. Forse un residuo dell’epoca k.u.k.?"
+                          },
+                          {
+                            "index": 10,
+                            "text": "A Budapest tutto è vietato, e c’è sempre qualche benpensante che ti ricorda con insistenza i divieti. Ormai ci sentiamo già come a casa. Con un cane, questa città è un percorso a ostacoli: so benissimo io se il mio cane può prendere la scala mobile. Perché sono sempre i conservatori di destra a parlare più forte di libertà, responsabilità personale e indipendenza, ma poi riempiono tutto di regole, fino a decidere chi si può amare e chi no."
+                          },
+                          {
+                            "index": 11,
+                            "text": "### Caldo"
+                          },
+                          {
+                            "index": 19,
+                            "text": "In Europa fa caldo. L’ondata di calore si è spostata verso est e ora ci colpisce in pieno. Quest’anno i record di temperatura cadono a raffica, ancora una volta. Ormai sembra che ogni decennio abbia il suo estate del secolo. Dove sono finiti tutti i negazionisti del clima? In qualche modo sono diventati molto silenziosi. Grazie di nulla."
+                          },
+                          {
+                            "index": 20,
+                            "text": "Visitare una città con quasi 40 gradi non è proprio il massimo del divertimento. Per Charly può anche diventare rapidamente pericoloso. Perciò a Budapest passiamo i pomeriggi nella stanza d’albergo. Peccato, perché è una città bellissima, con un’architettura mozzafiato."
+                          },
+                          {
+                            "index": 21,
+                            "text": "### Voli"
+                          },
+                          {
+                            "index": 26,
+                            "text": "Lunedì andiamo da Budapest verso ovest in direzione del lago Balaton e da lì proseguiamo per Vienna. Prima di Vienna, però, facciamo una sosta a Sooss per andare a trovare il mio compagno di scuola Flüge, che vive qui da 10 anni."
+                          },
+                          {
+                            "index": 27,
+                            "text": "Poco prima di Vienna festeggeremo anche il 200.000esimo compleanno del nostro Schleppi, che sta iniziando a mostrare un po’ di stanchezza da età."
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ],
+              "phase": "final_answer",
+              "role": "assistant"
+            }
+          ]
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Download Header FB": {
+      "main": [
+        [
+          {
+            "node": "Upload Intro FB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Intro FB": {
+      "main": [
+        [
+          {
+            "node": "Create Intro FB Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Header IG": {
+      "main": [
+        [
+          {
+            "node": "Upload Intro IG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Intro IG": {
+      "main": [
+        [
+          {
+            "node": "Create Intro IG Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Header X": {
+      "main": [
+        [
+          {
+            "node": "Upload Intro X",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Intro X": {
+      "main": [
+        [
+          {
+            "node": "Create Intro X Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Caption Intro FB": {
+      "main": [
+        [
+          {
+            "node": "Download Header FB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Caption Intro IG": {
+      "main": [
+        [
+          {
+            "node": "Download Header IG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Caption Intro X": {
+      "main": [
+        [
+          {
+            "node": "Download Header X",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Natural Language Translation": {
+      "main": [
+        [
+          {
+            "node": "Pirate Speak Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Blocks": {
+      "main": [
+        [
+          {
+            "node": "Natural Language Translation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pirate Speak Generator": {
+      "main": [
+        [
+          {
+            "node": "Assemble Multilingual Blocks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemble Multilingual Blocks": {
+      "main": [
+        [
+          {
+            "node": "Skip Social If Redeploy",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Adapt Hugo Media",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Hugo Index MDs": {
+      "main": [
+        [
+          {
+            "node": "Stage Site Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stage Site Files": {
+      "main": [
+        [
+          {
+            "node": "Upload Site Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Social If Redeploy": {
+      "main": [
+        [
+          {
+            "node": "Adapt Feature Image",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Analyze Controversy X",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Adapt Feature Image": {
+      "main": [
+        [
+          {
+            "node": "Caption Intro FB",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Caption Intro IG",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Caption Intro X",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Adapt Hugo Media": {
+      "main": [
+        [
+          {
+            "node": "Generate Hugo Index MDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish Webhook": {
+      "main": [
+        [
+          {
+            "node": "Prepare Blocks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Controversy Posts": {
+      "main": [
+        [
+          {
+            "node": "Create Controversy X Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Controversy X": {
+      "main": [
+        [
+          {
+            "node": "Split Controversy Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "O6fHa4LyBB7P71nU",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "f9995ae1-be16-456c-b0c4-15b0f952a40d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "instanceId": "91b62e007400f324d5abda851b7466b395e6ae8249f94b33aa082b387b7fb350"
+  },
+  "nodeGroups": [],
+  "id": "l7HCCWtO1ALC82n6",
+  "tags": []
+}

@@ -1,0 +1,66 @@
+{
+  "name": "Syndicator Error",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "8c2b214a-4549-435a-9fde-f9a8e2079c36",
+      "name": "On Workflow Error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        256,
+        -256
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "<__PLACEHOLDER_VALUE__Mailgun sender, e.g. syndicator@mg.sailingnomads.ch__>",
+        "toEmail": "<__PLACEHOLDER_VALUE__Alert recipient email address__>",
+        "subject": "=Syndicator workflow failed: {{ $json.workflow.name }}",
+        "text": "=Workflow: {{ $json.workflow.name }}\nError: {{ $json.execution.error.message }}\nExecution: {{ $json.execution.url }}"
+      },
+      "id": "6193880a-c3db-457b-8725-55b81ff2f6df",
+      "name": "Send Failure Mail",
+      "type": "n8n-nodes-base.mailgun",
+      "typeVersion": 1,
+      "position": [
+        544,
+        -256
+      ],
+      "credentials": {
+        "mailgunApi": {
+          "id": "Bcbp6mspTTmnef4z",
+          "name": "Mailgun account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "On Workflow Error": {
+      "main": [
+        [
+          {
+            "node": "Send Failure Mail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "3c3ad28a-2a0f-438b-b7dd-4b4762620057",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "91b62e007400f324d5abda851b7466b395e6ae8249f94b33aa082b387b7fb350"
+  },
+  "nodeGroups": [],
+  "id": "O6fHa4LyBB7P71nU",
+  "tags": []
+}

@@ -1,0 +1,1124 @@
+{
+  "name": "Reel Publish",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "reel",
+        "options": {}
+      },
+      "id": "fe8bbda5-f6e7-4a37-9ce7-47595f36bfa5",
+      "name": "Reel Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -672,
+        -32
+      ],
+      "webhookId": "4e23d978-d4c3-4ed4-9803-0e31e00f0779"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst p = raw.body ?? raw;\nreturn [{ json: p }];"
+      },
+      "id": "893e7ffe-c8cf-4f71-a65b-0866865219a0",
+      "name": "Parse Reel Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-5.4-mini"
+        },
+        "text": "=You write a Facebook post for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Goal: grow the audience and earn clicks. Write in English. This is one short reel from the blog post titled \"{{ $(\"Parse Reel Payload\").item.json.post.title }}\". Base the post ONLY on this section. Section title: {{ $(\"Parse Reel Payload\").item.json.video.section_title }}. Section text: \n\n{{ $(\"Parse Reel Payload\").item.json.video.section_text }}.\n\nThe section text contains a [VIDEO] marker showing where this reel's clip sits in the surrounding prose; the sentence describing the clip may come just before or just after the marker, so rely on the text nearest the marker and treat the rest as background. The attached image is the reel cover frame; use it for concrete visual detail. Write 2 to 4 short, warm, personal paragraphs with a strong first-line hook. A tasteful emoji is fine. End with a light call to action. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends. Do not invent facts not in the section. Do NOT include any URL. After the caption, add 0 to 3 relevant hashtags on their own final line, each starting with #. Return ONLY the caption text followed by that hashtag line.",
+        "inputType": "base64",
+        "options": {
+          "detail": "auto",
+          "maxTokens": 500
+        }
+      },
+      "id": "5097e942-465d-44f2-8716-cdb4c9485865",
+      "name": "Caption FB",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        160
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "MadfM6xwVCQEZSpV",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "protocol": "sftp",
+        "path": "={{ $('Merge Adapt Into Payload').item.json.video_4x5_sftp }}",
+        "options": {}
+      },
+      "id": "ea4dc89d-cdd9-4830-8dfe-e726a1e99c83",
+      "name": "Download Reel FB",
+      "type": "n8n-nodes-base.ftp",
+      "typeVersion": 1,
+      "position": [
+        672,
+        160
+      ],
+      "credentials": {
+        "sftp": {
+          "id": "FBrOT9WTXTtyPdxi",
+          "name": "FTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "uploadFile",
+        "binaryProperty": "data"
+      },
+      "id": "4e96b954-f774-4ca4-be4c-b2e0e80ed569",
+      "name": "Upload FB",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        896,
+        160
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "mkv19KbAM7doUSaU",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "type": "draft",
+        "date": "={{ $now.plus(2, \"days\").toISO() }}",
+        "posts": {
+          "post": [
+            {
+              "integrationId": "cmrmbindh050spg0ypnszg5ag",
+              "group": "={{ $(\"Parse Reel Payload\").item.json.slug }}-reel-{{ $(\"Parse Reel Payload\").item.json.video.index }}",
+              "settings": {
+                "setting": [
+                  {
+                    "key": "__type",
+                    "stringValue": "facebook"
+                  },
+                  {
+                    "key": "post_type",
+                    "stringValue": "post"
+                  }
+                ]
+              },
+              "value": {
+                "contentItem": [
+                  {
+                    "content": "={{ $('Caption FB').item.json[0].content[0].text }}\n\n{{ $(\"Parse Reel Payload\").item.json.post.url }}",
+                    "image": {
+                      "imageItem": [
+                        {
+                          "id": "={{ $json.id }}",
+                          "path": "={{ $json.path }}"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "47c495c8-8552-4ef2-8e05-dbbf389deca8",
+      "name": "Create FB Draft",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        160
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "mkv19KbAM7doUSaU",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-5.4-mini"
+        },
+        "text": "=You write an Instagram caption for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Goal: reach, saves and profile visits; the blog link lives in the bio. Write in English. This is one short reel from the blog post titled \"{{ $(\"Parse Reel Payload\").item.json.post.title }}\". Base the caption ONLY on this section. Section title: {{ $(\"Parse Reel Payload\").item.json.video.section_title }}. Section text: \n\n{{ $(\"Parse Reel Payload\").item.json.video.section_text }}. \n\nThe section text contains a [VIDEO] marker showing where this reel's clip sits in the surrounding prose; the sentence describing the clip may come just before or just after the marker, so rely on the text nearest the marker and treat the rest as background. The attached image is the reel cover frame; use it for concrete visual detail. The first line must hook within about 125 characters. Short airy paragraphs, emojis welcome but not overloaded. End with a question or a save-this nudge. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends. Do NOT include any URL or a link-in-bio call to action. Do not invent facts not in the section. After the caption, add 5 to 8 specific hashtags on their own final line, each starting with #, mixing niche sailing and travel tags with location tags, avoiding banned or spammy tags. Return ONLY the caption text followed by that hashtag line.",
+        "inputType": "base64",
+        "options": {
+          "detail": "auto",
+          "maxTokens": 500
+        }
+      },
+      "id": "5bee0fe2-b8e6-4023-81ae-92e09f0b6f42",
+      "name": "Caption IG",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        -32
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "MadfM6xwVCQEZSpV",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "protocol": "sftp",
+        "path": "={{ $('Merge Adapt Into Payload').item.json.video_4x5_sftp }}",
+        "options": {}
+      },
+      "id": "6a71a2d9-aa28-46ad-afa9-44e0071172c5",
+      "name": "Download Reel IG",
+      "type": "n8n-nodes-base.ftp",
+      "typeVersion": 1,
+      "position": [
+        672,
+        -32
+      ],
+      "credentials": {
+        "sftp": {
+          "id": "FBrOT9WTXTtyPdxi",
+          "name": "FTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "uploadFile",
+        "binaryProperty": "data"
+      },
+      "id": "ff3a8941-9661-4724-adb4-881573949451",
+      "name": "Upload IG",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        896,
+        -32
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "mkv19KbAM7doUSaU",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "type": "draft",
+        "date": "={{ $now.plus(2, \"days\").toISO() }}",
+        "posts": {
+          "post": [
+            {
+              "integrationId": "cmrmbjfkp00win60ybjz64sxw",
+              "group": "={{ $(\"Parse Reel Payload\").item.json.slug }}-reel-{{ $(\"Parse Reel Payload\").item.json.video.index }}",
+              "settings": {
+                "setting": [
+                  {
+                    "key": "__type",
+                    "stringValue": "instagram"
+                  },
+                  {
+                    "key": "post_type",
+                    "stringValue": "post"
+                  },
+                  {
+                    "key": "is_trial_reel",
+                    "valueType": "boolean"
+                  }
+                ]
+              },
+              "value": {
+                "contentItem": [
+                  {
+                    "content": "={{ $('Caption IG').item.json[0].content[0].text }}",
+                    "image": {
+                      "imageItem": [
+                        {
+                          "id": "={{ $json.id }}",
+                          "path": "={{ $json.path }}"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "efadcedc-c20d-4839-8d94-c6f69066ca2c",
+      "name": "Create IG Draft",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        -32
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "mkv19KbAM7doUSaU",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-5.4-mini"
+        },
+        "text": "=You write a post for X (Twitter) for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Goal: grow the audience. Write in English. This is one short reel from the blog post titled \"{{ $(\"Parse Reel Payload\").item.json.post.title }}\". Base the post ONLY on this section. Section title: {{ $(\"Parse Reel Payload\").item.json.video.section_title }}. Section text: \n\n{{ $(\"Parse Reel Payload\").item.json.video.section_text }}. \n\nThe section text contains a [VIDEO] marker showing where this reel's clip sits in the surrounding prose; the sentence describing the clip may come just before or just after the marker, so rely on the text nearest the marker and treat the rest as background. The attached image is the reel cover frame; use it for a vivid concrete detail. One punchy thought relating to the video: a hook, a vivid detail or a dry observation. Plain language, at most one emoji. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends. Do NOT include any URL. End the post with 0 to 2 short relevant hashtags, each starting with #. The entire post including the hashtags must be at most 240 characters. Return ONLY the post text followed by the hashtags.",
+        "inputType": "base64",
+        "options": {
+          "detail": "auto",
+          "maxTokens": 300
+        }
+      },
+      "id": "2780dbf7-1c10-476d-aee5-683c56d756f8",
+      "name": "Caption X",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        -672,
+        480
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "MadfM6xwVCQEZSpV",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "protocol": "sftp",
+        "path": "={{ $('Merge Adapt Into Payload').item.json.video_4x5_sftp }}",
+        "options": {}
+      },
+      "id": "7f8e4be0-8c5b-4e1e-93e2-784c7f02aedb",
+      "name": "Download Reel X",
+      "type": "n8n-nodes-base.ftp",
+      "typeVersion": 1,
+      "position": [
+        0,
+        576
+      ],
+      "credentials": {
+        "sftp": {
+          "id": "FBrOT9WTXTtyPdxi",
+          "name": "FTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "uploadFile",
+        "binaryProperty": "data"
+      },
+      "id": "6ff13cd8-21e9-41ec-87b8-b852f97c1e4f",
+      "name": "Upload X",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        224,
+        480
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "mkv19KbAM7doUSaU",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "type": "draft",
+        "date": "={{ $now.plus(1, \"days\").toISO() }}",
+        "posts": {
+          "post": [
+            {
+              "integrationId": "cmrmbk0b9050zpg0ytkz5uy0r",
+              "group": "={{ $(\"Parse Reel Payload\").item.json.slug }}-reel-{{ $(\"Parse Reel Payload\").item.json.video.index }}",
+              "settings": {
+                "setting": [
+                  {
+                    "key": "__type",
+                    "stringValue": "x"
+                  },
+                  {
+                    "key": "who_can_reply_post",
+                    "stringValue": "everyone"
+                  }
+                ]
+              },
+              "value": {
+                "contentItem": [
+                  {
+                    "content": "={{ $('Caption X').item.json[0].content[0].text }}",
+                    "image": {
+                      "imageItem": [
+                        {
+                          "id": "={{ $json.id }}",
+                          "path": "={{ $json.path }}"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "4ed1a112-ba40-4305-ae49-dbf45fd8f824",
+      "name": "Create X Draft",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        448,
+        480
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "mkv19KbAM7doUSaU",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "y9TTx7N8Iygn88ry",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/y9TTx7N8Iygn88ry",
+          "cachedResultName": "Adapt Reel Media"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "index": "={{ $json.video.index }}",
+            "slug": "={{ $json.slug }}",
+            "source_filename": "={{ $json.source.filename }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "slug",
+              "displayName": "slug",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "index",
+              "displayName": "index",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "source_filename",
+              "displayName": "source_filename",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "0a0ddd68-ee88-4d93-9231-d242288c98b6",
+      "name": "Adapt Reel Media",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        -224,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $('Parse Reel Payload').first().json;\nconst adapted = $input.first().json;\nreturn [{\n  json: {\n    ...payload,\n    video_4x5_sftp: adapted.video_4x5_sftp,\n    video_4x5_local: adapted.video_4x5_local,\n    video_9x16_sftp: adapted.video_9x16_sftp,\n    video_9x16_local: adapted.video_9x16_local,\n  },\n}];"
+      },
+      "id": "c02f8867-e5b0-4044-89b7-87dbc5147357",
+      "name": "Merge Adapt Into Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "thumbnail",
+        "inputVideo": "={{ $('Merge Adapt Into Payload').item.json.video_4x5_local }}",
+        "thumbTimestamp": "0",
+        "thumbWidth": 1080
+      },
+      "id": "5763f935-4586-4132-9d74-c59f47d8f836",
+      "name": "Extract Cover",
+      "type": "n8n-nodes-ffmpeg-studio.ffmpegVideo",
+      "typeVersion": 1,
+      "position": [
+        224,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "inputFile": "={{ $('Merge Adapt Into Payload').item.json.video_4x5_local }}"
+      },
+      "id": "c9e65729-60cf-431d-97e9-fd3e748f2ef0",
+      "name": "Analyze X Duration",
+      "type": "n8n-nodes-ffmpeg-studio.ffmpegAnalyze",
+      "typeVersion": 1,
+      "position": [
+        -448,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "x-duration-gt-120",
+              "leftValue": "={{ $json.duration }}",
+              "rightValue": 120,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "15cd47f3-a65e-4294-9e59-5cb66214dcbe",
+      "name": "X Over 120s?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -224,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "inputVideo": "={{ $('Merge Adapt Into Payload').item.json.video_4x5_local }}",
+        "duration": "120"
+      },
+      "id": "99e70fa9-17d6-4194-a329-abaaa02314b4",
+      "name": "Trim X to 120s",
+      "type": "n8n-nodes-ffmpeg-studio.ffmpegVideo",
+      "typeVersion": 1,
+      "position": [
+        0,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-5.4-mini"
+        },
+        "text": "=You write a YouTube Short for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Goal: watch time and channel growth. Write in English. This is one short reel from the blog post titled \"{{ $(\"Parse Reel Payload\").item.json.post.title }}\". Base the copy ONLY on this section. Section title: {{ $(\"Parse Reel Payload\").item.json.video.section_title }}. Section text:\n\n{{ $(\"Parse Reel Payload\").item.json.video.section_text }}.\n\nThe section text contains a [VIDEO] marker showing where this reel's clip sits in the surrounding prose; the sentence describing the clip may come just before or just after the marker, so rely on the text nearest the marker and treat the rest as background. The attached image is the reel cover frame; use it for concrete visual detail.\n\nReturn EXACTLY this format and nothing else:\nTITLE: <short YouTube Shorts title, max 70 characters, punchy, no hashtags>\nDESCRIPTION:\n<1 to 3 short sentences, warm and personal, at most one emoji. End with 2 to 4 relevant hashtags including #Shorts, each starting with #. Do NOT include any URL. Do not invent facts not in the section. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches.>",
+        "inputType": "base64",
+        "options": {
+          "detail": "auto",
+          "maxTokens": 300
+        }
+      },
+      "id": "64dcb311-d5a3-4d9f-a207-fcd74c4bc9a8",
+      "name": "Caption YT",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        1120,
+        -224
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "MadfM6xwVCQEZSpV",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "inputFile": "={{ $('Merge Adapt Into Payload').item.json.video_9x16_local }}"
+      },
+      "id": "0f7b7c10-abec-446d-9c57-a1e91a0f10cd",
+      "name": "Analyze YT Duration",
+      "type": "n8n-nodes-ffmpeg-studio.ffmpegAnalyze",
+      "typeVersion": 1,
+      "position": [
+        448,
+        -224
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "yt-duration-lt-180",
+              "leftValue": "={{ $json.duration }}",
+              "operator": {
+                "operation": "lt",
+                "type": "number"
+              },
+              "rightValue": 180
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "id": "48c49760-3cba-49d0-8a21-8df87955faa8",
+      "name": "YT Under 3min?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        -224
+      ]
+    },
+    {
+      "parameters": {
+        "protocol": "sftp",
+        "path": "={{ $('Merge Adapt Into Payload').item.json.video_9x16_sftp }}",
+        "options": {}
+      },
+      "id": "552b087a-94f1-40c8-858b-076f00db6a17",
+      "name": "Download Reel YT",
+      "type": "n8n-nodes-base.ftp",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        -224
+      ],
+      "credentials": {
+        "sftp": {
+          "id": "FBrOT9WTXTtyPdxi",
+          "name": "FTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "uploadFile",
+        "binaryProperty": "data"
+      },
+      "id": "62522a99-71dd-421e-95fa-d80d6990f8ba",
+      "name": "Upload YT",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        1792,
+        -224
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "mkv19KbAM7doUSaU",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "type": "draft",
+        "date": "={{ $now.plus(2, \"days\").toISO() }}",
+        "posts": {
+          "post": [
+            {
+              "integrationId": "cmsc7q71501bdqn0y255zpc75",
+              "group": "={{ $(\"Parse Reel Payload\").item.json.slug }}-reel-{{ $(\"Parse Reel Payload\").item.json.video.index }}",
+              "settings": {
+                "setting": [
+                  {
+                    "key": "__type",
+                    "stringValue": "youtube"
+                  },
+                  {
+                    "key": "title",
+                    "stringValue": "={{ $('Parse YT Caption').item.json.title }}"
+                  },
+                  {
+                    "key": "type",
+                    "stringValue": "public"
+                  },
+                  {
+                    "key": "selfDeclaredMadeForKids",
+                    "stringValue": "no"
+                  }
+                ]
+              },
+              "value": {
+                "contentItem": [
+                  {
+                    "content": "={{ $('Parse YT Caption').item.json.description }}\n\n{{ $(\"Parse Reel Payload\").item.json.post.url }}",
+                    "image": {
+                      "imageItem": [
+                        {
+                          "id": "={{ $json.id }}",
+                          "path": "={{ $json.path }}"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "c69c2ad9-29b2-48de-85ab-4468b75920d0",
+      "name": "Create YT Draft",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        2016,
+        -224
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "mkv19KbAM7doUSaU",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const cover = $('Extract Cover').first();\nreturn [{\n  json: { ...$input.first().json },\n  binary: cover.binary,\n}];"
+      },
+      "id": "ff686fa2-3ac7-46db-886a-1a2ec8c5e470",
+      "name": "Attach Cover for YT",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        -224
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst text = String(raw?.[0]?.content?.[0]?.text ?? '').trim();\nconst titleMatch = text.match(/^TITLE:\\s*(.+)$/im);\nconst descMatch = text.match(/DESCRIPTION:\\s*([\\s\\S]*)$/i);\nlet title = (titleMatch?.[1] || '').trim().split('\\n')[0].trim();\nlet description = (descMatch?.[1] || '').trim();\nif (!title) title = text.split('\\n').map((l) => l.trim()).find(Boolean) || 'Sailing Nomads';\nif (!description) description = text;\ntitle = title.replace(/^TITLE:\\s*/i, '').slice(0, 100).trim();\nif (title.length < 2) title = 'Sailing Nomads';\nreturn [{ json: { title, description } }];"
+      },
+      "id": "ee51c944-9bd2-4c66-8f38-60c818b66236",
+      "name": "Parse YT Caption",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        -224
+      ]
+    }
+  ],
+  "pinData": {
+    "Reel Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "192.168.0.26:5678",
+            "accept": "*/*",
+            "accept-encoding": "gzip, deflate",
+            "connection": "keep-alive",
+            "user-agent": "python-httpx/0.28.1",
+            "content-length": "1998",
+            "content-type": "application/json"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "slug": "2026-05-28_Lefkada",
+            "post": {
+              "title": "Lefkada",
+              "url": "https://www.sailingnomads.ch/de/posts/2026-05-28_lefkada/",
+              "summary": "Die letzten 10 Tage haben wir auf der griechischen Insel Lefkada verbracht wo das Meer im schönsten türkis erstrahlt.",
+              "lang_code": "de"
+            },
+            "video": {
+              "index": 1,
+              "section_title": "",
+              "section_text": "Die letzten 10 Tage haben wir auf der griechischen Insel Lefkada verbracht wo das Meer im schönsten türkis erstrahlt.\n\nMit der Fähre sind wir von Split nach Ancona und von dort mit einer weiteren Fähre nach Igoumenitsa gereist. Wir wollten die EU nicht verlassen, weil das etwas komplizierter mit dem Hund sein kann. Die Fähre ist ist zwar teuer dafür ist die Party aber legendär.\n\n[VIDEO]\n\nAus Lefkada gibt es nicht viel zu berichten. Wir sind eigentlich nur rumgehangen und haben ein bisschen Strände besucht.\n\nDie Saison noch nicht begonnen und es ist mega friedlich. Das Meer hat hier eine ganz spezielle Farbe und ist atemberaubend schön.\n\nDazwischen haben wir auch noch unseren Hochzeitstag gefeiert und ich und Charly haben einen Haarschnitt erhalten.\n\nDie Zeit haben wir auch genutzt um unser Auto wieder auf Vordermann zu bringen, die Fahrertür war verzogen und ging nicht mehr richtig zu, es war ein Ölwechsel fällig und wir haben unserem Passat neue Bremsbeläge spendiert. Ausserdem gab es noch ein Spa Tag in der Autowäsche für unser tapferes Auto, das kurz vor seinem 200'000sten Geburtstag steht. All das kostet hier nur ein Bruchteil wie zuhause. Deswegen sieht man wohl auch richtig alte Schrottkarren noch auf der Strasse. Unglaublich was die hier noch reparieren, bei uns undenkbar. Ich habe auch noch nirgends zuvor so viele L300 gesehen.\n\nEs ist so wie sich ein schweizer Bünzli wie ich Griechenland vorstelle, alles sehr freundlich, lustig, und äusserst improvisiert und lösungsorientiert. Immer eine Zigi im Mundwinkel und ein Glas Ouzo in der Nähe.",
+              "alt": "ymca.mp4"
+            },
+            "source": {
+              "filename": "ymca_1785770242970_0.mp4"
+            }
+          },
+          "webhookUrl": "http://localhost:5678/webhook-test/reel",
+          "executionMode": "test"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Caption FB": {
+      "main": [
+        [
+          {
+            "node": "Download Reel FB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Reel FB": {
+      "main": [
+        [
+          {
+            "node": "Upload FB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload FB": {
+      "main": [
+        [
+          {
+            "node": "Create FB Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Caption IG": {
+      "main": [
+        [
+          {
+            "node": "Download Reel IG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Reel IG": {
+      "main": [
+        [
+          {
+            "node": "Upload IG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload IG": {
+      "main": [
+        [
+          {
+            "node": "Create IG Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Reel X": {
+      "main": [
+        [
+          {
+            "node": "Upload X",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload X": {
+      "main": [
+        [
+          {
+            "node": "Create X Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Reel Payload": {
+      "main": [
+        [
+          {
+            "node": "Adapt Reel Media",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Adapt Reel Media": {
+      "main": [
+        [
+          {
+            "node": "Merge Adapt Into Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Adapt Into Payload": {
+      "main": [
+        [
+          {
+            "node": "Extract Cover",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Cover": {
+      "main": [
+        [
+          {
+            "node": "Caption FB",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Caption IG",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Analyze YT Duration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reel Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Reel Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Caption X": {
+      "main": [
+        [
+          {
+            "node": "Analyze X Duration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze X Duration": {
+      "main": [
+        [
+          {
+            "node": "X Over 120s?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "X Over 120s?": {
+      "main": [
+        [
+          {
+            "node": "Trim X to 120s",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Download Reel X",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trim X to 120s": {
+      "main": [
+        [
+          {
+            "node": "Upload X",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Reel YT": {
+      "main": [
+        [
+          {
+            "node": "Upload YT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload YT": {
+      "main": [
+        [
+          {
+            "node": "Create YT Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze YT Duration": {
+      "main": [
+        [
+          {
+            "node": "YT Under 3min?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "YT Under 3min?": {
+      "main": [
+        [
+          {
+            "node": "Attach Cover for YT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach Cover for YT": {
+      "main": [
+        [
+          {
+            "node": "Caption YT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Caption YT": {
+      "main": [
+        [
+          {
+            "node": "Parse YT Caption",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse YT Caption": {
+      "main": [
+        [
+          {
+            "node": "Download Reel YT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "O6fHa4LyBB7P71nU",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "9d1ceb7e-41ff-4a40-a72f-190b388d9f42",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "instanceId": "91b62e007400f324d5abda851b7466b395e6ae8249f94b33aa082b387b7fb350"
+  },
+  "nodeGroups": [],
+  "id": "zh21miLsQC8Jvua6",
+  "tags": []
+}
