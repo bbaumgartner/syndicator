@@ -1,5 +1,11 @@
 {
+  "updatedAt": "2026-08-05T15:02:07.406Z",
+  "createdAt": "2026-08-05T15:02:07.406Z",
+  "id": "O6fHa4LyBB7P71nU",
   "name": "Syndicator Error",
+  "description": null,
+  "active": true,
+  "isArchived": false,
   "nodes": [
     {
       "parameters": {},
@@ -35,7 +41,6 @@
       }
     }
   ],
-  "pinData": {},
   "connections": {
     "On Workflow Error": {
       "main": [
@@ -49,18 +54,46 @@
       ]
     }
   },
-  "active": true,
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate",
     "availableInMCP": true
   },
-  "versionId": "3c3ad28a-2a0f-438b-b7dd-4b4762620057",
+  "staticData": null,
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "91b62e007400f324d5abda851b7466b395e6ae8249f94b33aa082b387b7fb350"
   },
   "nodeGroups": [],
-  "id": "O6fHa4LyBB7P71nU",
-  "tags": []
+  "pinData": {},
+  "versionId": "eedd7142-6122-453c-815a-a93c1b1de50a",
+  "activeVersionId": "eedd7142-6122-453c-815a-a93c1b1de50a",
+  "versionCounter": 1,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-08-05T15:02:07.411Z",
+      "createdAt": "2026-08-05T15:02:07.411Z",
+      "role": "workflow:owner",
+      "workflowId": "O6fHa4LyBB7P71nU",
+      "projectId": "A9hLodWkuBDYuCmu",
+      "project": {
+        "updatedAt": "2026-08-05T15:00:26.522Z",
+        "createdAt": "2026-08-05T14:59:37.480Z",
+        "id": "A9hLodWkuBDYuCmu",
+        "name": "Benno Baumgartner <n8n@bennobaumgartner.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "4c2031d8-37b8-4112-981d-b5dbb6027259"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
 }

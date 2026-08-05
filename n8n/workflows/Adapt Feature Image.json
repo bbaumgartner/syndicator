@@ -1,5 +1,11 @@
 {
+  "updatedAt": "2026-08-05T15:02:16.577Z",
+  "createdAt": "2026-08-05T15:02:16.577Z",
+  "id": "8NOGn9jgOoV0fw0u",
   "name": "Adapt Feature Image",
+  "description": null,
+  "active": true,
+  "isArchived": false,
   "nodes": [
     {
       "parameters": {
@@ -234,7 +240,6 @@
       ]
     }
   ],
-  "pinData": {},
   "connections": {
     "Adapt Feature Trigger": {
       "main": [
@@ -343,7 +348,6 @@
       ]
     }
   },
-  "active": true,
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate",
@@ -351,13 +355,42 @@
     "errorWorkflow": "O6fHa4LyBB7P71nU",
     "callerPolicy": "workflowsFromSameOwner"
   },
-  "versionId": "58308170-dbe3-4ae2-b131-ce4339a0faac",
+  "staticData": null,
   "meta": {
     "aiBuilderAssisted": true,
     "builderVariant": "mcp",
     "instanceId": "91b62e007400f324d5abda851b7466b395e6ae8249f94b33aa082b387b7fb350"
   },
   "nodeGroups": [],
-  "id": "8NOGn9jgOoV0fw0u",
-  "tags": []
+  "pinData": {},
+  "versionId": "fb0668ba-cef9-4510-88da-d4de710d6b6b",
+  "activeVersionId": "fb0668ba-cef9-4510-88da-d4de710d6b6b",
+  "versionCounter": 1,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-08-05T15:02:16.582Z",
+      "createdAt": "2026-08-05T15:02:16.582Z",
+      "role": "workflow:owner",
+      "workflowId": "8NOGn9jgOoV0fw0u",
+      "projectId": "A9hLodWkuBDYuCmu",
+      "project": {
+        "updatedAt": "2026-08-05T15:00:26.522Z",
+        "createdAt": "2026-08-05T14:59:37.480Z",
+        "id": "A9hLodWkuBDYuCmu",
+        "name": "Benno Baumgartner <n8n@bennobaumgartner.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "4c2031d8-37b8-4112-981d-b5dbb6027259"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
 }
