@@ -1,5 +1,11 @@
 {
+  "updatedAt": "2026-08-05T16:36:18.481Z",
+  "createdAt": "2026-08-05T15:02:25.910Z",
+  "id": "l7HCCWtO1ALC82n6",
   "name": "Blog Post Publish",
+  "description": null,
+  "active": true,
+  "isArchived": false,
   "nodes": [
     {
       "parameters": {
@@ -841,253 +847,6 @@
       }
     }
   ],
-  "pinData": {
-    "Natural Language Translation": [
-      {
-        "json": {
-          "output": [
-            {
-              "id": "msg_08d5f9dc36e2084d006a6c5f6f6ce08191ba0b0e730f83071a",
-              "type": "message",
-              "status": "completed",
-              "content": [
-                {
-                  "type": "output_text",
-                  "annotations": [],
-                  "logprobs": [],
-                  "text": {
-                    "translations": [
-                      {
-                        "lang_code": "en",
-                        "title": "Pride and Prejudice",
-                        "items": [
-                          {
-                            "index": 0,
-                            "text": "We have both been to Hungary quite a few times. I had a development team at Siemens in Budapest, and Alex has distant relatives in Hungary."
-                          },
-                          {
-                            "index": 1,
-                            "text": "### Budapest"
-                          },
-                          {
-                            "index": 7,
-                            "text": "Pride is taking place in Budapest this weekend. Last year, the Orban government banned Pride, much to the city government’s annoyance. To enforce the ban, fines of 500 euros were threatened for each participant. The result was a march of 200,000 people and a landslide victory for the opposition in the following elections, which brought an end to 16 years of Orban."
-                          },
-                          {
-                            "index": 8,
-                            "text": "Of course, it would be presumptuous to claim that Pride brought down the government. But it was a final clear sign that people had had enough of the restrictions imposed by a corrupt government whose arrogance bordered on megalomania."
-                          },
-                          {
-                            "index": 9,
-                            "text": "Laszlo, with whom I worked at Siemens and whom we are meeting for coffee, thinks the new government has different goals, but is just as arrogant. Maybe a remnant from the K&K era?"
-                          },
-                          {
-                            "index": 10,
-                            "text": "In Budapest, everything is forbidden, and there is always some priggish person who makes sure to point out the rules to you in no uncertain terms. We already feel right at home. With a dog, this city is an obstacle course: I know perfectly well whether my dog can ride an escalator. Why is it always the right-wing conservatives who talk the loudest about freedom, personal responsibility, and independence, but then cover everything in rules, right down to who you are allowed to love and who you are not."
-                          },
-                          {
-                            "index": 11,
-                            "text": "### Hot"
-                          },
-                          {
-                            "index": 19,
-                            "text": "It is hot in Europe. The heatwave has moved east and is hitting us full force now. Heat records are falling all over the place this year, once again. These days, there seems to be a once-in-a-century summer every decade. Where have all the climate deniers gone? Somehow they have gone very quiet. Thanks for nothing."
-                          },
-                          {
-                            "index": 20,
-                            "text": "Visiting a city when it is nearly 40 degrees outside is not much fun. For Charly, it can also get dangerous quickly. So in Budapest we spend the afternoons in the hotel room. A shame, because it is a beautiful city with breathtaking architecture."
-                          },
-                          {
-                            "index": 21,
-                            "text": "### Flights"
-                          },
-                          {
-                            "index": 26,
-                            "text": "On Monday we are driving west from Budapest to Lake Balaton and then on to Vienna. Before Vienna, though, we are making a stop in Sooss to visit my school friend Flüge, who has been living here for 10 years."
-                          },
-                          {
-                            "index": 27,
-                            "text": "Just before Vienna, we will also celebrate the 200,000th birthday of our Schleppi, which is starting to show a bit of age-related weariness."
-                          }
-                        ]
-                      },
-                      {
-                        "lang_code": "es",
-                        "title": "Orgullo y prejuicio",
-                        "items": [
-                          {
-                            "index": 0,
-                            "text": "Los dos hemos estado en Hungría bastantes veces. Yo tenía un equipo de desarrollo en Siemens en Budapest, y Alex tiene parientes lejanos en Hungría."
-                          },
-                          {
-                            "index": 1,
-                            "text": "### Budapest"
-                          },
-                          {
-                            "index": 7,
-                            "text": "Este fin de semana se celebra el Pride en Budapest. El año pasado, el gobierno de Orban prohibió el Pride, para disgusto del gobierno de la ciudad. Para hacer cumplir la prohibición, amenazaron con multas de 500 euros a cada participante. El resultado fue una marcha de 200.000 personas y una victoria aplastante de la oposición en las elecciones posteriores, que puso fin a 16 años de Orban."
-                          },
-                          {
-                            "index": 8,
-                            "text": "Claro que sería exagerado afirmar que el Pride provocó la caída del gobierno. Pero fue una última señal clara de que la gente estaba harta de las restricciones impuestas por un gobierno corrupto, cuya arrogancia rozaba la megalomanía."
-                          },
-                          {
-                            "index": 9,
-                            "text": "Laszlo, con quien trabajé en Siemens y con quien quedamos para tomar un café, opina que el nuevo gobierno tiene otros objetivos, pero que es igual de arrogante. ¿Quizá un vestigio de la época k.u.k.?"
-                          },
-                          {
-                            "index": 10,
-                            "text": "En Budapest todo está prohibido, y siempre hay algún hortera que se encarga de recordarte las prohibiciones con mucho énfasis. Ya casi nos sentimos como en casa. Con un perro, esta ciudad es un suplicio: yo ya sé si mi perro puede subir en escaleras mecánicas. ¿Por qué son siempre los conservadores de derechas los que más hablan de libertad, responsabilidad personal e independencia, pero luego lo regulan todo, hasta quién puede amar a quién y quién no?"
-                          },
-                          {
-                            "index": 11,
-                            "text": "### Calor"
-                          },
-                          {
-                            "index": 19,
-                            "text": "Hace calor en Europa. La ola de calor se ha desplazado hacia el este y ahora nos golpea de lleno. Este año vuelven a caer récords de temperatura, una vez más. A estas alturas, casi cada década parece traer un verano del siglo. ¿Dónde se han metido todos los negacionistas del clima? De pronto están muy callados. Gracias por nada."
-                          },
-                          {
-                            "index": 20,
-                            "text": "Visitar una ciudad con casi 40 grados de temperatura no apetece mucho. Para Charly también puede volverse peligroso muy rápido. Así que en Budapest pasamos las tardes en la habitación del hotel. Una pena, porque es una ciudad preciosa, con una arquitectura impresionante."
-                          },
-                          {
-                            "index": 21,
-                            "text": "### Vuelos"
-                          },
-                          {
-                            "index": 26,
-                            "text": "El lunes salimos de Budapest hacia el oeste, rumbo al lago Balatón, y desde allí seguimos hasta Viena. Pero antes de Viena hacemos una parada en Sooss para visitar a mi amigo de la escuela Flüge, que lleva viviendo aquí 10 años."
-                          },
-                          {
-                            "index": 27,
-                            "text": "Justo antes de Viena también celebraremos el cumpleaños número 200.000 de nuestro Schleppi, que ya empieza a mostrar un poco de cansancio por la edad."
-                          }
-                        ]
-                      },
-                      {
-                        "lang_code": "fr",
-                        "title": "Orgueil et préjugés",
-                        "items": [
-                          {
-                            "index": 0,
-                            "text": "Nous sommes tous les deux déjà allés plusieurs fois en Hongrie. J’avais une équipe de développement chez Siemens à Budapest, et Alex a de la famille éloignée en Hongrie."
-                          },
-                          {
-                            "index": 1,
-                            "text": "### Budapest"
-                          },
-                          {
-                            "index": 7,
-                            "text": "Ce week-end, c’est la Pride à Budapest. L’an dernier, le gouvernement Orban a interdit la Pride, au grand mécontentement de la municipalité. Pour faire appliquer l’interdiction, des amendes de 500 euros par participant ont été brandies. Le résultat a été une marche de 200 000 personnes et une victoire écrasante de l’opposition lors des élections suivantes, ce qui a mis fin à 16 ans d’Orban."
-                          },
-                          {
-                            "index": 8,
-                            "text": "Bien sûr, ce serait présomptueux d’affirmer que la Pride a renversé le gouvernement. Mais c’était un dernier signal clair montrant que les gens en avaient assez d’être infantilisés par un gouvernement corrompu, dont l’arrogance frôlait la mégalomanie."
-                          },
-                          {
-                            "index": 9,
-                            "text": "Laszlo, avec qui j’ai travaillé chez Siemens et que nous allons retrouver autour d’un café, pense que le nouveau gouvernement a d’autres objectifs, mais qu’il est tout aussi arrogant. Peut-être un reste de l’époque k.u.k.?"
-                          },
-                          {
-                            "index": 10,
-                            "text": "À Budapest, tout est interdit, et il y a toujours quelque petit bourgeois pour vous rappeler les interdictions avec insistance. On se sent déjà presque chez nous. Avec un chien, cette ville est un parcours du combattant: je sais bien moi-même si mon chien peut prendre un escalator. Pourquoi est-ce toujours les conservateurs de droite qui parlent le plus fort de liberté, de responsabilité individuelle et d’indépendance, mais qui ensuite couvrent tout de règles, jusqu’à décider qui on a le droit d’aimer et qui non."
-                          },
-                          {
-                            "index": 11,
-                            "text": "### Chaud"
-                          },
-                          {
-                            "index": 19,
-                            "text": "Il fait chaud en Europe. La vague de chaleur s’est déplacée vers l’est et nous frappe maintenant de plein fouet. Les records de chaleur tombent cette année, une fois de plus. À ce rythme, il y a presque un été du siècle tous les dix ans. Où sont donc passés tous les climatosceptiques? Ils sont étrangement très silencieux. Merci pour rien."
-                          },
-                          {
-                            "index": 20,
-                            "text": "Visiter une ville avec près de 40 degrés, ce n’est pas très agréable. Pour Charly, cela peut aussi devenir dangereux très vite. À Budapest, nous passons donc les après-midis dans la chambre d’hôtel. Dommage, car c’est une très belle ville à l’architecture à couper le souffle."
-                          },
-                          {
-                            "index": 21,
-                            "text": "### Vols"
-                          },
-                          {
-                            "index": 26,
-                            "text": "Lundi, nous partons de Budapest vers l’ouest en direction du lac Balaton, puis de là vers Vienne. Avant Vienne, nous faisons toutefois une halte à Sooss pour rendre visite à mon ami d’école Flüge, qui vit ici depuis 10 ans."
-                          },
-                          {
-                            "index": 27,
-                            "text": "Juste avant Vienne, nous fêterons aussi le 200 000e anniversaire de notre Schleppi, qui commence à montrer une certaine lassitude de l’âge."
-                          }
-                        ]
-                      },
-                      {
-                        "lang_code": "it",
-                        "title": "Orgoglio e pregiudizio",
-                        "items": [
-                          {
-                            "index": 0,
-                            "text": "Siamo stati entrambi in Ungheria parecchie volte. Io avevo un team di sviluppo alla Siemens a Budapest, e Alex ha parenti lontani in Ungheria."
-                          },
-                          {
-                            "index": 1,
-                            "text": "### Budapest"
-                          },
-                          {
-                            "index": 7,
-                            "text": "Questo fine settimana a Budapest c’è il Pride. L’anno scorso il governo Orban ha vietato il Pride, con grande disappunto del governo cittadino. Per far rispettare il divieto, sono state minacciate multe da 500 euro per ogni partecipante. Il risultato è stata una marcia di 200.000 persone e una vittoria schiacciante dell’opposizione alle elezioni successive, che ha messo fine a 16 anni di Orban."
-                          },
-                          {
-                            "index": 8,
-                            "text": "Certo, sarebbe azzardato sostenere che il Pride abbia fatto cadere il governo. Ma è stato un ultimo segnale chiaro che la gente era stufa dei soprusi di un governo corrotto, la cui arroganza rasentava la megalomania."
-                          },
-                          {
-                            "index": 9,
-                            "text": "Laszlo, con cui ho lavorato alla Siemens e che incontriamo per un caffè, pensa che il nuovo governo abbia obiettivi diversi, ma sia altrettanto arrogante. Forse un residuo dell’epoca k.u.k.?"
-                          },
-                          {
-                            "index": 10,
-                            "text": "A Budapest tutto è vietato, e c’è sempre qualche benpensante che ti ricorda con insistenza i divieti. Ormai ci sentiamo già come a casa. Con un cane, questa città è un percorso a ostacoli: so benissimo io se il mio cane può prendere la scala mobile. Perché sono sempre i conservatori di destra a parlare più forte di libertà, responsabilità personale e indipendenza, ma poi riempiono tutto di regole, fino a decidere chi si può amare e chi no."
-                          },
-                          {
-                            "index": 11,
-                            "text": "### Caldo"
-                          },
-                          {
-                            "index": 19,
-                            "text": "In Europa fa caldo. L’ondata di calore si è spostata verso est e ora ci colpisce in pieno. Quest’anno i record di temperatura cadono a raffica, ancora una volta. Ormai sembra che ogni decennio abbia il suo estate del secolo. Dove sono finiti tutti i negazionisti del clima? In qualche modo sono diventati molto silenziosi. Grazie di nulla."
-                          },
-                          {
-                            "index": 20,
-                            "text": "Visitare una città con quasi 40 gradi non è proprio il massimo del divertimento. Per Charly può anche diventare rapidamente pericoloso. Perciò a Budapest passiamo i pomeriggi nella stanza d’albergo. Peccato, perché è una città bellissima, con un’architettura mozzafiato."
-                          },
-                          {
-                            "index": 21,
-                            "text": "### Voli"
-                          },
-                          {
-                            "index": 26,
-                            "text": "Lunedì andiamo da Budapest verso ovest in direzione del lago Balaton e da lì proseguiamo per Vienna. Prima di Vienna, però, facciamo una sosta a Sooss per andare a trovare il mio compagno di scuola Flüge, che vive qui da 10 anni."
-                          },
-                          {
-                            "index": 27,
-                            "text": "Poco prima di Vienna festeggeremo anche il 200.000esimo compleanno del nostro Schleppi, che sta iniziando a mostrare un po’ di stanchezza da età."
-                          }
-                        ]
-                      }
-                    ]
-                  }
-                }
-              ],
-              "phase": "final_answer",
-              "role": "assistant"
-            }
-          ]
-        },
-        "pairedItem": {
-          "item": 0
-        }
-      }
-    ]
-  },
   "connections": {
     "Download Header FB": {
       "main": [
@@ -1341,7 +1100,6 @@
       ]
     }
   },
-  "active": true,
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate",
@@ -1350,7 +1108,7 @@
     "errorWorkflow": "O6fHa4LyBB7P71nU",
     "callerPolicy": "workflowsFromSameOwner"
   },
-  "versionId": "f9995ae1-be16-456c-b0c4-15b0f952a40d",
+  "staticData": null,
   "meta": {
     "templateCredsSetupCompleted": true,
     "aiBuilderAssisted": true,
@@ -1358,6 +1116,35 @@
     "instanceId": "91b62e007400f324d5abda851b7466b395e6ae8249f94b33aa082b387b7fb350"
   },
   "nodeGroups": [],
-  "id": "l7HCCWtO1ALC82n6",
-  "tags": []
+  "pinData": {},
+  "versionId": "c910db15-0145-47fb-8ad6-56b157fb23bc",
+  "activeVersionId": "c910db15-0145-47fb-8ad6-56b157fb23bc",
+  "versionCounter": 4,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-08-05T15:02:25.914Z",
+      "createdAt": "2026-08-05T15:02:25.914Z",
+      "role": "workflow:owner",
+      "workflowId": "l7HCCWtO1ALC82n6",
+      "projectId": "A9hLodWkuBDYuCmu",
+      "project": {
+        "updatedAt": "2026-08-05T15:00:26.522Z",
+        "createdAt": "2026-08-05T14:59:37.480Z",
+        "id": "A9hLodWkuBDYuCmu",
+        "name": "Benno Baumgartner <n8n@bennobaumgartner.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "4c2031d8-37b8-4112-981d-b5dbb6027259"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": "Version c910db15",
+    "description": ""
+  }
 }

@@ -1,46 +1,43 @@
 # Syndicator
 
-**Syndicate** interface: accept blog posts from any editor, stage originals on
-SFTP, adapt media, render a Hugo tree, and create social drafts (via n8n + Postiz).
+Syndicator can take a blog post and:
+1. Generate a static web site translated to languages EN, FR, ES, SP, IT, and Pirate Speak
+2. Distribute the blog post and its content to social media platforms Instagram, Facebook, Youtube, and X.
 
-This repository documents the public contract and hosts the **pyautoflip**
-sidecar used for reel reframing. It does **not** read Logseq or any other
-editor format. Logseq users should use
-[logseq-blogger](https://github.com/bbaumgartner/logseq-blogger), which
-implements the logseq-blog input format and calls this interface.
+It uses AI extensively for various aspects like translation, post text generation, and media cropping.
+
+## Architecture
 
 ```
-Any blog editor  →  SFTP source/ + webhooks  →  n8n (adapt + publish)  →  Postiz
-                              ↓ hugo-site/
-                      fetch + git push  →  Hugo site deploy
+                      syndicate
+[HTTP/SFTP Client]───────( ○───────[Syndicator]───────( ○───────[Postiz]───────( ○───────[Social Media Platform]
+                                        │
+                                        ├──────( ○───────[OpenAI]
+                                        │
+                                        └──────( ○───────[Hugo]
 ```
 
-- **1 intro post per blog post** per platform (header image + English summary).
-- **1 reel per video** in the post (English caption from the cover frame).
-- Platforms: **Facebook + Instagram + X** via Postiz (as configured in n8n).
+Syndicator provides the `syndicate` interface specified in this document.
 
----
+* Syndicator uses [Postiz](https://postiz.com/) to schedule social media posts.
+* Syndicator uses [OpenAI](https://openai.com/) for KI tasks.
+* Syndicator uses [Hugo](https://gohugo.io/) to generate static blog post site.
 
-## The syndicate interface
+## syndicate interface
 
-Callers invoke syndicate by (1) uploading immutable originals over SFTP, then
-(2) POSTing JSON to the Blog Post Publish and Reel Publish webhooks. n8n
-responds with HTTP 2xx as soon as the request is accepted (`onReceived`) and
-continues asynchronously.
+Callers invoke syndicate by:
 
-### Invocation order
+1. uploading medias to SFTP
+2. POSTing JSON to the Blog Post Publish and Reel Publish webhook. 
+3. The webhook responds with HTTP 2xx as soon as the request is accepted and continues asynchronously.
 
-1. Upload all files for the post under `<base>/<slug>/source/`.
-2. For each local video: `POST` **Reel Publish** (zero or more calls).
-3. `POST` **Blog Post Publish** once.
+When Syndicator is done processing the webhook calls, callers can:
+* Review post drafts in Postiz
+* Fetch the static webpage from SFTP
 
-Do not fire webhooks before the referenced source files exist on SFTP.
+### Media Upload
 
-### SFTP layout
-
-Base directory is typically `/syndicator` (chrooted SFTP user).
-
-**Client writes (immutable originals):**
+Before the webhooks are invoked the blog post medias have to be made available to Syndicator through SFTP in following form:
 
 ```text
 <base>/<slug>/source/
@@ -51,31 +48,14 @@ Base directory is typically `/syndicator` (chrooted SFTP user).
 
 | Path | Role |
 |------|------|
+|`<base>`|`syndicator`|
+|`<slug>`|whatever you need to identify your blog post, for example `2026-06-03_Athen`|
 | `<base>/<slug>/source/<filename>` | Original media uploaded by the caller |
 | `<base>/<slug>/source/header.<ext>` | Featured/header image (basename convention) |
 
-**n8n writes (downstream; not a client write):**
-
-```text
-<base>/hugo-site/
-└── content/posts/<slug>/
-    ├── index.<lang>.md
-    ├── …
-    └── <post media>
-```
-
-Operators fetch `/syndicator/hugo-site/` into their Hugo site checkout, review,
-commit, and push. Social derivatives (header crops, reel encodings) may also
-appear under `<base>/<slug>/` as produced by Adapt workflows.
-
-Auth: key-only SFTP for a chrooted staging user.
-
 ### Blog Post Publish
 
-`POST` JSON to the configured publish webhook URL (path `/webhook/publish`).
-
-Any HTTP 2xx means accepted. Response body is ignored. Callers typically retry
-a few times with backoff on transport/HTTP errors.
+`POST` JSON to the configured publish webhook URL (path `/webhook/publish`). Any HTTP 2xx means accepted. Response body is ignored.
 
 ```json
 {
@@ -125,15 +105,23 @@ a few times with backoff on transport/HTTP errors.
 | `meta.*` | Title, date, language word + `lang_code`, author, summary, position |
 | `post_url` | Canonical URL for the post (caller-computed) |
 | `blocks[]` | Ordered content; kinds `title`, `text`, `youtube`, `media` |
-| `blocks[].media.source_filename` | Basename already present under `…/source/` |
-| `header_source` | Basename of the header file under `…/source/` (e.g. `header.jpg`) |
+| `blocks[].media.source_filename` | Basename present under `<base>/<slug>/source/` in SFTP |
+| `header_source` | Basename of the header file under `<base>/<slug>/source/` (e.g. `header.jpg`) |
 | `flags.redeploy` | `false` = full publish (site + social drafts); `true` = site-only rebuild, no drafts |
+
+Once Syndicator has finished processing Blog Post Publish the static Hugo post can be retrieved through SFTP at following location:
+
+```text
+<base>/hugo-site/
+└── content/posts/<slug>/
+    ├── index.<lang>.md
+    ├── …
+    └── <post media>
+```
 
 ### Reel Publish
 
-`POST` JSON to the configured reel webhook URL (path `/webhook/reel`).
-One call per local video. The file named in `source.filename` must already exist
-under `<base>/<slug>/source/`.
+`POST` JSON to the configured reel webhook URL (path `/webhook/reel`). One call per local video. Any HTTP 2xx means accepted. Response body is ignored.
 
 ```json
 {
@@ -159,41 +147,97 @@ under `<base>/<slug>/source/`.
 | `video.index` | 1-based index of this video in the post |
 | `video.section_title` | Nearest section heading, if any |
 | `video.section_text` | Caption context; conventionally includes a `[VIDEO]` marker |
-| `source.filename` | Basename under `…/source/` |
+| `source.filename` | Basename under `<base>/<slug>/source/` |
 
-### Effects
+## Setup
 
-After acceptance, n8n asynchronously:
+```bash
+cp .env.example .env        
+docker compose up -d --build
+```
+* Go to http://<host>:5678 and create your owner account.
+* Go to settings > n8n API and create an API Key
+* Store the key in .env N8N_API_KEY
+* Create public/private key and put the **private** key at `secrets/sftp_n8n_ed25519` and the **public** key in `sftp/keys/`
+* Set all other secrets in .env (OpenAI, Postiz, SFTP)
 
-- Adapts stills and reels (Edit Image / OpenAI crop-focus; pyautoflip for saliency reframing)
-- Translates and writes Hugo bundles under `<base>/hugo-site/content/posts/<slug>/`
-- Creates **Postiz drafts** for intro posts and reels (unless `flags.redeploy: true`)
+```bash
+./scripts/bootstrap-n8n.sh
+```
 
-There is **no editor-side marker** in this interface. Callers (e.g. logseq-blogger)
-own their own “already handed off” state.
+Docker named volumes are often created as root. After first `compose up` (or a volume recreate), fix ownership so the compose users can write:
 
----
+```bash
+# SFTP user is uid 1001 / gid 100
+docker run --rm -v syndicator_sftp_data:/data alpine sh -c 'chown -R 1001:100 /data && chmod 755 /data'
+# n8n + pyautoflip share /files as uid 1000
+docker run --rm -v syndicator_n8n_files:/data alpine sh -c 'chown -R 1000:1000 /data && chmod 775 /data'
+```
 
-## Server-side pieces in this repo
+## Update Worfklows
 
-### pyautoflip sidecar
+`./scripts/export-workflows.sh` exports all workflows from n8n into workflows/ folder in this repo
 
-HTTP wrapper around saliency-aware video reframing for the n8n Adapt Reel Media
-workflow. See [`services/pyautoflip/README.md`](services/pyautoflip/README.md)
-for the `/health` and `/reframe` API and how to wire it into the n8n compose
-stack. This is an implementation detail of reel adapt, not part of the public
-webhook contract above.
+## Automatic updates
 
-### Operating notes
+`scripts/update.sh` rebuilds with `--pull`, recreates containers, prunes old images, leaves volumes alone. Covers **n8n and pyautoflip**.
 
-- Activate the Blog Post Publish and Reel Publish n8n workflows and point
-  callers at the production webhook URLs.
-- Staging is not garbage-collected automatically; purge `/syndicator/`
-  periodically (e.g. `find -mtime`).
-- Align the n8n Hugo output directory with this contract: `<base>/hugo-site/`
-  (not a site-specific name).
+Logs default to `update.log` (`UPDATE_LOG` to override).
 
-## Related
+## Software Design
 
-- [logseq-blogger](https://github.com/bbaumgartner/logseq-blogger) — Logseq
-  `type:: blog` client of this interface
+```mermaid
+flowchart LR
+  Caller["HTTP/SFTP Client"]
+  subgraph compose ["docker compose"]
+    SFTP["sftp"]
+    N8N["n8n"]
+    PyAF["pyautoflip"]
+  end
+  Caller -->|key auth SFTP| SFTP
+  Caller -->|webhooks| N8N
+  N8N -->|FTP host=sftp| SFTP
+  N8N -->|HTTP /reframe on /files| PyAF
+  N8N --> OpenAI["OpenAI"]
+  N8N --> Postiz["Postiz"]
+  N8N --> Hugo["Hugo site tree"]
+```
+
+| Service | Role |
+|---------|------|
+| `sftp` | Key-only SFTP; chroot home with `/syndicator/…` |
+| `n8n` | Custom image (`ffmpeg` + Postiz + FFmpeg Studio community nodes); SQLite in `n8n_data` |
+| `pyautoflip` | Reel reframing sidecar; shares `n8n_files` → `/files` with n8n |
+
+| Piece | Role |
+|-------|------|
+| `docker-compose.yml` | Compose stack: SFTP + n8n + pyautoflip |
+| `scripts/` | bootstrap / export / update |
+| `n8n/workflows/` | Importable workflow exports (source of truth) |
+| `n8n/credentials/` | Credential templates (stable IDs; secrets from `.env`) |
+| `pyautoflip/` | Saliency reframe HTTP sidecar for Adapt Reel Media |
+
+| Workflow | Role |
+|----------|------|
+| Blog Post Publish | Webhook `/publish` → Hugo adapt + social feature adapt |
+| Reel Publish | Webhook `/reel` → adapt → caption → Postiz |
+| Adapt Hugo Media | Sub-workflow: Hugo media from blocks |
+| Adapt Feature Image | Sub-workflow: social header crops |
+| Adapt Reel Media | Sub-workflow: reel reframe via pyautoflip |
+| Syndicator Error | Shared `errorWorkflow` |
+
+```
+docker-compose.yml
+.env.example
+n8n/Dockerfile          # ffmpeg + community node seed
+n8n/workflows/          # importable exports (source of truth)
+n8n/credentials/*.template.json
+pyautoflip/             # Adapt Reel Media sidecar
+sftp/keys/              # authorized public keys (gitignored contents)
+scripts/{bootstrap,export,update}.sh
+systemd/*               # optional timer
+```
+
+Staging is not garbage-collected automatically; purge `/syndicator/` periodically. Align Hugo output with `<base>/hugo-site/` (not a site-specific name).
+
+

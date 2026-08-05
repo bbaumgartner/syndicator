@@ -1,5 +1,11 @@
 {
+  "updatedAt": "2026-08-05T16:36:34.588Z",
+  "createdAt": "2026-08-05T15:02:30.610Z",
+  "id": "zh21miLsQC8Jvua6",
   "name": "Reel Publish",
+  "description": null,
+  "active": true,
+  "isArchived": false,
   "nodes": [
     {
       "parameters": {
@@ -105,7 +111,7 @@
     {
       "parameters": {
         "type": "draft",
-        "date": "={{ $now.plus(2, \"days\").toISO() }}",
+        "date": "={{ $now.plus(1 + $('Reel Webhook').item.json.body.video.index, \"days\").toISO() }}",
         "posts": {
           "post": [
             {
@@ -232,7 +238,7 @@
     {
       "parameters": {
         "type": "draft",
-        "date": "={{ $now.plus(2, \"days\").toISO() }}",
+        "date": "={{ $now.plus(1 + $('Reel Webhook').item.json.body.video.index, \"days\").toISO() }}",
         "posts": {
           "post": [
             {
@@ -690,7 +696,7 @@
     {
       "parameters": {
         "type": "draft",
-        "date": "={{ $now.plus(2, \"days\").toISO() }}",
+        "date": "={{ $now.plus(1 + $('Reel Webhook').item.json.body.video.index, \"days\").toISO() }}",
         "posts": {
           "post": [
             {
@@ -777,48 +783,6 @@
       ]
     }
   ],
-  "pinData": {
-    "Reel Webhook": [
-      {
-        "json": {
-          "headers": {
-            "host": "192.168.0.26:5678",
-            "accept": "*/*",
-            "accept-encoding": "gzip, deflate",
-            "connection": "keep-alive",
-            "user-agent": "python-httpx/0.28.1",
-            "content-length": "1998",
-            "content-type": "application/json"
-          },
-          "params": {},
-          "query": {},
-          "body": {
-            "slug": "2026-05-28_Lefkada",
-            "post": {
-              "title": "Lefkada",
-              "url": "https://www.sailingnomads.ch/de/posts/2026-05-28_lefkada/",
-              "summary": "Die letzten 10 Tage haben wir auf der griechischen Insel Lefkada verbracht wo das Meer im schönsten türkis erstrahlt.",
-              "lang_code": "de"
-            },
-            "video": {
-              "index": 1,
-              "section_title": "",
-              "section_text": "Die letzten 10 Tage haben wir auf der griechischen Insel Lefkada verbracht wo das Meer im schönsten türkis erstrahlt.\n\nMit der Fähre sind wir von Split nach Ancona und von dort mit einer weiteren Fähre nach Igoumenitsa gereist. Wir wollten die EU nicht verlassen, weil das etwas komplizierter mit dem Hund sein kann. Die Fähre ist ist zwar teuer dafür ist die Party aber legendär.\n\n[VIDEO]\n\nAus Lefkada gibt es nicht viel zu berichten. Wir sind eigentlich nur rumgehangen und haben ein bisschen Strände besucht.\n\nDie Saison noch nicht begonnen und es ist mega friedlich. Das Meer hat hier eine ganz spezielle Farbe und ist atemberaubend schön.\n\nDazwischen haben wir auch noch unseren Hochzeitstag gefeiert und ich und Charly haben einen Haarschnitt erhalten.\n\nDie Zeit haben wir auch genutzt um unser Auto wieder auf Vordermann zu bringen, die Fahrertür war verzogen und ging nicht mehr richtig zu, es war ein Ölwechsel fällig und wir haben unserem Passat neue Bremsbeläge spendiert. Ausserdem gab es noch ein Spa Tag in der Autowäsche für unser tapferes Auto, das kurz vor seinem 200'000sten Geburtstag steht. All das kostet hier nur ein Bruchteil wie zuhause. Deswegen sieht man wohl auch richtig alte Schrottkarren noch auf der Strasse. Unglaublich was die hier noch reparieren, bei uns undenkbar. Ich habe auch noch nirgends zuvor so viele L300 gesehen.\n\nEs ist so wie sich ein schweizer Bünzli wie ich Griechenland vorstelle, alles sehr freundlich, lustig, und äusserst improvisiert und lösungsorientiert. Immer eine Zigi im Mundwinkel und ein Glas Ouzo in der Nähe.",
-              "alt": "ymca.mp4"
-            },
-            "source": {
-              "filename": "ymca_1785770242970_0.mp4"
-            }
-          },
-          "webhookUrl": "http://localhost:5678/webhook-test/reel",
-          "executionMode": "test"
-        },
-        "pairedItem": {
-          "item": 0
-        }
-      }
-    ]
-  },
   "connections": {
     "Caption FB": {
       "main": [
@@ -1102,7 +1066,6 @@
       ]
     }
   },
-  "active": true,
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate",
@@ -1111,7 +1074,7 @@
     "errorWorkflow": "O6fHa4LyBB7P71nU",
     "callerPolicy": "workflowsFromSameOwner"
   },
-  "versionId": "9d1ceb7e-41ff-4a40-a72f-190b388d9f42",
+  "staticData": null,
   "meta": {
     "templateCredsSetupCompleted": true,
     "aiBuilderAssisted": true,
@@ -1119,6 +1082,35 @@
     "instanceId": "91b62e007400f324d5abda851b7466b395e6ae8249f94b33aa082b387b7fb350"
   },
   "nodeGroups": [],
-  "id": "zh21miLsQC8Jvua6",
-  "tags": []
+  "pinData": {},
+  "versionId": "e1650099-fb01-4fb1-9c8b-a054240e52ed",
+  "activeVersionId": "e1650099-fb01-4fb1-9c8b-a054240e52ed",
+  "versionCounter": 13,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-08-05T15:02:30.614Z",
+      "createdAt": "2026-08-05T15:02:30.614Z",
+      "role": "workflow:owner",
+      "workflowId": "zh21miLsQC8Jvua6",
+      "projectId": "A9hLodWkuBDYuCmu",
+      "project": {
+        "updatedAt": "2026-08-05T15:00:26.522Z",
+        "createdAt": "2026-08-05T14:59:37.480Z",
+        "id": "A9hLodWkuBDYuCmu",
+        "name": "Benno Baumgartner <n8n@bennobaumgartner.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "4c2031d8-37b8-4112-981d-b5dbb6027259"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": "Version e1650099",
+    "description": ""
+  }
 }
