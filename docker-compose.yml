@@ -75,11 +75,16 @@ services:
   pyautoflip:
     build: ./pyautoflip
     image: syndicator-pyautoflip:local
-    # Same uid as n8n (node) so /files writes are readable by both
+    # Same uid as n8n (node) so /files writes are readable by both.
+    # HOME must be writable: compose user override otherwise sets HOME=/ and
+    # InsightFace fails creating /.insightface (EACCES).
     user: "1000:1000"
+    environment:
+      HOME: /home/pyautoflip
     restart: unless-stopped
     volumes:
       - n8n_files:/files
+      - pyautoflip_home:/home/pyautoflip
     expose:
       - "8080"
     healthcheck:
@@ -99,3 +104,4 @@ volumes:
   sftp_data:
   n8n_data:
   n8n_files:
+  pyautoflip_home:
