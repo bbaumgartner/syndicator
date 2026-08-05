@@ -1,0 +1,93 @@
+# Phase 1 syndicator stack: SFTP staging + n8n (regular/SQLite) + pyautoflip.
+# Usage (from this directory):
+#   cp .env.example .env   # fill secrets
+#   docker compose up -d --build
+#   ./scripts/bootstrap-n8n.sh
+
+name: syndicator
+
+services:
+  sftp:
+    image: atmoz/sftp:alpine
+    restart: unless-stopped
+    ports:
+      - "${SFTP_PUBLISH_PORT:-2222}:22"
+    volumes:
+      - sftp_data:/home/sftp/syndicator
+      - ./sftp/keys:/home/sftp/.ssh/keys:ro
+    # user::uid:gid:dirs — empty password → key-only auth
+    command: sftp::1001:100:syndicator
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x sshd >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  n8n:
+    build:
+      context: ./n8n
+      args:
+        N8N_BASE_IMAGE: ${N8N_BASE_IMAGE:-docker.n8n.io/n8nio/n8n:stable}
+        FFMPEG_IMAGE: ${FFMPEG_IMAGE:-mwader/static-ffmpeg:7.1.1}
+        POSTIZ_VERSION: ${POSTIZ_NODE_VERSION:-0.2.17}
+        FFMPEG_STUDIO_VERSION: ${FFMPEG_STUDIO_NODE_VERSION:-1.0.0}
+    image: syndicator-n8n:stable
+    restart: unless-stopped
+    ports:
+      - "${N8N_HOST_PORT:-5678}:5678"
+    environment:
+      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-Europe/Zurich}
+      TZ: ${GENERIC_TIMEZONE:-Europe/Zurich}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?set N8N_ENCRYPTION_KEY in .env}
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PORT: ${N8N_PORT:-5678}
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678/}
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      N8N_RESTRICT_FILE_ACCESS_TO: /files
+      N8N_SECURE_COOKIE: ${N8N_SECURE_COOKIE:-false}
+      N8N_COMMUNITY_PACKAGES_ENABLED: "true"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - n8n_files:/files
+    depends_on:
+      sftp:
+        condition: service_started
+      pyautoflip:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1:5678/healthz >/dev/null || exit 1",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  pyautoflip:
+    build: ./pyautoflip
+    image: syndicator-pyautoflip:local
+    restart: unless-stopped
+    volumes:
+      - n8n_files:/files
+    expose:
+      - "8080"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+
+volumes:
+  sftp_data:
+  n8n_data:
+  n8n_files:

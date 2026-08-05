@@ -14,3 +14,10 @@ dist/
 .env
 config.local.yaml
 .mypy_cache/
+
+# Compose secrets / local keys / update log
+secrets/*
+!secrets/.gitkeep
+sftp/keys/*
+!sftp/keys/.gitkeep
+update.log
