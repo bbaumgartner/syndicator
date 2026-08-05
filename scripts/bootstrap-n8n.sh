@@ -19,15 +19,22 @@ set +a
 
 COMPOSE=(docker compose)
 N8N_EXEC=(docker compose exec -T -u node n8n)
+# Import order: leaves before parents (same as publish).
 SYNDICATOR_WORKFLOWS=(
-  "Blog Post Publish"
-  "Reel Publish"
+  "Syndicator Error"
   "Adapt Hugo Media"
   "Adapt Feature Image"
   "Adapt Reel Media"
-  "Syndicator Error"
+  "Blog Post Publish"
+  "Reel Publish"
 )
-WEBHOOK_WORKFLOW_IDS=(
+# Publish order: n8n 2.x requires referenced sub-workflows (and error workflow)
+# to be published before parents that call them.
+PUBLISH_WORKFLOW_IDS=(
+  "O6fHa4LyBB7P71nU" # Syndicator Error
+  "OGa6Xa8GxkSmA7Cr" # Adapt Hugo Media
+  "8NOGn9jgOoV0fw0u" # Adapt Feature Image
+  "y9TTx7N8Iygn88ry" # Adapt Reel Media
   "l7HCCWtO1ALC82n6" # Blog Post Publish
   "zh21miLsQC8Jvua6" # Reel Publish
 )
@@ -144,8 +151,9 @@ for name in "${SYNDICATOR_WORKFLOWS[@]}"; do
   "${N8N_EXEC[@]}" rm -f /tmp/workflow-import.json
 done
 
-echo "Publishing webhook workflows…"
-for id in "${WEBHOOK_WORKFLOW_IDS[@]}"; do
+publish_workflow() {
+  local id="$1"
+  local code
   code="$(curl -sS -o /tmp/n8n-activate-body -w '%{http_code}' -X POST \
     -H "X-N8N-API-KEY: ${N8N_API_KEY}" \
     -H "Content-Type: application/json" \
@@ -162,6 +170,11 @@ for id in "${WEBHOOK_WORKFLOW_IDS[@]}"; do
     exit 1
   fi
   echo "  published $id"
+}
+
+echo "Publishing workflows (sub-workflows before webhook parents)…"
+for id in "${PUBLISH_WORKFLOW_IDS[@]}"; do
+  publish_workflow "$id"
 done
 
 echo "Verifying production webhooks…"

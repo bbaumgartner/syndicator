@@ -152,12 +152,16 @@ Once Syndicator has finished processing Blog Post Publish the static Hugo post c
 ## Setup
 
 ```bash
-git clone git@github.com:bbaumgartner/syndicator.git
-cd syndicator
-cp .env.example .env                 # fill secrets (see below)
-# public keys → sftp/keys/; n8n private key → secrets/sftp_n8n_ed25519
-docker compose up -d --build         # start SFTP + n8n + pyautoflip
-# First boot only: open http://<host>:5678 and create the owner account
+cp .env.example .env        
+docker compose up -d --build
+```
+* Go to http://<host>:5678 and create your owner account.
+* Go to settings > n8n API and create an API Key
+* Store the key in .env N8N_API_KEY
+* Create public/private key and put the **private** key at `secrets/sftp_n8n_ed25519` and the **public** key in `sftp/keys/`
+* Set all other secrets in .env (OpenAI, Postiz, SFTP)
+
+```bash
 ./scripts/bootstrap-n8n.sh           # import credentials/workflows, publish webhooks
 ```
 
@@ -181,7 +185,7 @@ Credential templates in `n8n/credentials/*.template.json` keep the live credenti
 
 ### Workflows
 
-Source of truth: `n8n/workflows/*.json`. Bootstrap imports all six, then **publishes** only the webhook pair (`Blog Post Publish`, `Reel Publish`) via the Public API. Sub-workflows do not need activation. It then checks `/webhook/publish`, `/webhook/reel`, and `http://pyautoflip:8080/health` from the n8n network.
+Source of truth: `n8n/workflows/*.json`. Bootstrap imports all six, then **publishes** them via the Public API in dependency order (error workflow → Adapt\* sub-workflows → Blog Post / Reel Publish). It then checks `/webhook/publish`, `/webhook/reel`, and `http://pyautoflip:8080/health` from the n8n network.
 
 Day-2: edit in n8n → `./scripts/export-workflows.sh` → commit.
 
