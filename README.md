@@ -162,102 +162,27 @@ docker compose up -d --build
 * Set all other secrets in .env (OpenAI, Postiz, SFTP)
 
 ```bash
-./scripts/bootstrap-n8n.sh           # import credentials/workflows, publish webhooks
+./scripts/bootstrap-n8n.sh
 ```
+
+Docker named volumes are often created as root. After first `compose up` (or a volume recreate), fix ownership so the compose users can write:
 
 ```bash
-./scripts/export-workflows.sh        # refresh n8n/workflows/ from live n8n
-./scripts/update.sh                  # rebuild images (also via systemd timer / cron)
-docker compose down                  # stop (volumes kept)
+# SFTP user is uid 1001 / gid 100
+docker run --rm -v syndicator_sftp_data:/data alpine sh -c 'chown -R 1001:100 /data && chmod 755 /data'
+# n8n + pyautoflip share /files as uid 1000
+docker run --rm -v syndicator_n8n_files:/data alpine sh -c 'chown -R 1000:1000 /data && chmod 775 /data'
 ```
 
-### Secrets
+## Update Worfklows
 
-1. Copy `.env.example` → `.env` (gitignored).
-2. Set `N8N_ENCRYPTION_KEY`:
-   - **Reuse existing volume:** copy `encryptionKey` from `/home/node/.n8n/config` inside the current container.
-   - **Fresh volume:** `openssl rand -hex 16`, then bootstrap re-imports credentials.
-3. Create an n8n **Public API** key in the UI → `N8N_API_KEY` (bootstrap publishes webhook workflows with it).
-4. Fill OpenAI / Mailgun / Postiz secrets.
-5. Generate an n8n→SFTP keypair; put the **private** key at `secrets/sftp_n8n_ed25519` and the **public** key in `sftp/keys/`. Also add the Mac client public key under `sftp/keys/`.
+`./scripts/export-workflows.sh` exports all workflows from n8n into workflows/ folder in this repo
 
-Credential templates in `n8n/credentials/*.template.json` keep the live credential **IDs** so imported workflows stay linked. Bootstrap renders them, imports, then deletes the temp files.
-
-### Workflows
-
-Source of truth: `n8n/workflows/*.json`. Bootstrap imports all six, then **publishes** them via the Public API in dependency order (error workflow → Adapt\* sub-workflows → Blog Post / Reel Publish). It then checks `/webhook/publish`, `/webhook/reel`, and `http://pyautoflip:8080/health` from the n8n network.
-
-Day-2: edit in n8n → `./scripts/export-workflows.sh` → commit.
-
-### Automatic updates
+## Automatic updates
 
 `scripts/update.sh` rebuilds with `--pull`, recreates containers, prunes old images, leaves volumes alone. Covers **n8n and pyautoflip**.
 
-**systemd** (paths assume checkout at `/home/benno/git/syndicator`):
-
-```bash
-sudo cp systemd/syndicator-update.* /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now syndicator-update.timer
-```
-
-**cron** (parity with today’s `0 4 * * *`):
-
-```cron
-0 4 * * * /home/benno/git/syndicator/scripts/update.sh
-```
-
 Logs default to `update.log` (`UPDATE_LOG` to override).
-
-### Cutover from host `~/n8n` + host sshd SFTP
-
-**A. Bring up compose alongside (validate)**
-
-1. Migrate SFTP tree into the compose volume (paths inside chroot must stay `/syndicator/…`):
-
-   ```bash
-   docker compose up -d sftp
-   docker compose cp /srv/sftp/sftp/syndicator/. sftp:/home/sftp/syndicator/
-   ```
-
-2. Point a test Mac config at `SFTP_PUBLISH_PORT` and the compose n8n URL; upload + fire webhooks.
-3. Confirm n8n can download via host=`sftp` and Adapt Reel Media reaches pyautoflip.
-
-**B. Retire host sshd SFTP** (replacement, not addition)
-
-After the container serves the same tree:
-
-1. Edit `/etc/ssh/sshd_config.d/sftp.conf`: remove `sftp` from `AllowUsers`, remove the `Match Group sftponly` block.
-2. Reload: `sudo systemctl reload sshd`.
-3. Lock the host account: `sudo usermod -L sftp` (or remove later).
-4. Leave `/srv/sftp` read-only until the volume is backed up; then delete.
-5. Re-test: old port/user must refuse SFTP; compose port must work.
-
-**Rollback:** restore the `AllowUsers` / `Match Group sftponly` block, `systemctl reload sshd`, unlock `sftp`.
-
-**C. Retire host `~/n8n` pyautoflip fragment**
-
-1. Remove the `pyautoflip` service from `~/n8n/compose.yaml`.
-2. Stop using `~/n8n` for syndicator (or stop that compose project entirely once traffic is on this repo’s compose).
-3. Disable the old cron line `0 4 * * * /home/benno/n8n/update.sh` in favor of the timer/cron above.
-
-**D. Client endpoints**
-
-Callers (e.g. [logseq-blogger](https://github.com/bbaumgartner/logseq-blogger) `config.local.yaml`) should use:
-
-```yaml
-sftp:
-  host: 144.2.110.132   # or LAN IP
-  port: 2222            # SFTP_PUBLISH_PORT
-  user: sftp
-  base_dir: /syndicator
-
-webhooks:
-  publish_url: "http://192.168.0.26:5678/webhook/publish"
-  reel_url: "http://192.168.0.26:5678/webhook/reel"
-```
-
-After cutover, SFTP port changes from host `22` to the compose publish port unless you later bind compose SFTP to `22` (only once host sshd SFTP is gone).
 
 ## Software Design
 
@@ -314,3 +239,5 @@ systemd/*               # optional timer
 ```
 
 Staging is not garbage-collected automatically; purge `/syndicator/` periodically. Align Hugo output with `<base>/hugo-site/` (not a site-specific name).
+
+

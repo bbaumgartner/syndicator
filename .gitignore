@@ -20,4 +20,5 @@ secrets/*
 !secrets/.gitkeep
 sftp/keys/*
 !sftp/keys/.gitkeep
+sftp/host_keys/
 update.log

@@ -15,6 +15,12 @@ services:
     volumes:
       - sftp_data:/home/sftp/syndicator
       - ./sftp/keys:/home/sftp/.ssh/keys:ro
+      # Durable host keys (generate once under sftp/host_keys/). Without these,
+      # a failed first boot + container restart can skip keygen forever and crash-loop.
+      - ./sftp/host_keys/ssh_host_ed25519_key:/etc/ssh/ssh_host_ed25519_key:ro
+      - ./sftp/host_keys/ssh_host_ed25519_key.pub:/etc/ssh/ssh_host_ed25519_key.pub:ro
+      - ./sftp/host_keys/ssh_host_rsa_key:/etc/ssh/ssh_host_rsa_key:ro
+      - ./sftp/host_keys/ssh_host_rsa_key.pub:/etc/ssh/ssh_host_rsa_key.pub:ro
     # user::uid:gid:dirs — empty password → key-only auth
     command: sftp::1001:100:syndicator
     healthcheck:
@@ -69,6 +75,8 @@ services:
   pyautoflip:
     build: ./pyautoflip
     image: syndicator-pyautoflip:local
+    # Same uid as n8n (node) so /files writes are readable by both
+    user: "1000:1000"
     restart: unless-stopped
     volumes:
       - n8n_files:/files
