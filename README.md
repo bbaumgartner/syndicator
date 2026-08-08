@@ -27,7 +27,7 @@ Syndicator provides the `syndicate` interface specified in this document.
 
 Callers invoke syndicate by:
 
-1. uploading medias to SFTP
+1. uploading medias to SFTP (port `2222`, key-only; authorize a public key in `sftp/keys/`, or reuse `secrets/sftp_n8n_ed25519` from `./scripts/ensure-sftp-keys.sh`)
 2. POSTing JSON to the Blog Post Publish and Reel Publish webhook. 
 3. The webhook responds with HTTP 2xx as soon as the request is accepted and continues asynchronously.
 
@@ -152,28 +152,26 @@ Once Syndicator has finished processing Blog Post Publish the static Hugo post c
 ## Setup
 
 ```bash
-cp .env.example .env        
+cp .env.example .env
+./scripts/ensure-sftp-keys.sh
 docker compose up -d --build
 ```
 * Go to http://<host>:5678 and create your owner account.
 * Go to settings > n8n API and create an API Key
 * Store the key in .env N8N_API_KEY
-* Create public/private key and put the **private** key at `secrets/sftp_n8n_ed25519` and the **public** key in `sftp/keys/`
-* Set all other secrets in .env (OpenAI, Postiz, SFTP)
+* Set remaining secrets in .env (OpenAI, Postiz)
 
 ```bash
 ./scripts/bootstrap-n8n.sh
 ```
 
-Docker named volumes are often created as root. After first `compose up` (or a volume recreate), fix ownership so the compose users can write:
+`ensure-sftp-keys.sh` writes `secrets/sftp_n8n_ed25519` (private) and `sftp/keys/n8n.pub` (public); bootstrap runs it too. Extra client keys: copy any `.pub` into `sftp/keys/` and `docker compose restart sftp`. Host keys live in the `sftp_host_keys` volume (generated on first start). Connect on port `2222` as user `sftp`.
+
+If the shared `n8n_files` volume was created as root and n8n/pyautoflip cannot write:
 
 ```bash
-# SFTP user is uid 1001 / gid 100
-docker run --rm -v syndicator_sftp_data:/data alpine sh -c 'chown -R 1001:100 /data && chmod 755 /data'
-# n8n + pyautoflip share /files as uid 1000
 docker run --rm -v syndicator_n8n_files:/data alpine sh -c 'chown -R 1000:1000 /data && chmod 775 /data'
 ```
-
 ## Update Worfklows
 
 `./scripts/export-workflows.sh` exports all workflows from n8n into workflows/ folder in this repo
@@ -203,11 +201,12 @@ The repo is the blueprint for a containerized instance: Compose defines the stac
 | `docker-compose.yml` | Compose stack: SFTP + n8n + pyautoflip |
 | `.env.example` | Env template for secrets and host paths |
 | `n8n/Dockerfile` | Custom n8n image (`ffmpeg` + community node seed) |
-| `scripts/` | bootstrap / export / update |
+| `sftp/Dockerfile` | atmoz/sftp wrapper (host keys volume, key sync, chown) |
+| `scripts/` | ensure-sftp-keys / bootstrap / export / update |
 | `n8n/workflows/` | Importable workflow exports (source of truth) |
 | `n8n/credentials/` | Credential templates (stable IDs; secrets from `.env`) |
 | `pyautoflip/` | Image/build context for the reframe sidecar |
-| `sftp/keys/` | Authorized public keys (gitignored contents) |
+| `sftp/keys/` | Authorized client public keys (refreshed into `authorized_keys` on each sftp start) |
 | `systemd/*` | Optional host timer for updates |
 
 ```
@@ -217,8 +216,8 @@ n8n/Dockerfile
 n8n/workflows/
 n8n/credentials/*.template.json
 pyautoflip/
-sftp/keys/
-scripts/{bootstrap,export,update}.sh
+sftp/
+scripts/{ensure-sftp-keys,bootstrap,export,update}.sh
 systemd/*
 ```
 
@@ -245,7 +244,7 @@ flowchart LR
 
 | Service | Role |
 |---------|------|
-| `sftp` | Key-only SFTP; chroot home with `/syndicator/…` |
+| `sftp` | Key-only SFTP on port `2222`; chroot home with `/syndicator/…`; host keys in `sftp_host_keys` |
 | `n8n` | Workflow engine; SQLite in `n8n_data`; shares `n8n_files` → `/files` with pyautoflip |
 | `pyautoflip` | Reel reframing sidecar (`HTTP /reframe` on `/files`) |
 

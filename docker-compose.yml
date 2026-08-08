@@ -1,6 +1,7 @@
 # Phase 1 syndicator stack: SFTP staging + n8n (regular/SQLite) + pyautoflip.
 # Usage (from this directory):
 #   cp .env.example .env   # fill secrets
+#   ./scripts/ensure-sftp-keys.sh
 #   docker compose up -d --build
 #   ./scripts/bootstrap-n8n.sh
 
@@ -8,19 +9,17 @@ name: syndicator
 
 services:
   sftp:
-    image: atmoz/sftp:alpine
+    build: ./sftp
+    image: syndicator-sftp:local
     restart: unless-stopped
     ports:
       - "${SFTP_PUBLISH_PORT:-2222}:22"
     volumes:
       - sftp_data:/home/sftp/syndicator
+      # Client public keys (ensure-sftp-keys.sh writes n8n.pub here).
       - ./sftp/keys:/home/sftp/.ssh/keys:ro
-      # Durable host keys (generate once under sftp/host_keys/). Without these,
-      # a failed first boot + container restart can skip keygen forever and crash-loop.
-      - ./sftp/host_keys/ssh_host_ed25519_key:/etc/ssh/ssh_host_ed25519_key:ro
-      - ./sftp/host_keys/ssh_host_ed25519_key.pub:/etc/ssh/ssh_host_ed25519_key.pub:ro
-      - ./sftp/host_keys/ssh_host_rsa_key:/etc/ssh/ssh_host_rsa_key:ro
-      - ./sftp/host_keys/ssh_host_rsa_key.pub:/etc/ssh/ssh_host_rsa_key.pub:ro
+      # Server host keys generated on first start; survive recreate.
+      - sftp_host_keys:/etc/ssh/host_keys
     # user::uid:gid:dirs — empty password → key-only auth
     command: sftp::1001:100:syndicator
     healthcheck:
@@ -102,6 +101,7 @@ services:
 
 volumes:
   sftp_data:
+  sftp_host_keys:
   n8n_data:
   n8n_files:
   pyautoflip_home:

@@ -52,6 +52,9 @@ need POSTIZ_API_KEY
 need SFTP_HOST
 need SFTP_USERNAME
 
+# Create n8n↔sftp keypair if missing, and refresh authorized public key.
+"$ROOT/scripts/ensure-sftp-keys.sh"
+
 if [[ -z "${SFTP_PRIVATE_KEY:-}" ]]; then
   key_file="${SFTP_PRIVATE_KEY_FILE:-./secrets/sftp_n8n_ed25519}"
   if [[ ! -f "$key_file" ]]; then
@@ -61,6 +64,18 @@ if [[ -z "${SFTP_PRIVATE_KEY:-}" ]]; then
   SFTP_PRIVATE_KEY="$(cat "$key_file")"
   export SFTP_PRIVATE_KEY
 fi
+
+# Restart sftp so sshd-wrapper re-syncs authorized_keys from sftp/keys/.
+if [[ -n "$("${COMPOSE[@]}" ps -q sftp 2>/dev/null || true)" ]]; then
+  echo "Restarting sftp to pick up authorized keys…"
+  "${COMPOSE[@]}" restart sftp
+fi
+for _ in $(seq 1 30); do
+  if "${COMPOSE[@]}" exec -T sftp pgrep -x sshd >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
 
 echo "Waiting for n8n…"
 for _ in $(seq 1 60); do
