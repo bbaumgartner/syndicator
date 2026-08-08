@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-05T16:36:34.588Z",
+  "updatedAt": "2026-08-08T13:50:55.983Z",
   "createdAt": "2026-08-05T15:02:30.610Z",
   "id": "zh21miLsQC8Jvua6",
   "name": "Reel Publish",
@@ -1071,7 +1071,6 @@
     "binaryMode": "separate",
     "availableInMCP": true,
     "timeSavedMode": "fixed",
-    "errorWorkflow": "O6fHa4LyBB7P71nU",
     "callerPolicy": "workflowsFromSameOwner"
   },
   "staticData": null,
@@ -1085,7 +1084,7 @@
   "pinData": {},
   "versionId": "e1650099-fb01-4fb1-9c8b-a054240e52ed",
   "activeVersionId": "e1650099-fb01-4fb1-9c8b-a054240e52ed",
-  "versionCounter": 13,
+  "versionCounter": 14,
   "triggerCount": 1,
   "sourceWorkflowId": null,
   "tags": [],

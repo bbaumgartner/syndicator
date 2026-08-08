@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-05T16:36:18.481Z",
+  "updatedAt": "2026-08-08T13:49:53.987Z",
   "createdAt": "2026-08-05T15:02:25.910Z",
   "id": "l7HCCWtO1ALC82n6",
   "name": "Blog Post Publish",
@@ -1105,7 +1105,6 @@
     "binaryMode": "separate",
     "availableInMCP": true,
     "timeSavedMode": "fixed",
-    "errorWorkflow": "O6fHa4LyBB7P71nU",
     "callerPolicy": "workflowsFromSameOwner"
   },
   "staticData": null,
@@ -1119,7 +1118,7 @@
   "pinData": {},
   "versionId": "c910db15-0145-47fb-8ad6-56b157fb23bc",
   "activeVersionId": "c910db15-0145-47fb-8ad6-56b157fb23bc",
-  "versionCounter": 4,
+  "versionCounter": 5,
   "triggerCount": 1,
   "sourceWorkflowId": null,
   "tags": [],

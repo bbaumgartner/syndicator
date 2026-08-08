@@ -16,7 +16,6 @@ WORKFLOWS=(
   "OGa6Xa8GxkSmA7Cr|Adapt Hugo Media"
   "8NOGn9jgOoV0fw0u|Adapt Feature Image"
   "y9TTx7N8Iygn88ry|Adapt Reel Media"
-  "O6fHa4LyBB7P71nU|Syndicator Error"
 )
 
 TMP="$(mktemp -d)"

@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-05T15:02:16.577Z",
+  "updatedAt": "2026-08-08T13:50:20.575Z",
   "createdAt": "2026-08-05T15:02:16.577Z",
   "id": "8NOGn9jgOoV0fw0u",
   "name": "Adapt Feature Image",
@@ -352,8 +352,8 @@
     "executionOrder": "v1",
     "binaryMode": "separate",
     "availableInMCP": true,
-    "errorWorkflow": "O6fHa4LyBB7P71nU",
-    "callerPolicy": "workflowsFromSameOwner"
+    "callerPolicy": "workflowsFromSameOwner",
+    "timeSavedMode": "fixed"
   },
   "staticData": null,
   "meta": {
@@ -365,7 +365,7 @@
   "pinData": {},
   "versionId": "fb0668ba-cef9-4510-88da-d4de710d6b6b",
   "activeVersionId": "fb0668ba-cef9-4510-88da-d4de710d6b6b",
-  "versionCounter": 1,
+  "versionCounter": 2,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],

@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-05T15:02:21.158Z",
+  "updatedAt": "2026-08-08T13:50:38.906Z",
   "createdAt": "2026-08-05T15:02:21.158Z",
   "id": "y9TTx7N8Iygn88ry",
   "name": "Adapt Reel Media",
@@ -383,8 +383,8 @@
     "executionOrder": "v1",
     "binaryMode": "separate",
     "availableInMCP": true,
-    "errorWorkflow": "O6fHa4LyBB7P71nU",
-    "callerPolicy": "workflowsFromSameOwner"
+    "callerPolicy": "workflowsFromSameOwner",
+    "timeSavedMode": "fixed"
   },
   "staticData": null,
   "meta": {
@@ -396,7 +396,7 @@
   "pinData": {},
   "versionId": "39f0e31f-c3cc-4579-bc6d-2ec4a99854a5",
   "activeVersionId": "39f0e31f-c3cc-4579-bc6d-2ec4a99854a5",
-  "versionCounter": 1,
+  "versionCounter": 2,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
