@@ -46,7 +46,8 @@ need() {
 }
 
 need N8N_ENCRYPTION_KEY
-need N8N_API_KEY
+need N8N_OWNER_EMAIL
+need N8N_OWNER_PASSWORD
 need OPENAI_API_KEY
 need POSTIZ_API_KEY
 need SFTP_HOST
@@ -54,6 +55,8 @@ need SFTP_USERNAME
 
 # Create n8n↔sftp keypair if missing, and refresh authorized public key.
 "$ROOT/scripts/ensure-sftp-keys.sh"
+# Bcrypt owner password into secrets/n8n_owner.env for Compose.
+"$ROOT/scripts/ensure-n8n-owner.sh"
 
 if [[ -z "${SFTP_PRIVATE_KEY:-}" ]]; then
   key_file="${SFTP_PRIVATE_KEY_FILE:-./secrets/sftp_n8n_ed25519}"
@@ -89,6 +92,118 @@ if ! "${COMPOSE[@]}" exec -T n8n wget -qO- http://127.0.0.1:5678/healthz >/dev/n
   exit 1
 fi
 
+N8N_BASE="http://127.0.0.1:${N8N_HOST_PORT:-5678}"
+API_KEY_LABEL="syndicator-bootstrap"
+API_KEY_FILE="$ROOT/secrets/n8n_api_key"
+TMP_DIR="$(mktemp -d)"
+COOKIE_JAR="$TMP_DIR/n8n-cookies.txt"
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+ensure_n8n_api_key() {
+  if [[ -n "${N8N_API_KEY:-}" ]]; then
+    echo "Using N8N_API_KEY from environment"
+    return
+  fi
+  if [[ -f "$API_KEY_FILE" && -s "$API_KEY_FILE" ]]; then
+    N8N_API_KEY="$(tr -d '[:space:]' <"$API_KEY_FILE")"
+    if [[ -n "$N8N_API_KEY" ]]; then
+      echo "Using API key from $API_KEY_FILE"
+      export N8N_API_KEY
+      return
+    fi
+  fi
+
+  echo "Logging into n8n to provision API key…"
+  local login_code
+  login_code="$(curl -sS -o /tmp/n8n-login-body -w '%{http_code}' -c "$COOKIE_JAR" -b "$COOKIE_JAR" \
+    -X POST \
+    -H 'Content-Type: application/json' \
+    -d "$(python3 -c 'import json,os; print(json.dumps({"emailOrLdapLoginId":os.environ["N8N_OWNER_EMAIL"],"password":os.environ["N8N_OWNER_PASSWORD"]}))')" \
+    "${N8N_BASE}/rest/login" || true)"
+  if [[ "$login_code" != "200" ]]; then
+    echo "n8n login failed (HTTP $login_code): $(cat /tmp/n8n-login-body)" >&2
+    echo "Ensure N8N_OWNER_EMAIL/PASSWORD match the env-managed owner and that ensure-n8n-owner.sh ran before compose up." >&2
+    exit 1
+  fi
+
+  local scopes_json key_id raw_key create_body
+  scopes_json="$(curl -sS -c "$COOKIE_JAR" -b "$COOKIE_JAR" "${N8N_BASE}/rest/api-keys/scopes")"
+  scopes_json="$(python3 -c '
+import json,sys
+body=json.load(sys.stdin)
+scopes=body.get("data", body)
+if not isinstance(scopes, list):
+    raise SystemExit(f"Unexpected scopes response: {body!r}")
+print(json.dumps(scopes))
+' <<<"$scopes_json")"
+
+  key_id="$(curl -sS -c "$COOKIE_JAR" -b "$COOKIE_JAR" \
+    --get \
+    --data-urlencode "label=${API_KEY_LABEL}" \
+    --data-urlencode "ownership=mine" \
+    --data-urlencode "take=50" \
+    "${N8N_BASE}/rest/api-keys" | python3 -c '
+import json,sys
+body=json.load(sys.stdin)
+payload=body.get("data", body)
+if isinstance(payload, dict):
+    items=payload.get("items", payload.get("data", []))
+elif isinstance(payload, list):
+    items=payload
+else:
+    items=[]
+label=sys.argv[1]
+for item in items or []:
+    if item.get("label")==label:
+        print(item.get("id",""))
+        break
+' "$API_KEY_LABEL")"
+
+  if [[ -n "$key_id" ]]; then
+    echo "Rotating API key label=$API_KEY_LABEL id=$key_id…"
+    raw_key="$(curl -sS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
+      "${N8N_BASE}/rest/api-keys/${key_id}/rotate" | python3 -c '
+import json,sys
+body=json.load(sys.stdin)
+data=body.get("data", body)
+key=data.get("rawApiKey") or data.get("apiKey") or ""
+if not key or key.startswith("*"):
+    raise SystemExit(f"Rotate did not return rawApiKey: {body!r}")
+print(key)
+')"
+  else
+    echo "Creating API key label=$API_KEY_LABEL…"
+    create_body="$(python3 -c '
+import json,sys
+scopes=json.loads(sys.argv[1])
+print(json.dumps({"label":sys.argv[2],"expiresAt":None,"scopes":scopes}))
+' "$scopes_json" "$API_KEY_LABEL")"
+    raw_key="$(curl -sS -c "$COOKIE_JAR" -b "$COOKIE_JAR" \
+      -X POST \
+      -H 'Content-Type: application/json' \
+      -d "$create_body" \
+      "${N8N_BASE}/rest/api-keys" | python3 -c '
+import json,sys
+body=json.load(sys.stdin)
+data=body.get("data", body)
+key=data.get("rawApiKey") or ""
+if not key:
+    raise SystemExit(f"Create did not return rawApiKey: {body!r}")
+print(key)
+')"
+  fi
+
+  mkdir -p "$(dirname "$API_KEY_FILE")"
+  umask 077
+  printf '%s\n' "$raw_key" >"$API_KEY_FILE"
+  chmod 600 "$API_KEY_FILE"
+  N8N_API_KEY="$raw_key"
+  export N8N_API_KEY
+  echo "Wrote $API_KEY_FILE"
+}
+
+ensure_n8n_api_key
+
 resolve_owner_user_id() {
   if [[ -n "${N8N_OWNER_USER_ID:-}" ]]; then
     printf '%s' "$N8N_OWNER_USER_ID"
@@ -109,7 +224,7 @@ resolve_owner_user_id() {
 
 OWNER_USER_ID="$(resolve_owner_user_id | tr -d '[:space:]')"
 if [[ -z "$OWNER_USER_ID" ]]; then
-  echo "Could not resolve n8n owner user id. Create the owner account in the UI, then re-run (or set N8N_OWNER_USER_ID)." >&2
+  echo "Could not resolve n8n owner user id. Ensure N8N_INSTANCE_OWNER_* is configured (./scripts/ensure-n8n-owner.sh + compose up), then re-run (or set N8N_OWNER_USER_ID)." >&2
   exit 1
 fi
 echo "Using owner userId=$OWNER_USER_ID"
@@ -134,9 +249,6 @@ json.loads(rendered)  # validate
 open(dst, "w", encoding="utf-8").write(rendered)
 PY
 }
-
-TMP_DIR="$(mktemp -d)"
-trap 'rm -rf "$TMP_DIR"' EXIT
 
 echo "Importing credentials…"
 for template in n8n/credentials/*.template.json; do

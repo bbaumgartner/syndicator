@@ -2,12 +2,26 @@
 # Usage (from this directory):
 #   cp .env.example .env   # fill secrets
 #   ./scripts/ensure-sftp-keys.sh
+#   ./scripts/ensure-n8n-owner.sh
 #   docker compose up -d --build
 #   ./scripts/bootstrap-n8n.sh
 
 name: syndicator
 
 services:
+  # Docker named volumes are root-owned on first create; n8n + pyautoflip run as uid 1000.
+  files-init:
+    image: alpine:3.20
+    volumes:
+      - n8n_files:/data
+    command:
+      [
+        "sh",
+        "-c",
+        "chown -R 1000:1000 /data && chmod 775 /data",
+      ]
+    restart: "no"
+
   sftp:
     build: ./sftp
     image: syndicator-sftp:local
@@ -40,6 +54,10 @@ services:
     restart: unless-stopped
     ports:
       - "${N8N_HOST_PORT:-5678}:5678"
+    # Password hash written by ./scripts/ensure-n8n-owner.sh (bcrypt; $ escaped as $$).
+    env_file:
+      - path: secrets/n8n_owner.env
+        required: true
     environment:
       GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-Europe/Zurich}
       TZ: ${GENERIC_TIMEZONE:-Europe/Zurich}
@@ -52,10 +70,16 @@ services:
       N8N_RESTRICT_FILE_ACCESS_TO: /files
       N8N_SECURE_COOKIE: ${N8N_SECURE_COOKIE:-false}
       N8N_COMMUNITY_PACKAGES_ENABLED: "true"
+      N8N_INSTANCE_OWNER_MANAGED_BY_ENV: "true"
+      N8N_INSTANCE_OWNER_EMAIL: ${N8N_OWNER_EMAIL:?set N8N_OWNER_EMAIL in .env}
+      N8N_INSTANCE_OWNER_FIRST_NAME: ${N8N_OWNER_FIRST_NAME:-Syndicator}
+      N8N_INSTANCE_OWNER_LAST_NAME: ${N8N_OWNER_LAST_NAME:-Owner}
     volumes:
       - n8n_data:/home/node/.n8n
       - n8n_files:/files
     depends_on:
+      files-init:
+        condition: service_completed_successfully
       sftp:
         condition: service_started
       pyautoflip:
@@ -84,6 +108,9 @@ services:
     volumes:
       - n8n_files:/files
       - pyautoflip_home:/home/pyautoflip
+    depends_on:
+      files-init:
+        condition: service_completed_successfully
     expose:
       - "8080"
     healthcheck:

@@ -153,25 +153,18 @@ Once Syndicator has finished processing Blog Post Publish the static Hugo post c
 
 ```bash
 cp .env.example .env
+# Fill secrets: N8N_ENCRYPTION_KEY, N8N_OWNER_EMAIL, N8N_OWNER_PASSWORD, OpenAI, Postiz
 ./scripts/ensure-sftp-keys.sh
+./scripts/ensure-n8n-owner.sh
 docker compose up -d --build
-```
-* Go to http://<host>:5678 and create your owner account.
-* Go to settings > n8n API and create an API Key
-* Store the key in .env N8N_API_KEY
-* Set remaining secrets in .env (OpenAI, Postiz)
-
-```bash
 ./scripts/bootstrap-n8n.sh
 ```
 
-`ensure-sftp-keys.sh` writes `secrets/sftp_n8n_ed25519` (private) and `sftp/keys/n8n.pub` (public); bootstrap runs it too. Extra client keys: copy any `.pub` into `sftp/keys/` and `docker compose restart sftp`. Host keys live in the `sftp_host_keys` volume (generated on first start). Connect on port `2222` as user `sftp`.
+Owner account is provisioned from env on n8n start (`N8N_INSTANCE_OWNER_*`). Bootstrap logs in with `N8N_OWNER_EMAIL` / `N8N_OWNER_PASSWORD` to create or reuse an API key at `secrets/n8n_api_key` (or uses `N8N_API_KEY` if set), then imports credentials/workflows and publishes webhooks. UI login uses the same owner credentials.
 
-If the shared `n8n_files` volume was created as root and n8n/pyautoflip cannot write:
+`ensure-sftp-keys.sh` writes `secrets/sftp_n8n_ed25519` (private) and `sftp/keys/n8n.pub` (public); bootstrap runs it too. `ensure-n8n-owner.sh` writes `secrets/n8n_owner.env` (bcrypt hash for Compose); bootstrap runs that as well. Extra client keys: copy any `.pub` into `sftp/keys/` and `docker compose restart sftp`. Host keys live in the `sftp_host_keys` volume (generated on first start). Connect on port `2222` as user `sftp`.
 
-```bash
-docker run --rm -v syndicator_n8n_files:/data alpine sh -c 'chown -R 1000:1000 /data && chmod 775 /data'
-```
+The `files-init` Compose service chowns the shared `n8n_files` volume to uid/gid `1000` on each `up` so n8n and pyautoflip can write under `/files`.
 ## Update Worfklows
 
 `./scripts/export-workflows.sh` exports all workflows from n8n into workflows/ folder in this repo
@@ -198,11 +191,11 @@ The repo is the blueprint for a containerized instance: Compose defines the stac
 
 | Piece | Role |
 |-------|------|
-| `docker-compose.yml` | Compose stack: SFTP + n8n + pyautoflip |
+| `docker-compose.yml` | Compose stack: files-init + SFTP + n8n + pyautoflip |
 | `.env.example` | Env template for secrets and host paths |
 | `n8n/Dockerfile` | Custom n8n image (`ffmpeg` + community node seed) |
 | `sftp/Dockerfile` | atmoz/sftp wrapper (host keys volume, key sync, chown) |
-| `scripts/` | ensure-sftp-keys / bootstrap / export / update |
+| `scripts/` | ensure-sftp-keys / ensure-n8n-owner / bootstrap / export / update |
 | `n8n/workflows/` | Importable workflow exports (source of truth) |
 | `n8n/credentials/` | Credential templates (stable IDs; secrets from `.env`) |
 | `pyautoflip/` | Image/build context for the reframe sidecar |
@@ -217,7 +210,7 @@ n8n/workflows/
 n8n/credentials/*.template.json
 pyautoflip/
 sftp/
-scripts/{ensure-sftp-keys,bootstrap,export,update}.sh
+scripts/{ensure-sftp-keys,ensure-n8n-owner,bootstrap,export,update}.sh
 systemd/*
 ```
 
