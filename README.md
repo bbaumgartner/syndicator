@@ -1,12 +1,12 @@
 # Syndicator
 
-Syndicator can take a blog post and:
+Syndicator takes a blog post and:
 1. Generate a static web site translated to languages EN, FR, ES, SP, IT, and Pirate Speak
-2. Distribute the blog post and its content to social media platforms Instagram, Facebook, Youtube, and X.
+2. Distribute the blog post to social media platforms Instagram, Facebook, Youtube, and X.
 
 It uses AI extensively for various aspects like translation, post text generation, and media cropping.
 
-## Architecture
+## Context
 
 ```
                       syndicate
@@ -184,12 +184,52 @@ docker run --rm -v syndicator_n8n_files:/data alpine sh -c 'chown -R 1000:1000 /
 
 Logs default to `update.log` (`UPDATE_LOG` to override).
 
+## Architecture
+
+The workflow engine, n8n, orchestrates all blog post processing via modular workflows. The most important non-functional requirements are automation and maintainability, as the goal is to minimize time spent managing social media platforms. The initial version of Syndicator was "custom-made" by LLMs, but quickly became unmaintainable. This experience highlighted the need to adopt a workflow engine and decompose the blog post processing into simple, easy-to-understand nodes. This approach not only streamlines debugging and scaling, but also leverages a higher-level runtime environment.
+
+However, this comes with increased setup complexity—which is why everything is containerized, aiming for a "one-click" deployment to spin up new instances, including workflow instantiation and authentication setup. While achieving this seamless setup remains a work in progress, it is still uncertain whether the chosen technology stack can fully deliver on this vision.
+ 
 ## Software Design
+
+Software design is split into **instantiation** (how an instance is built and started) and **runtime structure** (what runs once the stack is up).
+
+### Instantiation
+
+The repo is the blueprint for a containerized instance: Compose defines the stack, scripts bootstrap credentials and import workflows, and the rest is source material those steps consume.
+
+| Piece | Role |
+|-------|------|
+| `docker-compose.yml` | Compose stack: SFTP + n8n + pyautoflip |
+| `.env.example` | Env template for secrets and host paths |
+| `n8n/Dockerfile` | Custom n8n image (`ffmpeg` + community node seed) |
+| `scripts/` | bootstrap / export / update |
+| `n8n/workflows/` | Importable workflow exports (source of truth) |
+| `n8n/credentials/` | Credential templates (stable IDs; secrets from `.env`) |
+| `pyautoflip/` | Image/build context for the reframe sidecar |
+| `sftp/keys/` | Authorized public keys (gitignored contents) |
+| `systemd/*` | Optional host timer for updates |
+
+```
+docker-compose.yml
+.env.example
+n8n/Dockerfile
+n8n/workflows/
+n8n/credentials/*.template.json
+pyautoflip/
+sftp/keys/
+scripts/{bootstrap,export,update}.sh
+systemd/*
+```
+
+### Runtime structure
+
+Once instantiated, three services collaborate: callers reach **sftp** (files) and **n8n** (webhooks); n8n drives SFTP, **pyautoflip**, and external APIs.
 
 ```mermaid
 flowchart LR
   Caller["HTTP/SFTP Client"]
-  subgraph compose ["docker compose"]
+  subgraph runtime ["runtime"]
     SFTP["sftp"]
     N8N["n8n"]
     PyAF["pyautoflip"]
@@ -206,38 +246,13 @@ flowchart LR
 | Service | Role |
 |---------|------|
 | `sftp` | Key-only SFTP; chroot home with `/syndicator/…` |
-| `n8n` | Custom image (`ffmpeg` + Postiz + FFmpeg Studio community nodes); SQLite in `n8n_data` |
-| `pyautoflip` | Reel reframing sidecar; shares `n8n_files` → `/files` with n8n |
-
-| Piece | Role |
-|-------|------|
-| `docker-compose.yml` | Compose stack: SFTP + n8n + pyautoflip |
-| `scripts/` | bootstrap / export / update |
-| `n8n/workflows/` | Importable workflow exports (source of truth) |
-| `n8n/credentials/` | Credential templates (stable IDs; secrets from `.env`) |
-| `pyautoflip/` | Saliency reframe HTTP sidecar for Adapt Reel Media |
+| `n8n` | Workflow engine; SQLite in `n8n_data`; shares `n8n_files` → `/files` with pyautoflip |
+| `pyautoflip` | Reel reframing sidecar (`HTTP /reframe` on `/files`) |
 
 | Workflow | Role |
 |----------|------|
 | Blog Post Publish | Webhook `/publish` → Hugo adapt + social feature adapt |
 | Reel Publish | Webhook `/reel` → adapt → caption → Postiz |
-| Adapt Hugo Media | Sub-workflow: Hugo media from blocks |
-| Adapt Feature Image | Sub-workflow: social header crops |
-| Adapt Reel Media | Sub-workflow: reel reframe via pyautoflip |
-| Syndicator Error | Shared `errorWorkflow` |
 
-```
-docker-compose.yml
-.env.example
-n8n/Dockerfile          # ffmpeg + community node seed
-n8n/workflows/          # importable exports (source of truth)
-n8n/credentials/*.template.json
-pyautoflip/             # Adapt Reel Media sidecar
-sftp/keys/              # authorized public keys (gitignored contents)
-scripts/{bootstrap,export,update}.sh
-systemd/*               # optional timer
-```
-
-Staging is not garbage-collected automatically; purge `/syndicator/` periodically. Align Hugo output with `<base>/hugo-site/` (not a site-specific name).
-
+For brevity, subworkflows invoked by these workflows are not listed here.
 
