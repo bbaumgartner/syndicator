@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Export the syndicator workflows from the running n8n into n8n/workflows/.
-# Scoped to the six syndicator workflows; other instance workflows are ignored.
+# Scoped to the five syndicator workflows; other instance workflows are ignored.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

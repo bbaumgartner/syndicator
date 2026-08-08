@@ -21,17 +21,15 @@ COMPOSE=(docker compose)
 N8N_EXEC=(docker compose exec -T -u node n8n)
 # Import order: leaves before parents (same as publish).
 SYNDICATOR_WORKFLOWS=(
-  "Syndicator Error"
   "Adapt Hugo Media"
   "Adapt Feature Image"
   "Adapt Reel Media"
   "Blog Post Publish"
   "Reel Publish"
 )
-# Publish order: n8n 2.x requires referenced sub-workflows (and error workflow)
-# to be published before parents that call them.
+# Publish order: n8n 2.x requires referenced sub-workflows to be published
+# before parents that call them.
 PUBLISH_WORKFLOW_IDS=(
-  "O6fHa4LyBB7P71nU" # Syndicator Error
   "OGa6Xa8GxkSmA7Cr" # Adapt Hugo Media
   "8NOGn9jgOoV0fw0u" # Adapt Feature Image
   "y9TTx7N8Iygn88ry" # Adapt Reel Media
@@ -51,9 +49,6 @@ need N8N_ENCRYPTION_KEY
 need N8N_API_KEY
 need OPENAI_API_KEY
 need POSTIZ_API_KEY
-need MAILGUN_API_KEY
-need MAILGUN_API_DOMAIN
-need MAILGUN_EMAIL_DOMAIN
 need SFTP_HOST
 need SFTP_USERNAME
 
