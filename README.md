@@ -8,14 +8,18 @@ It uses AI extensively for various aspects like translation, post text generatio
 
 ## Context
 
-```
+![Syndicator context diagram](assets/syndicator-context-diagram.png)
+
+<!--
+ASCII context (kept for LLM / text-only readers):
+
                       syndicate
 [HTTP/SFTP Client]───────( ○───────[Syndicator]───────( ○───────[Postiz]───────( ○───────[Social Media Platform]
                                         │
                                         ├──────( ○───────[OpenAI]
                                         │
                                         └──────( ○───────[Hugo]
-```
+-->
 
 Syndicator provides the `syndicate` interface specified in this document.
 
