@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import Literal, Optional
@@ -104,7 +105,13 @@ def _apply_padding_to_crop_full_bleed(
 
 
 class FFmpegVideoWriter:
-    """Single-pass libx264 writer; drops OpenCV's lossy mp4v intermediate."""
+    """libx264 writer that avoids OpenCV's lossy mp4v intermediate.
+
+    Encodes video from a raw pipe first, then muxes audio in a second step
+    with ``-c:v copy``. Muxing audio in the same process as the rawvideo
+    stdin was desyncing A/V (OpenCV fps is often an imprecise float; the old
+    upstream path used a separate mux with ``-vsync 1``).
+    """
 
     def __init__(
         self,
@@ -119,6 +126,7 @@ class FFmpegVideoWriter:
         self.audio_path = audio_path
         self.frame_size = frame_size
         self.proc: Optional[subprocess.Popen] = None
+        self.video_only_path: Optional[str] = None
         self.frame_count = 0
         self.total_expected_frames = None
         self.input_frame_count = None
@@ -128,8 +136,24 @@ class FFmpegVideoWriter:
         self.input_frame_count = frame_count
         self.input_duration = duration
 
+    def _fps_arg(self) -> str:
+        """Prefer a stable rational for NTSC rates; else a high-precision float."""
+        fps = float(self.fps)
+        for num, den in ((24000, 1001), (30000, 1001), (60000, 1001), (24, 1), (25, 1), (30, 1), (50, 1), (60, 1)):
+            if abs(fps - num / den) < 0.01:
+                return f"{num}/{den}"
+        return f"{fps:.6f}".rstrip("0").rstrip(".")
+
     def _start(self, width: int, height: int) -> None:
         self.frame_size = (width, height)
+        # Always encode video-only first; mux audio after so timestamps stay coherent.
+        if self.audio_path and os.path.exists(self.audio_path):
+            fd, self.video_only_path = tempfile.mkstemp(suffix=".mp4")
+            os.close(fd)
+            video_path = self.video_only_path
+        else:
+            video_path = self.output_path
+
         cmd = [
             "ffmpeg",
             "-hide_banner",
@@ -142,15 +166,11 @@ class FFmpegVideoWriter:
             "bgr24",
             "-s",
             f"{width}x{height}",
-            "-r",
-            str(self.fps),
+            "-framerate",
+            self._fps_arg(),
             "-i",
             "-",
-        ]
-        if self.audio_path and os.path.exists(self.audio_path):
-            cmd += ["-i", self.audio_path]
-
-        cmd += [
+            "-an",
             "-c:v",
             "libx264",
             "-preset",
@@ -159,23 +179,10 @@ class FFmpegVideoWriter:
             str(ENCODE_CRF),
             "-pix_fmt",
             "yuv420p",
-            "-movflags",
-            "+faststart",
+            "-fps_mode",
+            "cfr",
+            video_path,
         ]
-        if self.audio_path and os.path.exists(self.audio_path):
-            cmd += [
-                "-c:a",
-                "aac",
-                "-map",
-                "0:v:0",
-                "-map",
-                "1:a:0?",
-                "-shortest",
-            ]
-        else:
-            cmd += ["-an"]
-
-        cmd.append(self.output_path)
         self.proc = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE,
@@ -212,6 +219,39 @@ class FFmpegVideoWriter:
             raise RuntimeError(f"ffmpeg encode failed: {err or exc}") from exc
         self.frame_count += 1
 
+    def _mux_audio(self) -> None:
+        assert self.video_only_path is not None
+        assert self.audio_path is not None
+        cmd = [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            self.video_only_path,
+            "-i",
+            self.audio_path,
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
+            "-af",
+            "aresample=async=1:first_pts=0",
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0?",
+            "-shortest",
+            "-movflags",
+            "+faststart",
+            self.output_path,
+        ]
+        result = subprocess.run(cmd, check=False, capture_output=True)
+        if result.returncode != 0:
+            err = result.stderr.decode("utf-8", errors="replace")
+            raise RuntimeError(f"ffmpeg audio mux exited {result.returncode}: {err}")
+
     def finalize(self) -> str:
         if self.proc is None:
             raise ValueError("No frames have been written")
@@ -225,8 +265,22 @@ class FFmpegVideoWriter:
             raise RuntimeError(
                 f"ffmpeg encode exited {code}: {stderr.decode('utf-8', errors='replace')}"
             )
-        if not os.path.isfile(self.output_path):
-            raise RuntimeError(f"ffmpeg produced no output: {self.output_path}")
+
+        try:
+            if self.video_only_path:
+                if not os.path.isfile(self.video_only_path):
+                    raise RuntimeError(f"ffmpeg produced no video: {self.video_only_path}")
+                self._mux_audio()
+            elif not os.path.isfile(self.output_path):
+                raise RuntimeError(f"ffmpeg produced no output: {self.output_path}")
+        finally:
+            if self.video_only_path and os.path.exists(self.video_only_path):
+                try:
+                    os.remove(self.video_only_path)
+                except OSError:
+                    pass
+                self.video_only_path = None
+
         return self.output_path
 
     def __del__(self) -> None:
@@ -237,6 +291,11 @@ class FFmpegVideoWriter:
                 self.proc.kill()
             except Exception:  # noqa: BLE001
                 pass
+        if self.video_only_path and os.path.exists(self.video_only_path):
+            try:
+                os.remove(self.video_only_path)
+            except OSError:
+                pass
 
 
 def _patch_pyautoflip() -> None:
@@ -246,7 +305,7 @@ def _patch_pyautoflip() -> None:
     2. Map 4:5 correctly (upstream `_aspect_ratio_to_tuple` falls back to 3:4).
     3. Never use +30% wide crop (avoids letterbox path).
     4. Replace stretch-and-darken padding with full-bleed center-crop.
-    5. Encode with a single libx264 pass (skip OpenCV mp4v intermediate).
+    5. Encode with libx264 from raw frames; mux audio separately (A/V sync).
     """
     global _pyautoflip_patched
     if _pyautoflip_patched:

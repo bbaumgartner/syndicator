@@ -38,7 +38,7 @@ Paths must stay under `/files` (or `$PYAUTOFLIP_FILES_ROOT`). Response includes
 - Fix `"4:5"` mapping (`_aspect_ratio_to_tuple` would otherwise fall back to **3:4**) [pyautoflip issue](https://github.com/AhmedHisham1/pyautoflip/issues/6).
 - Force **narrow** (exact-AR) crop width — skip upstream’s +30% wide crop that letterboxes.
 - Replace stretch-and-darken padding with **full-bleed center-crop** (no black bars, no aspect stretch).
-- Encode with a **single libx264 pass** (raw frames → ffmpeg) instead of OpenCV `mp4v` then re-encode.
+- Encode with **libx264 from raw frames** (no OpenCV `mp4v` intermediate); mux audio in a second `-c:v copy` step so A/V stays in sync.
 
 Encode knobs (optional env on the `pyautoflip` service):
 
