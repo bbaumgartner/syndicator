@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import tempfile
 import time
+from fractions import Fraction
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -54,6 +56,80 @@ def _resolve_under_files(raw: str) -> Path:
 
 def _make_even(n: int) -> int:
     return max(2, n - (n % 2))
+
+
+def _parse_rate(rate: str) -> Optional[Fraction]:
+    rate = (rate or "").strip()
+    if not rate or rate in {"0/0", "N/A"}:
+        return None
+    try:
+        frac = Fraction(rate)
+    except (ZeroDivisionError, ValueError):
+        return None
+    if frac <= 0:
+        return None
+    return frac
+
+
+def _probe_video_fps(path: str) -> Optional[Fraction]:
+    """Read an accurate frame rate from the source (OpenCV's is often wrong)."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=avg_frame_rate,r_frame_rate",
+                "-of",
+                "json",
+                path,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return None
+
+    try:
+        streams = json.loads(result.stdout).get("streams") or []
+    except json.JSONDecodeError:
+        return None
+    if not streams:
+        return None
+
+    stream = streams[0]
+    # avg_frame_rate is usually closest to real playback rate for VFR/phone clips.
+    return _parse_rate(stream.get("avg_frame_rate", "")) or _parse_rate(
+        stream.get("r_frame_rate", "")
+    )
+
+
+def _probe_has_audio(path: str) -> bool:
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "a:0",
+                "-show_entries",
+                "stream=index",
+                "-of",
+                "csv=p=0",
+                path,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return False
+    return bool(result.stdout.strip())
 
 
 def _narrow_scene_crop_width(
@@ -107,23 +183,31 @@ def _apply_padding_to_crop_full_bleed(
 class FFmpegVideoWriter:
     """libx264 writer that avoids OpenCV's lossy mp4v intermediate.
 
-    Encodes video from a raw pipe first, then muxes audio in a second step
-    with ``-c:v copy``. Muxing audio in the same process as the rawvideo
-    stdin was desyncing A/V (OpenCV fps is often an imprecise float; the old
-    upstream path used a separate mux with ``-vsync 1``).
+    Video is encoded from a raw pipe; audio is taken from the *original* source
+    file in a second mux step. Upstream's ``-acodec copy`` into a raw ``.aac``
+    drops timing, and OpenCV's FPS is often wrong — both cause A/V drift.
     """
 
     def __init__(
         self,
         output_path: str,
         fps: float = 30.0,
-        audio_path: Optional[str] = None,
+        audio_path: Optional[str] = None,  # noqa: ARG002 — ignored; use source_path
         codec: str = "mp4v",  # noqa: ARG002 — upstream API compat
         frame_size: Optional[tuple[int, int]] = None,
+        source_path: Optional[str] = None,
+        fps_frac: Optional[Fraction] = None,
     ):
         self.output_path = output_path
-        self.fps = fps if fps and fps > 0 else 30.0
-        self.audio_path = audio_path
+        if fps_frac is not None and fps_frac > 0:
+            self.fps_frac = fps_frac
+        else:
+            probed = None
+            if source_path:
+                probed = _probe_video_fps(source_path)
+            self.fps_frac = probed or Fraction(float(fps if fps and fps > 0 else 30.0)).limit_denominator(1001)
+        self.fps = float(self.fps_frac)
+        self.source_path = source_path
         self.frame_size = frame_size
         self.proc: Optional[subprocess.Popen] = None
         self.video_only_path: Optional[str] = None
@@ -137,17 +221,22 @@ class FFmpegVideoWriter:
         self.input_duration = duration
 
     def _fps_arg(self) -> str:
-        """Prefer a stable rational for NTSC rates; else a high-precision float."""
-        fps = float(self.fps)
-        for num, den in ((24000, 1001), (30000, 1001), (60000, 1001), (24, 1), (25, 1), (30, 1), (50, 1), (60, 1)):
-            if abs(fps - num / den) < 0.01:
-                return f"{num}/{den}"
-        return f"{fps:.6f}".rstrip("0").rstrip(".")
+        frac = self.fps_frac.limit_denominator(1001)
+        if frac.denominator == 1:
+            return str(frac.numerator)
+        return f"{frac.numerator}/{frac.denominator}"
+
+    def _needs_audio_mux(self) -> bool:
+        return bool(
+            self.source_path
+            and os.path.isfile(self.source_path)
+            and _probe_has_audio(self.source_path)
+        )
 
     def _start(self, width: int, height: int) -> None:
         self.frame_size = (width, height)
-        # Always encode video-only first; mux audio after so timestamps stay coherent.
-        if self.audio_path and os.path.exists(self.audio_path):
+        # Always encode video-only first when we will mux audio from the source.
+        if self._needs_audio_mux():
             fd, self.video_only_path = tempfile.mkstemp(suffix=".mp4")
             os.close(fd)
             video_path = self.video_only_path
@@ -181,6 +270,12 @@ class FFmpegVideoWriter:
             "yuv420p",
             "-fps_mode",
             "cfr",
+            "-video_track_timescale",
+            str(
+                self.fps_frac.numerator
+                if self.fps_frac.denominator == 1001
+                else max(int(round(self.fps * 1000)), 30000)
+            ),
             video_path,
         ]
         self.proc = subprocess.Popen(
@@ -215,13 +310,26 @@ class FFmpegVideoWriter:
         try:
             self.proc.stdin.write(frame.tobytes())
         except BrokenPipeError as exc:
-            err = self.proc.stderr.read().decode("utf-8", errors="replace") if self.proc.stderr else ""
+            err = (
+                self.proc.stderr.read().decode("utf-8", errors="replace")
+                if self.proc.stderr
+                else ""
+            )
             raise RuntimeError(f"ffmpeg encode failed: {err or exc}") from exc
         self.frame_count += 1
 
+    def _video_duration_s(self) -> float:
+        if self.frame_count > 0 and self.fps > 0:
+            return self.frame_count / self.fps
+        return 0.0
+
     def _mux_audio(self) -> None:
         assert self.video_only_path is not None
-        assert self.audio_path is not None
+        assert self.source_path is not None
+        duration = self._video_duration_s()
+
+        # Take audio from the original container (not upstream's raw .aac copy).
+        # Reset audio PTS to 0 so it lines up with the rewritten video track.
         cmd = [
             "ffmpeg",
             "-hide_banner",
@@ -231,22 +339,30 @@ class FFmpegVideoWriter:
             "-i",
             self.video_only_path,
             "-i",
-            self.audio_path,
+            self.source_path,
+            "-filter_complex",
+            "[1:a:0]aresample=async=1:first_pts=0[a]",
+            "-map",
+            "0:v:0",
+            "-map",
+            "[a]",
             "-c:v",
             "copy",
             "-c:a",
             "aac",
-            "-af",
-            "aresample=async=1:first_pts=0",
-            "-map",
-            "0:v:0",
-            "-map",
-            "1:a:0?",
+            "-b:a",
+            "192k",
             "-shortest",
+            "-avoid_negative_ts",
+            "make_zero",
             "-movflags",
             "+faststart",
-            self.output_path,
         ]
+        if duration > 0:
+            # Cap both streams to the exact written-frame duration.
+            cmd += ["-t", f"{duration:.6f}"]
+        cmd.append(self.output_path)
+
         result = subprocess.run(cmd, check=False, capture_output=True)
         if result.returncode != 0:
             err = result.stderr.decode("utf-8", errors="replace")
@@ -305,7 +421,8 @@ def _patch_pyautoflip() -> None:
     2. Map 4:5 correctly (upstream `_aspect_ratio_to_tuple` falls back to 3:4).
     3. Never use +30% wide crop (avoids letterbox path).
     4. Replace stretch-and-darken padding with full-bleed center-crop.
-    5. Encode with libx264 from raw frames; mux audio separately (A/V sync).
+    5. Encode with libx264 from raw frames; mux audio from the original source
+       using ffprobe FPS (not OpenCV / raw .aac copy).
     """
     global _pyautoflip_patched
     if _pyautoflip_patched:
@@ -332,12 +449,33 @@ def _patch_pyautoflip() -> None:
                 return dims
         return (int(self.target_aspect_ratio * 16), 16)
 
+    def _initialize_writer(self, output_path: str, video_reader):  # noqa: ANN001
+        source_path = getattr(video_reader, "video_path", None)
+        fps_frac = _probe_video_fps(source_path) if source_path else None
+        fps = float(fps_frac) if fps_frac else video_reader.fps
+        # Keep reader metadata consistent with the encode rate.
+        if fps_frac is not None:
+            video_reader.fps = float(fps_frac)
+
+        video_writer = FFmpegVideoWriter(
+            output_path,
+            fps=fps,
+            source_path=source_path,
+            fps_frac=fps_frac,
+        )
+        video_writer.set_input_metadata(
+            frame_count=video_reader.frame_count,
+            duration=video_reader.frame_count / fps if fps else 0,
+        )
+        return video_writer
+
     SaliencyCropper.needs_split_screen = _never_split_screen  # type: ignore[method-assign]
     SaliencyCropper._aspect_ratio_to_tuple = _aspect_ratio_to_tuple  # type: ignore[method-assign]
     saliency_mod.compute_scene_crop_width = _narrow_scene_crop_width
     saliency_mod.apply_padding_to_crop = _apply_padding_to_crop_full_bleed
     video_mod.VideoWriter = FFmpegVideoWriter  # type: ignore[misc, assignment]
     processor_mod.VideoWriter = FFmpegVideoWriter  # type: ignore[misc, assignment]
+    processor_mod.AutoFlipProcessor._initialize_writer = _initialize_writer  # type: ignore[method-assign]
     _pyautoflip_patched = True
 
 
