@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-08T13:49:53.987Z",
+  "updatedAt": "2026-08-10T07:49:59.596Z",
   "createdAt": "2026-08-05T15:02:25.910Z",
   "id": "l7HCCWtO1ALC82n6",
   "name": "Blog Post Publish",
@@ -72,6 +72,9 @@
         -1152,
         384
       ],
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "maxTries": 5,
       "credentials": {
         "openAiApi": {
           "id": "MadfM6xwVCQEZSpV",
@@ -414,7 +417,7 @@
               "content": "=You write a Facebook intro post for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Goal: make people click through to the blog post. Write in English. You get the blog post TITLE, SUMMARY, CONTENT and an optional POSITION HINT. Summarize the whole post and make people want to read it. Write 2 to 4 short, warm, personal paragraphs with a strong first-line hook. A tasteful emoji is fine. End with a light call to action. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends. Do NOT include any URL. After the caption, add 0 to 3 relevant hashtags on their own final line, each starting with #. Return ONLY the caption text followed by that hashtag line."
             },
             {
-              "content": "=TITLE:\n{{ $('Publish Webhook').item.json.body.meta.title }}\n\nSUMMARY:\n{{ $('Publish Webhook').item.json.body.meta.summary }}\n\nCONTENT:\n{{ $('Publish Webhook').item.json.body.blocks.filter(item => item.kind == 'text').map(item => item.raw).join('\\n') }}\n\nPOSITION HINT:\n{{ $('Publish Webhook').item.json.body.meta.position }}"
+              "content": "=TITLE:\n{{ $('Assemble Multilingual Blocks').item.json.titles.en }}\n\nSUMMARY:\n{{ $('Publish Webhook').item.json.body.meta.summary }}\n\nCONTENT:\n{{ $('Assemble Multilingual Blocks').item.json.english_text }}\n\nPOSITION HINT:\n{{ $('Publish Webhook').item.json.body.meta.position }}"
             }
           ]
         },
@@ -431,6 +434,9 @@
         352,
         192
       ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
       "credentials": {
         "openAiApi": {
           "id": "MadfM6xwVCQEZSpV",
@@ -452,7 +458,7 @@
               "content": "=You write an Instagram intro caption for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Goal: reach, saves and profile visits; the blog link lives in the bio. Write in English. You get the blog post TITLE, SUMMARY, CONTENT and an optional POSITION HINT. Summarize the whole post and make people want to read it. The first line must hook within about 125 characters. Short airy paragraphs, emojis welcome but not overloaded. End with a question or a save-this nudge. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends. Do NOT include any URL or a link-in-bio call to action. After the caption, add 5 to 8 specific hashtags on their own final line, each starting with #, mixing niche sailing and travel tags with location tags, avoiding banned or spammy tags. Return ONLY the caption text followed by that hashtag line."
             },
             {
-              "content": "=TITLE:\n{{ $('Publish Webhook').item.json.body.meta.title }}\n\nSUMMARY:\n{{ $('Publish Webhook').item.json.body.meta.summary }}\n\nCONTENT:\n{{ $('Publish Webhook').item.json.body.blocks.filter(item => item.kind == 'text').map(item => item.raw).join('\\n') }}\n\nPOSITION HINT:\n{{ $('Publish Webhook').item.json.body.meta.position }}"
+              "content": "=TITLE:\n{{ $('Assemble Multilingual Blocks').item.json.titles.en }}\n\nSUMMARY:\n{{ $('Publish Webhook').item.json.body.meta.summary }}\n\nCONTENT:\n{{ $('Assemble Multilingual Blocks').item.json.english_text }}\n\nPOSITION HINT:\n{{ $('Publish Webhook').item.json.body.meta.position }}"
             }
           ]
         },
@@ -469,6 +475,9 @@
         352,
         384
       ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
       "credentials": {
         "openAiApi": {
           "id": "MadfM6xwVCQEZSpV",
@@ -490,7 +499,7 @@
               "content": "=You write an X (Twitter) intro post for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Goal: grow the audience and earn interest in the blog. Write in English. You get the blog post TITLE, SUMMARY, CONTENT and an optional POSITION HINT. Summarize the whole post in one punchy thought: a hook, a vivid detail or a dry observation. Plain language, at most one emoji. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends. Do NOT include any URL. End the post with 0 to 2 short relevant hashtags, each starting with #. The entire post including the hashtags must be at most 240 characters. Return ONLY the post text followed by the hashtags."
             },
             {
-              "content": "=TITLE:\n{{ $('Publish Webhook').item.json.body.meta.title }}\n\nSUMMARY:\n{{ $('Publish Webhook').item.json.body.meta.summary }}\n\nCONTENT:\n{{ $('Publish Webhook').item.json.body.blocks.filter(item => item.kind == 'text').map(item => item.raw).join('\\n') }}\n\nPOSITION HINT:\n{{ $('Publish Webhook').item.json.body.meta.position }}"
+              "content": "=TITLE:\n{{ $('Assemble Multilingual Blocks').item.json.titles.en }}\n\nSUMMARY:\n{{ $('Publish Webhook').item.json.body.meta.summary }}\n\nCONTENT:\n{{ $('Assemble Multilingual Blocks').item.json.english_text }}\n\nPOSITION HINT:\n{{ $('Publish Webhook').item.json.body.meta.position }}"
             }
           ]
         },
@@ -507,6 +516,9 @@
         352,
         576
       ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
       "credentials": {
         "openAiApi": {
           "id": "MadfM6xwVCQEZSpV",
@@ -552,6 +564,9 @@
         -800,
         384
       ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
       "credentials": {
         "openAiApi": {
           "id": "MadfM6xwVCQEZSpV",
@@ -778,6 +793,9 @@
         0,
         768
       ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
       "credentials": {
         "openAiApi": {
           "id": "MadfM6xwVCQEZSpV",
@@ -1115,35 +1133,220 @@
     "instanceId": "91b62e007400f324d5abda851b7466b395e6ae8249f94b33aa082b387b7fb350"
   },
   "nodeGroups": [],
-  "pinData": {},
-  "versionId": "c910db15-0145-47fb-8ad6-56b157fb23bc",
-  "activeVersionId": "c910db15-0145-47fb-8ad6-56b157fb23bc",
-  "versionCounter": 5,
+  "pinData": {
+    "Publish Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "192.168.0.26:5678",
+            "accept": "*/*",
+            "accept-encoding": "gzip, deflate",
+            "connection": "keep-alive",
+            "user-agent": "python-httpx/0.28.1",
+            "content-length": "4477",
+            "content-type": "application/json"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "slug": "2026-06-03_Athen",
+            "meta": {
+              "title": "Athen",
+              "date": "2026-06-03",
+              "language": "german",
+              "lang_code": "de",
+              "author": "Benno",
+              "summary": "Von Lefkada aus fahren wir quer durch Griechenland, welches sehr viel grösser ist, als ich mir das vorgestellt habe.",
+              "position": "37.90973, 23.71095"
+            },
+            "post_url": "https://www.sailingnomads.ch/de/posts/2026-06-03_athen/",
+            "blocks": [
+              {
+                "kind": "text",
+                "raw": "Von Lefkada aus fahren wir quer durch Griechenland, welches sehr viel grösser ist, als ich mir das vorgestellt habe."
+              },
+              {
+                "kind": "title",
+                "raw": "### Autobahn",
+                "heading_level": 3
+              },
+              {
+                "kind": "media",
+                "media": {
+                  "kind": "video",
+                  "source_filename": "bruecke_1786291723616_0.mp4",
+                  "alt": "bruecke.mp4"
+                }
+              },
+              {
+                "kind": "media",
+                "media": {
+                  "kind": "image",
+                  "source_filename": "IMG_20260527_162635300_HDR.jpg",
+                  "alt": "IMG_20260527_162635300_HDR"
+                }
+              },
+              {
+                "kind": "text",
+                "raw": "Wir fahren an einem Tag bis Athen, was kein Problem ist, denn die griechischen Autobahnen sind unglaublich angenehm. Kaum Verkehr und in top Zustand. Unterwegs machen wir noch kurz Halt beim Korinth Kanal, der wirklich spektakulär ist. Irgendwann müssen wir hier mal durchsegeln."
+              },
+              {
+                "kind": "title",
+                "raw": "### Öffentlicher Verkehr",
+                "heading_level": 3
+              },
+              {
+                "kind": "youtube",
+                "media": {
+                  "kind": "youtube",
+                  "youtube_id": "FAIZtHHsbSM"
+                }
+              },
+              {
+                "kind": "media",
+                "media": {
+                  "kind": "image",
+                  "source_filename": "IMG_20260530_083835605_HDR.jpg",
+                  "alt": "IMG_20260530_083835605_HDR"
+                }
+              },
+              {
+                "kind": "media",
+                "media": {
+                  "kind": "image",
+                  "source_filename": "IMG_20260529_100817658_HDR.jpg",
+                  "alt": "IMG_20260529_100817658_HDR"
+                }
+              },
+              {
+                "kind": "text",
+                "raw": "Dem Auto scheint in Griechenland alles untergeordnet zu sein. Eine Tatsache, die mir in Athen echt auf die Nerven geht. Gerade mit dem Hund ist das super anstrengend, es wird null Rücksicht genommen und alles ist zugeparkt, sodass man teils auf die Strasse ausweichen muss. Die Athener selbst finden es auch zum Kotzen. Fairerweise muss man sagen, dass sie seit Jahren versuchen, die Fehler der Vergangenheit zu korrigieren. Ein Problem vieler Städte, wo aus reiner Ideologie auf das falsche Verkehrsmittel gesetzt wurde. Ich muss natürlich den neuen ÖV testen. Charly ist weniger begeistert als ich, denn es herrscht Maulkorbpflicht."
+              },
+              {
+                "kind": "title",
+                "raw": "### Alexandros",
+                "heading_level": 3
+              },
+              {
+                "kind": "media",
+                "media": {
+                  "kind": "image",
+                  "source_filename": "IMG_20260529_080135001.jpg",
+                  "alt": "IMG_20260529_080135001"
+                }
+              },
+              {
+                "kind": "media",
+                "media": {
+                  "kind": "image",
+                  "source_filename": "IMG-20260529-WA0017.jpg",
+                  "alt": "IMG-20260529-WA0017"
+                }
+              },
+              {
+                "kind": "media",
+                "media": {
+                  "kind": "image",
+                  "source_filename": "IMG-20260529-WA0014.jpg",
+                  "alt": "IMG-20260529-WA0014"
+                }
+              },
+              {
+                "kind": "media",
+                "media": {
+                  "kind": "video",
+                  "source_filename": "ALEXANDRA_ALONGSIDE_1786294202993_0.mp4",
+                  "alt": "ALEXANDRA ALONGSIDE.mp4"
+                }
+              },
+              {
+                "kind": "media",
+                "media": {
+                  "kind": "video",
+                  "source_filename": "LINE_PRACTICE_1786293568316_0.mp4",
+                  "alt": "LINE PRACTICE.mp4"
+                }
+              },
+              {
+                "kind": "text",
+                "raw": "Der eigentliche Grund, warum wir in Athen sind, ist Alexandros, a.k.a. the epic navigator. Alexandros kenne ich von YouTube, wo er einen Kanal hat und Segeltips gibt. Er hat auch eine Segelschule in Athen und bietet ein 2-tägiges Katamarantraining an. Zufälligerweise haben wir gesehen, dass er noch einen Platz frei hat, und wir haben das kurzerhand gebucht für Alexandra. Alexandra ist dann auch sehr angetan von Kurs und Alexandros konnte ihr viel beibringen. Er geht die Sache wohl sehr viel pragmatischer an als unser deutsche Kollegen, und das scheint besser zu funktionieren für Alexandra."
+              },
+              {
+                "kind": "title",
+                "raw": "### Der Denker",
+                "heading_level": 3
+              },
+              {
+                "kind": "media",
+                "media": {
+                  "kind": "image",
+                  "source_filename": "IMG_20260529_114044078.jpg",
+                  "alt": "IMG_20260529_114044078"
+                }
+              },
+              {
+                "kind": "media",
+                "media": {
+                  "kind": "image",
+                  "source_filename": "IMG_20260529_115656929.jpg",
+                  "alt": "IMG_20260529_115656929"
+                }
+              },
+              {
+                "kind": "media",
+                "media": {
+                  "kind": "image",
+                  "source_filename": "IMG_20260529_111236563.jpg",
+                  "alt": "IMG_20260529_111236563"
+                }
+              },
+              {
+                "kind": "text",
+                "raw": "Während Alex an ihrem Segelkurs teilnimmt, gehen Charly und ich alte Steine anschauen. Wir fahren mit dem Tram zur Akropolis, wo Charly natürlich nicht rein darf. Hundebisi und 3000 Jahre alter Sandstein sind keine gute Kombination. Wir besteigen den Hügel vis-à-vis, wo es alte Steine gratis und ohne Touristentrubel zu bestaunen gibt. Es ist schon beeindruckend auf Strassen zu wandeln, auf der vor 2500 Jahren wohl auch Sokrates, einer der grössten Denker der Menschheit, seine Abendspaziergänge absolviert hat."
+              }
+            ],
+            "header_source": "header.jpg",
+            "flags": {
+              "redeploy": false
+            }
+          },
+          "webhookUrl": "http://192.168.0.26:5678/webhook/publish",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "versionId": "daef5e42-f8d5-45c2-afa6-449ea33388d5",
+  "activeVersionId": "daef5e42-f8d5-45c2-afa6-449ea33388d5",
+  "versionCounter": 29,
   "triggerCount": 1,
   "sourceWorkflowId": null,
   "tags": [],
   "shared": [
     {
-      "updatedAt": "2026-08-05T15:02:25.914Z",
-      "createdAt": "2026-08-05T15:02:25.914Z",
+      "updatedAt": "2026-08-08T14:54:29.929Z",
+      "createdAt": "2026-08-08T14:54:29.929Z",
       "role": "workflow:owner",
       "workflowId": "l7HCCWtO1ALC82n6",
-      "projectId": "A9hLodWkuBDYuCmu",
+      "projectId": "AuzF5v93vrOQ3QqB",
       "project": {
-        "updatedAt": "2026-08-05T15:00:26.522Z",
-        "createdAt": "2026-08-05T14:59:37.480Z",
-        "id": "A9hLodWkuBDYuCmu",
-        "name": "Benno Baumgartner <n8n@bennobaumgartner.com>",
+        "updatedAt": "2026-08-08T14:53:14.033Z",
+        "createdAt": "2026-08-08T14:51:44.577Z",
+        "id": "AuzF5v93vrOQ3QqB",
+        "name": "Syndicator Owner <n8n@bennobaumgartner.com>",
         "type": "personal",
         "icon": null,
         "description": null,
         "customTelemetryTags": [],
-        "creatorId": "4c2031d8-37b8-4112-981d-b5dbb6027259"
+        "creatorId": "2e0ed5be-e08a-448d-a423-6e34be07b789"
       }
     }
   ],
   "versionMetadata": {
-    "name": "Version c910db15",
+    "name": "Version daef5e42",
     "description": ""
   }
 }

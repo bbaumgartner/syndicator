@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-08T13:50:55.983Z",
+  "updatedAt": "2026-08-09T17:32:30.829Z",
   "createdAt": "2026-08-05T15:02:30.610Z",
   "id": "zh21miLsQC8Jvua6",
   "name": "Reel Publish",
@@ -60,6 +60,8 @@
         448,
         160
       ],
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
       "credentials": {
         "openAiApi": {
           "id": "MadfM6xwVCQEZSpV",
@@ -187,6 +189,9 @@
         448,
         -32
       ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
       "credentials": {
         "openAiApi": {
           "id": "MadfM6xwVCQEZSpV",
@@ -599,6 +604,8 @@
         1120,
         -224
       ],
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
       "credentials": {
         "openAiApi": {
           "id": "MadfM6xwVCQEZSpV",
@@ -1082,34 +1089,34 @@
   },
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "e1650099-fb01-4fb1-9c8b-a054240e52ed",
-  "activeVersionId": "e1650099-fb01-4fb1-9c8b-a054240e52ed",
-  "versionCounter": 14,
+  "versionId": "be986d7e-a2ed-470e-bbdf-1a56ceba51c3",
+  "activeVersionId": "be986d7e-a2ed-470e-bbdf-1a56ceba51c3",
+  "versionCounter": 20,
   "triggerCount": 1,
   "sourceWorkflowId": null,
   "tags": [],
   "shared": [
     {
-      "updatedAt": "2026-08-05T15:02:30.614Z",
-      "createdAt": "2026-08-05T15:02:30.614Z",
+      "updatedAt": "2026-08-08T14:54:34.710Z",
+      "createdAt": "2026-08-08T14:54:34.710Z",
       "role": "workflow:owner",
       "workflowId": "zh21miLsQC8Jvua6",
-      "projectId": "A9hLodWkuBDYuCmu",
+      "projectId": "AuzF5v93vrOQ3QqB",
       "project": {
-        "updatedAt": "2026-08-05T15:00:26.522Z",
-        "createdAt": "2026-08-05T14:59:37.480Z",
-        "id": "A9hLodWkuBDYuCmu",
-        "name": "Benno Baumgartner <n8n@bennobaumgartner.com>",
+        "updatedAt": "2026-08-08T14:53:14.033Z",
+        "createdAt": "2026-08-08T14:51:44.577Z",
+        "id": "AuzF5v93vrOQ3QqB",
+        "name": "Syndicator Owner <n8n@bennobaumgartner.com>",
         "type": "personal",
         "icon": null,
         "description": null,
         "customTelemetryTags": [],
-        "creatorId": "4c2031d8-37b8-4112-981d-b5dbb6027259"
+        "creatorId": "2e0ed5be-e08a-448d-a423-6e34be07b789"
       }
     }
   ],
   "versionMetadata": {
-    "name": "Version e1650099",
+    "name": "Version be986d7e",
     "description": ""
   }
 }

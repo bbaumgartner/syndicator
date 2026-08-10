@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-08T13:50:38.906Z",
+  "updatedAt": "2026-08-09T17:15:22.511Z",
   "createdAt": "2026-08-05T15:02:21.158Z",
   "id": "y9TTx7N8Iygn88ry",
   "name": "Adapt Reel Media",
@@ -175,7 +175,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ input_path: $json.source_local, output_path: $json.video_4x5_local, aspect_ratio: '4:5', method: $json.method, motion_threshold: $json.motion_threshold, padding_method: $json.padding_method }) }}",
         "options": {
-          "timeout": 900000
+          "timeout": 9000000
         }
       },
       "id": "11c637e5-a516-4200-b4dd-aff10958cbf5",
@@ -195,7 +195,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ input_path: $json.source_local, output_path: $json.video_9x16_local, aspect_ratio: '9:16', method: $json.method, motion_threshold: $json.motion_threshold, padding_method: $json.padding_method }) }}",
         "options": {
-          "timeout": 900000
+          "timeout": 9000000
         }
       },
       "id": "47fb782c-bc30-4950-85b2-4d8d98941fcb",
@@ -394,34 +394,34 @@
   },
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "39f0e31f-c3cc-4579-bc6d-2ec4a99854a5",
-  "activeVersionId": "39f0e31f-c3cc-4579-bc6d-2ec4a99854a5",
-  "versionCounter": 2,
+  "versionId": "3fa76090-065a-4a39-858d-14bdcfb278bf",
+  "activeVersionId": "3fa76090-065a-4a39-858d-14bdcfb278bf",
+  "versionCounter": 4,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
   "shared": [
     {
-      "updatedAt": "2026-08-05T15:02:21.162Z",
-      "createdAt": "2026-08-05T15:02:21.162Z",
+      "updatedAt": "2026-08-08T14:54:25.189Z",
+      "createdAt": "2026-08-08T14:54:25.189Z",
       "role": "workflow:owner",
       "workflowId": "y9TTx7N8Iygn88ry",
-      "projectId": "A9hLodWkuBDYuCmu",
+      "projectId": "AuzF5v93vrOQ3QqB",
       "project": {
-        "updatedAt": "2026-08-05T15:00:26.522Z",
-        "createdAt": "2026-08-05T14:59:37.480Z",
-        "id": "A9hLodWkuBDYuCmu",
-        "name": "Benno Baumgartner <n8n@bennobaumgartner.com>",
+        "updatedAt": "2026-08-08T14:53:14.033Z",
+        "createdAt": "2026-08-08T14:51:44.577Z",
+        "id": "AuzF5v93vrOQ3QqB",
+        "name": "Syndicator Owner <n8n@bennobaumgartner.com>",
         "type": "personal",
         "icon": null,
         "description": null,
         "customTelemetryTags": [],
-        "creatorId": "4c2031d8-37b8-4112-981d-b5dbb6027259"
+        "creatorId": "2e0ed5be-e08a-448d-a423-6e34be07b789"
       }
     }
   ],
   "versionMetadata": {
-    "name": null,
-    "description": null
+    "name": "Version 3fa76090",
+    "description": ""
   }
 }

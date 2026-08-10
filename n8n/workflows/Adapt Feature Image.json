@@ -363,29 +363,29 @@
   },
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "fb0668ba-cef9-4510-88da-d4de710d6b6b",
-  "activeVersionId": "fb0668ba-cef9-4510-88da-d4de710d6b6b",
+  "versionId": "c59563bc-81d6-4039-8f63-fec4295e5c11",
+  "activeVersionId": "c59563bc-81d6-4039-8f63-fec4295e5c11",
   "versionCounter": 2,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": [],
   "shared": [
     {
-      "updatedAt": "2026-08-05T15:02:16.582Z",
-      "createdAt": "2026-08-05T15:02:16.582Z",
+      "updatedAt": "2026-08-08T14:54:20.448Z",
+      "createdAt": "2026-08-08T14:54:20.448Z",
       "role": "workflow:owner",
       "workflowId": "8NOGn9jgOoV0fw0u",
-      "projectId": "A9hLodWkuBDYuCmu",
+      "projectId": "AuzF5v93vrOQ3QqB",
       "project": {
-        "updatedAt": "2026-08-05T15:00:26.522Z",
-        "createdAt": "2026-08-05T14:59:37.480Z",
-        "id": "A9hLodWkuBDYuCmu",
-        "name": "Benno Baumgartner <n8n@bennobaumgartner.com>",
+        "updatedAt": "2026-08-08T14:53:14.033Z",
+        "createdAt": "2026-08-08T14:51:44.577Z",
+        "id": "AuzF5v93vrOQ3QqB",
+        "name": "Syndicator Owner <n8n@bennobaumgartner.com>",
         "type": "personal",
         "icon": null,
         "description": null,
         "customTelemetryTags": [],
-        "creatorId": "4c2031d8-37b8-4112-981d-b5dbb6027259"
+        "creatorId": "2e0ed5be-e08a-448d-a423-6e34be07b789"
       }
     }
   ],
