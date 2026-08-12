@@ -1,4 +1,5 @@
-FROM python:3.12-slim-bookworm
+ARG PYAUTOFLIP_BASE_IMAGE=python:3.12-slim-bookworm@sha256:4766d8b510c428e595d74b9cc5bbb2fae8e26316fffb4adc89908d79aacd58a2
+FROM ${PYAUTOFLIP_BASE_IMAGE}
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -12,7 +13,7 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt \
+RUN pip install --no-cache-dir --require-hashes -r requirements.txt \
     && chown -R pyautoflip:pyautoflip /app
 
 # Match n8n's node user (uid 1000). Compose may also set user: "1000:1000";
@@ -24,13 +25,11 @@ USER pyautoflip
 
 # Warm InsightFace packs into $HOME/.insightface so runtime needs no downloads.
 # pyautoflip's face detector defaults to buffalo_s (not buffalo_l).
-RUN python - <<'PY'
-from insightface.app import FaceAnalysis
-for name in ("buffalo_s", "buffalo_l"):
-    app = FaceAnalysis(name=name, providers=["CPUExecutionProvider"])
-    app.prepare(ctx_id=-1, det_size=(640, 640))
-    print(f"insightface {name} ready")
-PY
+ARG PYAUTOFLIP_WARM_MODELS=1
+COPY --chown=pyautoflip:pyautoflip warm_models.py .
+RUN if [ "$PYAUTOFLIP_WARM_MODELS" = "1" ]; then \
+      python warm_models.py; \
+    fi
 
 COPY --chown=pyautoflip:pyautoflip app.py .
 

@@ -23,4 +23,8 @@ fi
 export N8N_ENCRYPTION_KEY="ci-only-encryption-key"
 export N8N_OWNER_EMAIL="ci@example.invalid"
 
-docker compose --env-file /dev/null config --quiet
+if [[ "$#" -gt 0 ]]; then
+  docker compose --env-file /dev/null "$@"
+else
+  docker compose --env-file /dev/null config --quiet
+fi
