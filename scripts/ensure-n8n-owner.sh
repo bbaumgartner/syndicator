@@ -1,35 +1,30 @@
 #!/usr/bin/env bash
-# Idempotently bcrypt-hash N8N_OWNER_PASSWORD into secrets/n8n_owner.env for Compose.
-# Run before `docker compose up` (bootstrap also runs this).
+# Idempotently bcrypt-hash N8N_OWNER_PASSWORD into the Compose owner env file.
+# Run through `bin/syndicator init` before starting the stack.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT"
+# shellcheck source=scripts/lib.sh
+source "$ROOT/scripts/lib.sh"
 
-if [[ ! -f .env ]]; then
-  echo "Missing .env — copy .env.example and fill N8N_OWNER_EMAIL / N8N_OWNER_PASSWORD." >&2
-  exit 1
+force=0
+if [[ "${1:-}" == "--force" ]]; then
+  force=1
+elif [[ "$#" -gt 0 ]]; then
+  echo "Usage: $0 [--force]" >&2
+  exit 2
 fi
 
-# shellcheck disable=SC1091
-set -a
-# shellcheck source=/dev/null
-source .env
-set +a
+load_env
+need_env N8N_OWNER_EMAIL
+need_env N8N_OWNER_PASSWORD
 
-need() {
-  local name="$1"
-  if [[ -z "${!name:-}" ]]; then
-    echo "Missing required env: $name" >&2
-    exit 1
-  fi
-}
-
-need N8N_OWNER_EMAIL
-need N8N_OWNER_PASSWORD
-
-mkdir -p "$ROOT/secrets"
-out="$ROOT/secrets/n8n_owner.env"
+out="$(resolve_from_root "${N8N_OWNER_ENV_FILE:-secrets/n8n_owner.env}")"
+mkdir -p "$(dirname "$out")"
+if [[ -s "$out" && "$force" -eq 0 ]]; then
+  echo "n8n owner hash already present: $out"
+  exit 0
+fi
 
 hash_password() {
   # Prefer host bcrypt; fall back to a one-shot container (Docker is required anyway).
@@ -41,8 +36,10 @@ print(bcrypt.hashpw(password, bcrypt.gensalt(rounds=10)).decode())
 PY
     return
   fi
-  printf '%s' "$N8N_OWNER_PASSWORD" | docker run --rm -i python:3.12-alpine sh -c '
-    pip install -q bcrypt >/dev/null
+  printf '%s' "$N8N_OWNER_PASSWORD" | docker run --rm -i \
+    "python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df" \
+    sh -c '
+    pip install --no-cache-dir -q bcrypt==5.0.0 >/dev/null
     python -c "import bcrypt,sys; p=sys.stdin.buffer.read(); print(bcrypt.hashpw(p, bcrypt.gensalt(rounds=10)).decode())"
   '
 }

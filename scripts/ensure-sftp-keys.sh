@@ -4,24 +4,19 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT"
+# shellcheck source=scripts/lib.sh
+source "$ROOT/scripts/lib.sh"
 
-# shellcheck disable=SC1091
-if [[ -f .env ]]; then
-  set -a
-  # shellcheck source=/dev/null
-  source .env
-  set +a
+if [[ -f "$ENV_FILE" ]]; then
+  load_env
 fi
 
 key_file="${SFTP_PRIVATE_KEY_FILE:-./secrets/sftp_n8n_ed25519}"
-# Resolve relative to repo root
-if [[ "$key_file" != /* ]]; then
-  key_file="$ROOT/${key_file#./}"
-fi
-pub_file="$ROOT/sftp/keys/n8n.pub"
+key_file="$(resolve_from_root "$key_file")"
+keys_dir="$(resolve_from_root "${SFTP_KEYS_DIR:-sftp/keys}")"
+pub_file="$keys_dir/n8n.pub"
 
-mkdir -p "$(dirname "$key_file")" "$ROOT/sftp/keys"
+mkdir -p "$(dirname "$key_file")" "$keys_dir"
 
 if [[ ! -f "$key_file" ]]; then
   echo "Generating SFTP client key: $key_file"

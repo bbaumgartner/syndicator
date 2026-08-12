@@ -4,33 +4,27 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT"
+# shellcheck source=scripts/lib.sh
+source "$ROOT/scripts/lib.sh"
+load_env
 
 OUT_DIR="$ROOT/n8n/workflows"
 mkdir -p "$OUT_DIR"
 
-# id|filename (without .json)
-WORKFLOWS=(
-  "l7HCCWtO1ALC82n6|Blog Post Publish"
-  "zh21miLsQC8Jvua6|Reel Publish"
-  "OGa6Xa8GxkSmA7Cr|Adapt Hugo Media"
-  "8NOGn9jgOoV0fw0u|Adapt Feature Image"
-  "y9TTx7N8Iygn88ry|Adapt Reel Media"
-)
-
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-for entry in "${WORKFLOWS[@]}"; do
-  id="${entry%%|*}"
-  name="${entry#*|}"
+count=0
+for source in "$OUT_DIR"/*.json; do
+  name="$(basename "$source" .json)"
+  id="$(workflow_id "$source")"
   echo "Exporting $name ($id)…"
-  docker compose exec -T -u node n8n \
+  compose exec -T -u node n8n \
     n8n export:workflow --id="$id" --pretty --output="/tmp/export-${id}.json"
-  docker compose cp "n8n:/tmp/export-${id}.json" "$TMP/${name}.json"
-  docker compose exec -T -u node n8n rm -f "/tmp/export-${id}.json"
+  compose cp "n8n:/tmp/export-${id}.json" "$TMP/${name}.json"
+  compose exec -T -u node n8n rm -f "/tmp/export-${id}.json"
 
-  # n8n may wrap a single workflow in an array — normalize to one object file.
+  # Normalize a single workflow and remove instance-specific export metadata.
   python3 - "$TMP/${name}.json" "$OUT_DIR/${name}.json" <<'PY'
 import json, sys
 src, dst = sys.argv[1], sys.argv[2]
@@ -39,9 +33,15 @@ if isinstance(data, list):
     if len(data) != 1:
         raise SystemExit(f"Expected 1 workflow in {src}, got {len(data)}")
     data = data[0]
+data["pinData"] = {}
+data.pop("shared", None)
+data.pop("versionMetadata", None)
+if isinstance(data.get("meta"), dict):
+    data["meta"].pop("instanceId", None)
 json.dump(data, open(dst, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
 open(dst, "a", encoding="utf-8").write("\n")
 PY
+  count=$((count + 1))
 done
 
-echo "Wrote ${#WORKFLOWS[@]} workflows to $OUT_DIR"
+echo "Wrote $count workflows to $OUT_DIR"

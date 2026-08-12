@@ -389,8 +389,7 @@
   "staticData": null,
   "meta": {
     "aiBuilderAssisted": true,
-    "builderVariant": "mcp",
-    "instanceId": "91b62e007400f324d5abda851b7466b395e6ae8249f94b33aa082b387b7fb350"
+    "builderVariant": "mcp"
   },
   "nodeGroups": [],
   "pinData": {},
@@ -399,29 +398,5 @@
   "versionCounter": 4,
   "triggerCount": 0,
   "sourceWorkflowId": null,
-  "tags": [],
-  "shared": [
-    {
-      "updatedAt": "2026-08-08T14:54:25.189Z",
-      "createdAt": "2026-08-08T14:54:25.189Z",
-      "role": "workflow:owner",
-      "workflowId": "y9TTx7N8Iygn88ry",
-      "projectId": "AuzF5v93vrOQ3QqB",
-      "project": {
-        "updatedAt": "2026-08-08T14:53:14.033Z",
-        "createdAt": "2026-08-08T14:51:44.577Z",
-        "id": "AuzF5v93vrOQ3QqB",
-        "name": "Syndicator Owner <n8n@bennobaumgartner.com>",
-        "type": "personal",
-        "icon": null,
-        "description": null,
-        "customTelemetryTags": [],
-        "creatorId": "2e0ed5be-e08a-448d-a423-6e34be07b789"
-      }
-    }
-  ],
-  "versionMetadata": {
-    "name": "Version 3fa76090",
-    "description": ""
-  }
+  "tags": []
 }
