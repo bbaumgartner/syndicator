@@ -1,19 +1,32 @@
 #!/usr/bin/env bash
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SOURCE_ROOT="${SYNDICATOR_SOURCE_ROOT:-$ROOT}"
 ENV_FILE="${SYNDICATOR_ENV_FILE:-$ROOT/.env}"
+SYNDICATOR_LOADED_ENV_KEYS=()
 
 cd "$ROOT" || exit 1
 
 load_env() {
+  local parsed key value
   if [[ ! -f "$ENV_FILE" ]]; then
     echo "Missing environment file: $ENV_FILE" >&2
     return 1
   fi
-  set -a
-  # shellcheck source=/dev/null
-  source "$ENV_FILE"
-  set +a
+  for key in "${SYNDICATOR_LOADED_ENV_KEYS[@]+"${SYNDICATOR_LOADED_ENV_KEYS[@]}"}"; do
+    unset "$key"
+  done
+  SYNDICATOR_LOADED_ENV_KEYS=()
+  parsed="$(mktemp)"
+  if ! python3 "$ROOT/scripts/dotenv.py" "$ENV_FILE" >"$parsed"; then
+    rm -f "$parsed"
+    return 1
+  fi
+  while IFS= read -r -d '' key && IFS= read -r -d '' value; do
+    export "$key=$value"
+    SYNDICATOR_LOADED_ENV_KEYS+=("$key")
+  done <"$parsed"
+  rm -f "$parsed"
 }
 
 need_env() {
@@ -37,6 +50,10 @@ release_state_file() {
   resolve_from_root "${SYNDICATOR_RELEASE_STATE_FILE:-secrets/release.env}"
 }
 
+pending_release_file() {
+  printf '%s.pending\n' "$(release_state_file)"
+}
+
 load_release_state() {
   local state
   state="$(release_state_file)"
@@ -50,7 +67,12 @@ write_release_state() {
   local current="$1"
   local previous="${2:-}"
   local rollback_backup="${3:-}"
+  local current_revision="${4:-}"
+  local previous_revision="${5:-}"
   local state temporary_state
+  if [[ -z "$current_revision" ]]; then
+    current_revision="$(git rev-parse HEAD 2>/dev/null || printf 'unknown')"
+  fi
   state="$(release_state_file)"
   mkdir -p "$(dirname "$state")"
   umask 077
@@ -59,16 +81,37 @@ write_release_state() {
     printf 'CURRENT_TAG=%q\n' "$current"
     printf 'PREVIOUS_TAG=%q\n' "$previous"
     printf 'ROLLBACK_BACKUP=%q\n' "$rollback_backup"
-    printf 'DEPLOYED_GIT_REVISION=%q\n' \
-      "$(git rev-parse HEAD 2>/dev/null || printf 'unknown')"
+    printf 'CURRENT_GIT_REVISION=%q\n' "$current_revision"
+    printf 'PREVIOUS_GIT_REVISION=%q\n' "$previous_revision"
     printf 'DEPLOYED_AT=%q\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   } >"$temporary_state"
   chmod 600 "$temporary_state"
   mv "$temporary_state" "$state"
 }
 
+compose_project_name() {
+  compose config --format json | python3 -c '
+import json
+import sys
+
+print(json.load(sys.stdin)["name"])
+'
+}
+
+persistent_state_exists() {
+  local project
+  project="$(compose_project_name)"
+  [[ -n "$(docker volume ls -q \
+    --filter "label=com.docker.compose.project=$project" \
+    --filter "label=com.docker.compose.volume=n8n_data")" ]]
+}
+
 compose() {
-  local args=(--env-file "$ENV_FILE")
+  local args=(
+    --project-directory "$SOURCE_ROOT"
+    -f "$SOURCE_ROOT/docker-compose.yml"
+    --env-file "$ENV_FILE"
+  )
   if [[ -z "${SYNDICATOR_IMAGE_TAG:-}" ]]; then
     load_release_state
     if [[ -n "${CURRENT_TAG:-}" ]]; then

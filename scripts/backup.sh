@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=scripts/lib.sh
 source "$ROOT/scripts/lib.sh"
 
+umask 077
 load_env
 "$ROOT/scripts/doctor.sh" --require-config >/dev/null
 
@@ -108,8 +109,13 @@ if [[ -d "$keys_dir" ]]; then
   cp -Rp "$keys_dir" "$staging/config/sftp_keys"
 fi
 
-git_revision="$(git rev-parse HEAD 2>/dev/null || printf 'unknown')"
-GIT_REVISION="$git_revision" python3 - "$staging" <<'PY'
+load_release_state
+git_revision="${CURRENT_GIT_REVISION:-${DEPLOYED_GIT_REVISION:-}}"
+if [[ -z "$git_revision" ]]; then
+  git_revision="$(git rev-parse HEAD 2>/dev/null || printf 'unknown')"
+fi
+GIT_REVISION="$git_revision" RELEASE_TAG="${CURRENT_TAG:-unknown}" \
+  python3 - "$staging" <<'PY'
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -126,6 +132,7 @@ manifest = {
     "format_version": 1,
     "created_at": datetime.now(timezone.utc).isoformat(),
     "git_revision": os.environ["GIT_REVISION"],
+    "release_tag": os.environ["RELEASE_TAG"],
     "files": files,
 }
 (root / "manifest.json").write_text(
@@ -134,7 +141,7 @@ manifest = {
 )
 PY
 
-temporary_output="${output}.tmp.$$"
+temporary_output="$(mktemp "$(dirname "$output")/.syndicator-archive.XXXXXX")"
 tar -czf "$temporary_output" -C "$staging" .
 chmod 600 "$temporary_output"
 mv "$temporary_output" "$output"
