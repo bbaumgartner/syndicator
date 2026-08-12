@@ -7,7 +7,8 @@ the `/files` volume so videos are not uploaded through HTTP bodies.
 Defined as the `pyautoflip` service in [`../docker-compose.yml`](../docker-compose.yml).
 
 ```bash
-docker compose up -d --build pyautoflip
+# From the repository root:
+bin/syndicator deploy
 ```
 
 ## API
@@ -57,7 +58,4 @@ docker build -t syndicator-pyautoflip:local .
 ## n8n workflow
 
 **Adapt Reel Media** (`y9TTx7N8Iygn88ry`) calls this service. The live workflow
-is edited in n8n; export back with `scripts/export-workflows.sh`.
-
-After cutover, remove any ad-hoc `pyautoflip` service from host `~/n8n/compose.yaml`
-so `docker-compose.yml` is the single definition.
+is edited in n8n; export back with `bin/syndicator export`.

@@ -1,8 +1,8 @@
 # Syndicator
 
 Syndicator takes a blog post and:
-1. Generate a static web site translated to languages EN, FR, ES, SP, IT, and Pirate Speak
-2. Distribute the blog post to social media platforms Instagram, Facebook, Youtube, and X.
+1. Generate a static web site translated to EN, DE, ES, FR, IT, and Pirate Speak
+2. Distribute the blog post to social media platforms Instagram, Facebook, YouTube, and X.
 
 It uses AI extensively for various aspects like translation, post text generation, and media cropping.
 
@@ -24,7 +24,7 @@ ASCII context (kept for LLM / text-only readers):
 Syndicator provides the `syndicate` interface specified in this document.
 
 * Syndicator uses [Postiz](https://postiz.com/) to schedule social media posts.
-* Syndicator uses [OpenAI](https://openai.com/) for KI tasks.
+* Syndicator uses [OpenAI](https://openai.com/) for AI tasks.
 * Syndicator uses [Hugo](https://gohugo.io/) to generate static blog post site.
 
 ## syndicate interface
@@ -167,8 +167,11 @@ Owner account is provisioned from env on n8n start (`N8N_INSTANCE_OWNER_*`). Boo
 
 `init` writes `secrets/sftp_n8n_ed25519` (private), `sftp/keys/n8n.pub` (public), and `secrets/n8n_owner.env` (bcrypt hash for Compose). Extra client keys: copy any `.pub` into `sftp/keys/` and restart SFTP. Host keys live in the `sftp_host_keys` volume (generated on first start). Connect on port `2222` as user `sftp`.
 
+Published ports bind to loopback by default. Read the [operations runbook](docs/operations.md) before enabling LAN or internet access.
+
 The `files-init` Compose service chowns the shared `n8n_files` volume to uid/gid `1000` on each `up` so n8n and pyautoflip can write under `/files`.
-## Update Worfklows
+
+## Update workflows
 
 `bin/syndicator export` exports sanitized workflows from n8n into `n8n/workflows/`.
 
@@ -188,9 +191,9 @@ An update gets a commit-based image tag and creates a consistent backup when the
 
 ## Architecture
 
-The workflow engine, n8n, orchestrates all blog post processing via modular workflows. The most important non-functional requirements are automation and maintainability, as the goal is to minimize time spent managing social media platforms. The initial version of Syndicator was "custom-made" by LLMs, but quickly became unmaintainable. This experience highlighted the need to adopt a workflow engine and decompose the blog post processing into simple, easy-to-understand nodes. This approach not only streamlines debugging and scaling, but also leverages a higher-level runtime environment.
+The workflow engine, n8n, orchestrates all blog post processing via modular workflows. The most important non-functional requirements are repeatability, testability, automation, and maintainability. The initial custom pipeline became difficult to change, which motivated decomposing processing into visible workflow nodes.
 
-However, this comes with increased setup complexity—which is why everything is containerized, aiming for a "one-click" deployment to spin up new instances, including workflow instantiation and authentication setup. While achieving this seamless setup remains a work in progress, it is still uncertain whether the chosen technology stack can fully deliver on this vision.
+Compose remains the application boundary because it isolates three different runtimes and provides the same topology on macOS and Linux. The operator lifecycle is intentionally separate and tested through `bin/syndicator`. The rationale and rejected alternatives are recorded in [ADR 0001](docs/adr/0001-deployment-model.md).
  
 ## Software Design
 
@@ -205,8 +208,8 @@ The repo is the blueprint for a containerized instance: Compose defines the stac
 | `docker-compose.yml` | Compose stack: files-init + SFTP + n8n + pyautoflip |
 | `.env.example` | Env template for secrets and host paths |
 | `n8n/Dockerfile` | Custom n8n image (`ffmpeg` + community node seed) |
-| `sftp/Dockerfile` | atmoz/sftp wrapper (host keys volume, key sync, chown) |
-| `scripts/` | ensure-sftp-keys / ensure-n8n-owner / bootstrap / export / update |
+| `sftp/setup.sh` | Supported atmoz startup hook for durable host keys, key sync, and ownership |
+| `scripts/` | Focused lifecycle implementations behind `bin/syndicator` |
 | `n8n/workflows/` | Importable workflow exports (source of truth) |
 | `n8n/credentials/` | Credential templates (stable IDs; secrets from `.env`) |
 | `pyautoflip/` | Image/build context for the reframe sidecar |
@@ -221,7 +224,8 @@ n8n/workflows/
 n8n/credentials/*.template.json
 pyautoflip/
 sftp/
-scripts/{ensure-sftp-keys,ensure-n8n-owner,bootstrap,export,update}.sh
+scripts/{init,deploy,bootstrap,verify,backup,restore,update,rollback,export}.sh
+docs/{operations.md,adr/}
 bin/syndicator
 ```
 
@@ -254,8 +258,8 @@ flowchart LR
 
 | Workflow | Role |
 |----------|------|
-| Blog Post Publish | Webhook `/publish` → Hugo adapt + social feature adapt |
-| Reel Publish | Webhook `/reel` → adapt → caption → Postiz |
+| Blog Post Publish | Webhook `/webhook/publish` → Hugo adapt + social feature adapt |
+| Reel Publish | Webhook `/webhook/reel` → adapt → caption → Postiz |
 
 For brevity, subworkflows invoked by these workflows are not listed here.
 
