@@ -33,8 +33,48 @@ resolve_from_root() {
   fi
 }
 
+release_state_file() {
+  resolve_from_root "${SYNDICATOR_RELEASE_STATE_FILE:-secrets/release.env}"
+}
+
+load_release_state() {
+  local state
+  state="$(release_state_file)"
+  if [[ -s "$state" ]]; then
+    # shellcheck source=/dev/null
+    source "$state"
+  fi
+}
+
+write_release_state() {
+  local current="$1"
+  local previous="${2:-}"
+  local rollback_backup="${3:-}"
+  local state temporary_state
+  state="$(release_state_file)"
+  mkdir -p "$(dirname "$state")"
+  umask 077
+  temporary_state="${state}.tmp.$$"
+  {
+    printf 'CURRENT_TAG=%q\n' "$current"
+    printf 'PREVIOUS_TAG=%q\n' "$previous"
+    printf 'ROLLBACK_BACKUP=%q\n' "$rollback_backup"
+    printf 'DEPLOYED_GIT_REVISION=%q\n' \
+      "$(git rev-parse HEAD 2>/dev/null || printf 'unknown')"
+    printf 'DEPLOYED_AT=%q\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  } >"$temporary_state"
+  chmod 600 "$temporary_state"
+  mv "$temporary_state" "$state"
+}
+
 compose() {
   local args=(--env-file "$ENV_FILE")
+  if [[ -z "${SYNDICATOR_IMAGE_TAG:-}" ]]; then
+    load_release_state
+    if [[ -n "${CURRENT_TAG:-}" ]]; then
+      export SYNDICATOR_IMAGE_TAG="$CURRENT_TAG"
+    fi
+  fi
   if [[ -n "${SYNDICATOR_PROJECT:-}" ]]; then
     args+=(-p "$SYNDICATOR_PROJECT")
   fi

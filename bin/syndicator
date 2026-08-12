@@ -16,6 +16,10 @@ Lifecycle:
   bootstrap   Reconcile n8n credentials and workflows
   verify      Verify health, workflows, pyautoflip, and SFTP
   export      Export sanitized workflows from n8n
+  backup      Archive critical volumes, configuration, and secrets
+  restore     Restore a validated backup archive
+  update      Back up and deploy reviewed dependency changes
+  rollback    Restore the recorded previous release
   status      Show Compose service status
   logs        Follow Compose service logs
 EOF
@@ -32,16 +36,7 @@ case "$command" in
     exec "$ROOT/scripts/init.sh" "$@"
     ;;
   deploy)
-    if [[ "$#" -ne 0 ]]; then
-      echo "Usage: bin/syndicator deploy" >&2
-      exit 2
-    fi
-    "$ROOT/scripts/init.sh"
-    "$ROOT/scripts/doctor.sh" --require-config
-    compose build
-    compose up -d --remove-orphans
-    "$ROOT/scripts/bootstrap-n8n.sh"
-    "$ROOT/scripts/verify.sh"
+    exec "$ROOT/scripts/deploy.sh" "$@"
     ;;
   bootstrap)
     exec "$ROOT/scripts/bootstrap-n8n.sh" "$@"
@@ -51,6 +46,18 @@ case "$command" in
     ;;
   export)
     exec "$ROOT/scripts/export-workflows.sh" "$@"
+    ;;
+  backup)
+    exec "$ROOT/scripts/backup.sh" "$@"
+    ;;
+  restore)
+    exec "$ROOT/scripts/restore.sh" "$@"
+    ;;
+  update)
+    exec "$ROOT/scripts/update.sh" "$@"
+    ;;
+  rollback)
+    exec "$ROOT/scripts/rollback.sh" "$@"
     ;;
   status)
     load_env
