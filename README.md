@@ -156,22 +156,21 @@ Once Syndicator has finished processing Blog Post Publish the static Hugo post c
 ## Setup
 
 ```bash
-cp .env.example .env
-# Fill secrets: N8N_ENCRYPTION_KEY, N8N_OWNER_EMAIL, N8N_OWNER_PASSWORD, OpenAI, Postiz
-./scripts/ensure-sftp-keys.sh
-./scripts/ensure-n8n-owner.sh
-docker compose up -d --build
-./scripts/bootstrap-n8n.sh
+bin/syndicator init
+# Fill the values requested in .env, then:
+bin/syndicator deploy
 ```
+
+`deploy` checks prerequisites, generates local-only keys, builds and starts the stack, reconciles n8n credentials/workflows, and verifies n8n, pyautoflip, and SFTP. It is safe to run repeatedly; an unchanged bootstrap is skipped.
 
 Owner account is provisioned from env on n8n start (`N8N_INSTANCE_OWNER_*`). Bootstrap logs in with `N8N_OWNER_EMAIL` / `N8N_OWNER_PASSWORD` to create or reuse an API key at `secrets/n8n_api_key` (or uses `N8N_API_KEY` if set), then imports credentials/workflows and publishes webhooks. UI login uses the same owner credentials.
 
-`ensure-sftp-keys.sh` writes `secrets/sftp_n8n_ed25519` (private) and `sftp/keys/n8n.pub` (public); bootstrap runs it too. `ensure-n8n-owner.sh` writes `secrets/n8n_owner.env` (bcrypt hash for Compose); bootstrap runs that as well. Extra client keys: copy any `.pub` into `sftp/keys/` and `docker compose restart sftp`. Host keys live in the `sftp_host_keys` volume (generated on first start). Connect on port `2222` as user `sftp`.
+`init` writes `secrets/sftp_n8n_ed25519` (private), `sftp/keys/n8n.pub` (public), and `secrets/n8n_owner.env` (bcrypt hash for Compose). Extra client keys: copy any `.pub` into `sftp/keys/` and restart SFTP. Host keys live in the `sftp_host_keys` volume (generated on first start). Connect on port `2222` as user `sftp`.
 
 The `files-init` Compose service chowns the shared `n8n_files` volume to uid/gid `1000` on each `up` so n8n and pyautoflip can write under `/files`.
 ## Update Worfklows
 
-`./scripts/export-workflows.sh` exports all workflows from n8n into workflows/ folder in this repo
+`bin/syndicator export` exports sanitized workflows from n8n into `n8n/workflows/`.
 
 ## Automatic updates
 

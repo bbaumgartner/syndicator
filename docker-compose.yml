@@ -1,10 +1,7 @@
 # Phase 1 syndicator stack: SFTP staging + n8n (regular/SQLite) + pyautoflip.
 # Usage (from this directory):
-#   cp .env.example .env   # fill secrets
-#   ./scripts/ensure-sftp-keys.sh
-#   ./scripts/ensure-n8n-owner.sh
-#   docker compose up -d --build
-#   ./scripts/bootstrap-n8n.sh
+#   bin/syndicator init    # fill the requested values in .env
+#   bin/syndicator deploy
 
 name: syndicator
 
@@ -32,7 +29,7 @@ services:
     volumes:
       - sftp_data:/home/sftp/syndicator
       # Client public keys (ensure-sftp-keys.sh writes n8n.pub here).
-      - ./sftp/keys:/home/sftp/.ssh/keys:ro
+      - ${SFTP_KEYS_DIR:-./sftp/keys}:/home/sftp/.ssh/keys:ro
       # Server host keys generated on first start; survive recreate.
       - sftp_host_keys:/etc/ssh/host_keys
       # Supported atmoz startup hook; avoids replacing the sshd binary.
@@ -61,7 +58,7 @@ services:
       - "${N8N_HOST_PORT:-5678}:5678"
     # Password hash written by ./scripts/ensure-n8n-owner.sh (bcrypt; $ escaped as $$).
     env_file:
-      - secrets/n8n_owner.env
+      - ${N8N_OWNER_ENV_FILE:-secrets/n8n_owner.env}
     environment:
       GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-Europe/Zurich}
       TZ: ${GENERIC_TIMEZONE:-Europe/Zurich}
@@ -92,7 +89,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "wget -qO- http://127.0.0.1:5678/healthz >/dev/null || exit 1",
+          "wget -qO- http://127.0.0.1:5678/healthz/readiness >/dev/null || exit 1",
         ]
       interval: 30s
       timeout: 5s

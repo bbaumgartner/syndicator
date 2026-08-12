@@ -75,6 +75,13 @@ class RepositoryManifestTests(unittest.TestCase):
                         f"{path.name}: {node.get('name')} references an unknown workflow",
                     )
 
+    def test_workflow_exports_exclude_instance_state(self) -> None:
+        for path, workflow in self.workflows.items():
+            self.assertFalse(workflow.get("pinData"), path)
+            self.assertNotIn("shared", workflow, path)
+            self.assertNotIn("versionMetadata", workflow, path)
+            self.assertNotIn("instanceId", workflow.get("meta", {}), path)
+
     def test_credential_ids_and_names_are_unique(self) -> None:
         ids = [credential.get("id") for credential in self.credentials]
         names = [credential.get("name") for credential in self.credentials]
@@ -134,6 +141,16 @@ class RepositoryManifestTests(unittest.TestCase):
     def test_example_configuration_is_host_neutral(self) -> None:
         example = (ROOT / ".env.example").read_text(encoding="utf-8")
         self.assertNotRegex(example, r"\b192\.168\.\d{1,3}\.\d{1,3}\b")
+
+    def test_bootstrap_uses_supported_interfaces(self) -> None:
+        bootstrap = (ROOT / "scripts" / "bootstrap-n8n.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("docker volume", bootstrap)
+        self.assertNotIn("sqlite", bootstrap.lower())
+        self.assertNotIn("PUBLISH_WORKFLOW_IDS", bootstrap)
+        library = (ROOT / "scripts" / "lib.sh").read_text(encoding="utf-8")
+        self.assertIn("/healthz/readiness", library)
 
 
 if __name__ == "__main__":

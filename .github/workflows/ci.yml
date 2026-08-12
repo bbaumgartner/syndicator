@@ -21,12 +21,15 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Validate repository manifests
-        run: python3 -m unittest discover -s tests -p 'test_*.py'
+        run: |
+          python3 -m unittest discover -s tests -p 'test_*.py'
+          bash tests/test-init.sh
 
       - name: Validate shell scripts
         run: |
-          bash -n scripts/*.sh tests/*.sh
-          shellcheck scripts/*.sh tests/*.sh
+          shell_files=(bin/syndicator scripts/*.sh tests/*.sh tests/integration/*.sh sftp/*.sh n8n/*.sh)
+          bash -n "${shell_files[@]}"
+          shellcheck "${shell_files[@]}"
 
       - name: Render Compose configuration
         run: bash tests/validate-compose.sh
@@ -46,3 +49,6 @@ jobs:
           PYAUTOFLIP_WARM_MODELS: "0"
         run: |
           bash tests/validate-compose.sh build n8n pyautoflip
+
+      - name: Exercise isolated stack twice
+        run: bash tests/integration/stack.sh
