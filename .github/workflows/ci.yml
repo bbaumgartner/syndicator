@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate repository manifests
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
+
+      - name: Validate shell scripts
+        run: |
+          bash -n scripts/*.sh tests/*.sh
+          shellcheck scripts/*.sh tests/*.sh
+
+      - name: Render Compose configuration
+        run: bash tests/validate-compose.sh
