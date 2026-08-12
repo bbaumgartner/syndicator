@@ -56,8 +56,7 @@ services:
       - "${N8N_HOST_PORT:-5678}:5678"
     # Password hash written by ./scripts/ensure-n8n-owner.sh (bcrypt; $ escaped as $$).
     env_file:
-      - path: secrets/n8n_owner.env
-        required: true
+      - secrets/n8n_owner.env
     environment:
       GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-Europe/Zurich}
       TZ: ${GENERIC_TIMEZONE:-Europe/Zurich}
