@@ -35,6 +35,10 @@ with a list of values that still need input. Fill in:
 - Postiz API key
 - the public URL and bind addresses appropriate for the host
 
+The lifecycle parses `.env` as data, never as shell code. Quote values that
+contain spaces or `#`; single quotes preserve `$`, backticks, and other
+characters literally.
+
 Then deploy:
 
 ```bash
@@ -48,7 +52,9 @@ unchanged and all workflows remain published, n8n import is skipped.
 
 The first controlled deployment writes `secrets/release.env`. Unless
 `SYNDICATOR_IMAGE_TAG` is explicitly set, images use the current 12-character
-Git revision as their tag.
+Git revision as their tag. The exact Compose/workflow source is retained under
+`secrets/release-sources/`, so routine commands continue to target the running
+release even after the checkout moves forward or a rollback completes.
 
 ## Local and network configuration
 
@@ -118,6 +124,13 @@ scripts/ensure-n8n-owner.sh --force
 bin/syndicator deploy
 ```
 
+After adding or removing a public key under `sftp/keys/`, apply it through the
+supported hook:
+
+```bash
+bin/syndicator restart sftp
+```
+
 ## Dependency updates
 
 Container, npm, pip, and GitHub Actions dependencies are proposed weekly by
@@ -146,6 +159,11 @@ An explicit tag is available for release testing:
 bin/syndicator update --tag release-candidate-1
 ```
 
+If bootstrap or verification fails, the new services are stopped and recovery
+details remain in `secrets/release.env.pending`. The last healthy release state
+is not overwritten. Use the recorded backup with the matching Git revision;
+do not simply restart the failed containers.
+
 ## Backups
 
 Create a backup:
@@ -163,8 +181,9 @@ consistent. It archives:
 - `.env`, n8n owner/API/bootstrap state, SFTP client keys, and release state
 - a manifest containing SHA-256 checksums and the Git revision
 
-The shared processing directory `n8n_files` is scratch space. The
-`pyautoflip_home` model cache is reconstructible. Neither is backed up.
+The shared processing directory `n8n_files` is scratch space and is not backed
+up. InsightFace models are checksum-pinned inside the pyautoflip image, not
+stored in a mutable volume.
 
 Archives default to `backups/` and mode `0600`. They still contain plaintext
 credentials. Copy them to encrypted off-host storage and apply an external
@@ -187,9 +206,15 @@ bin/syndicator restore --yes /secure/path/syndicator.tar.gz
 
 Before changing state, restore rejects unsafe archive paths, unsupported
 members, missing critical volume archives, unsupported formats, and checksum
-mismatches. It replaces current configuration and critical volumes, rebuilds
-the checked-out revision by default, starts the stack, reconciles n8n, and
-verifies all services.
+mismatches. It also requires the checkout to match the archive's Git revision.
+Only after validating inner volume archives and building or locating the
+required images does it stop services and cross the destructive boundary. It
+then replaces current configuration and critical volumes, starts the stack,
+reconciles n8n, and verifies all services.
+
+If a post-mutation restore step fails, all restored-but-unverified services are
+stopped and recovery context is written beside `release.env` with the suffix
+`.restore-pending`.
 
 For disaster recovery on a new host:
 
@@ -213,13 +238,16 @@ bin/syndicator rollback
 It requires:
 
 - `PREVIOUS_TAG` and `ROLLBACK_BACKUP` in `secrets/release.env`
+- a clean checkout at the recorded current Git revision
 - both previous application images still present locally
 - the matching pre-update backup
 
-Before restoring the previous release, rollback backs up the current release.
-This creates a reversible roll-forward point. It then restores matching data,
-starts the previous image tags, verifies the stack, and swaps the current and
-previous release records.
+Rollback refuses dirty or mismatched current source. Before restoring the
+previous release, it uses the current lifecycle to back up the current release.
+It then selects the retained source bundle for the exact previous Git revision,
+uses the current hardened restore implementation with that revision's
+Compose/workflow definitions, restores matching data, starts the previous image
+tags, verifies the stack, and swaps the current and previous release records.
 
 Do not use `docker image prune -a` while rollback retention is required.
 
@@ -237,14 +265,20 @@ npm audit --prefix n8n
 Full isolated test:
 
 ```bash
-PYAUTOFLIP_WARM_MODELS=0 bash tests/validate-compose.sh build n8n pyautoflip
+bash tests/validate-compose.sh build n8n pyautoflip
+bash tests/integration/reframe.sh
 bash tests/integration/stack.sh
 ```
 
-The integration test uses random loopback ports and a unique Compose project.
-It deploys twice, checks that API keys and resources are not duplicated,
-uploads over SFTP, validates backup/restore, deploys a second release tag,
-rolls back, and removes all test containers and volumes.
+CI first builds the production model-warmed image and performs a real reframe.
+The stack integration test uses random loopback ports and a unique Compose
+project. It deploys twice, checks that API keys and resources are not
+duplicated, uploads over SFTP, validates backup/restore, deploys a second
+release tag, rolls back, and removes all test containers and volumes. A
+deliberately failed release also verifies that untrusted containers are
+stopped and pending recovery state is recorded; the same containment is tested
+for a failed restore. A separate Buildx job verifies n8n and pyautoflip for
+Linux arm64.
 
 ## Troubleshooting
 

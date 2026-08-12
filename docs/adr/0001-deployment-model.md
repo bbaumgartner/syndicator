@@ -108,6 +108,10 @@ can be reconsidered now that integration tests protect the behavior.
   reverse-proxy decision.
 - Backups contain secrets. File mode `0600` is only a local safeguard; off-host
   copies must be encrypted.
+- pyautoflip's Python graph and model archive are hash-pinned, but Debian media
+  packages still come from the live Bookworm repositories. Retained,
+  commit-tagged images are the rollback artifact; use a Debian snapshot if
+  bit-for-bit disaster rebuilds become a requirement.
 
 ## Revisit when
 

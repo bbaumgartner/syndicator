@@ -50,6 +50,9 @@ Encode knobs (optional env on the `pyautoflip` service):
 
 ## Local image build
 
+The build downloads the InsightFace `buffalo_s` archive, verifies its pinned
+SHA-256 checksum, and stores the extracted model in the image.
+
 ```bash
 cd pyautoflip
 docker build -t syndicator-pyautoflip:local .

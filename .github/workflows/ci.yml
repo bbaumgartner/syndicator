@@ -46,10 +46,28 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build application images
-        env:
-          PYAUTOFLIP_WARM_MODELS: "0"
         run: |
           bash tests/validate-compose.sh build n8n pyautoflip
 
+      - name: Exercise production reframe path
+        run: bash tests/integration/reframe.sh
+
       - name: Exercise isolated stack twice
         run: bash tests/integration/stack.sh
+
+  build-arm64:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build application images for Linux arm64
+        run: |
+          docker buildx build --platform linux/arm64 ./n8n
+          docker buildx build \
+            --platform linux/arm64 \
+            --build-arg PYAUTOFLIP_WARM_MODELS=0 \
+            ./pyautoflip
