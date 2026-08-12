@@ -54,6 +54,7 @@ trap 'rm -rf "$staging"' EXIT
 python3 - "$archive" "$staging" <<'PY'
 import hashlib
 import json
+import posixpath
 from pathlib import Path
 import sys
 import tarfile
@@ -82,30 +83,133 @@ for relative, expected in manifest.get("files", {}).items():
     actual = hashlib.sha256(path.read_bytes()).hexdigest()
     if actual != expected:
         raise SystemExit(f"Checksum mismatch: {relative}")
+
+for name in ("n8n_data", "sftp_data", "sftp_host_keys"):
+    volume_archive = destination / "volumes" / f"{name}.tar.gz"
+    try:
+        volume = tarfile.open(volume_archive, "r:gz")
+    except (OSError, tarfile.TarError) as exc:
+        raise SystemExit(f"Invalid volume archive {name}: {exc}") from exc
+    with volume:
+        for member in volume.getmembers():
+            member_path = Path(member.name)
+            if member_path.is_absolute() or ".." in member_path.parts:
+                raise SystemExit(f"Unsafe {name} member: {member.name}")
+            if member.isdev():
+                raise SystemExit(f"Unsupported {name} member: {member.name}")
+            if member.issym() or member.islnk():
+                resolved = posixpath.normpath(
+                    posixpath.join(posixpath.dirname(member.name), member.linkname)
+                )
+                if member.linkname.startswith("/") or resolved == ".." or resolved.startswith("../"):
+                    raise SystemExit(f"Unsafe {name} link: {member.name}")
 PY
 
-for volume in n8n_data sftp_data sftp_host_keys; do
-  if [[ ! -f "$staging/volumes/${volume}.tar.gz" ]]; then
-    echo "Backup is missing volume archive: $volume" >&2
+for required in \
+  volumes/n8n_data.tar.gz \
+  volumes/sftp_data.tar.gz \
+  volumes/sftp_host_keys.tar.gz \
+  config/environment.env \
+  config/n8n_owner.env \
+  config/sftp_private_key; do
+  if [[ ! -f "$staging/$required" ]]; then
+    echo "Backup is missing required member: $required" >&2
     exit 1
   fi
 done
-if [[ ! -f "$staging/config/environment.env" ]]; then
-  echo "Backup is missing environment configuration." >&2
+
+manifest_revision="$(python3 - "$staging/manifest.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    print(json.load(handle).get("git_revision", "unknown"))
+PY
+)"
+source_revision="${SYNDICATOR_SOURCE_REVISION:-}"
+if [[ -z "$source_revision" ]]; then
+  source_revision="$(git -C "$SOURCE_ROOT" rev-parse HEAD 2>/dev/null || printf 'unknown')"
+fi
+if [[ "$manifest_revision" != "unknown" && \
+      "$source_revision" != "$manifest_revision" ]]; then
+  echo "Backup requires Git revision $manifest_revision." >&2
+  echo "Selected source is $source_revision; refusing a mixed-version restore." >&2
+  exit 1
+fi
+if [[ "${SYNDICATOR_ALLOW_DIRTY:-0}" != "1" ]] && \
+   [[ -e "$SOURCE_ROOT/.git" ]] && \
+   [[ -n "$(git -C "$SOURCE_ROOT" status --porcelain)" ]]; then
+  echo "Refusing to restore with a dirty source checkout." >&2
   exit 1
 fi
 
-if [[ -f "$ENV_FILE" ]]; then
-  load_env
-  compose stop n8n sftp pyautoflip >/dev/null 2>&1 || true
+target_env_file="$ENV_FILE"
+ENV_FILE="$staging/config/environment.env"
+load_env
+environment_image_tag="${SYNDICATOR_IMAGE_TAG:-}"
+archive_release_tag=""
+if [[ -f "$staging/config/release.env" ]]; then
+  archive_release_tag="$(python3 - "$ROOT/scripts" "$staging/config/release.env" <<'PY'
+from pathlib import Path
+import sys
+
+sys.path.insert(0, sys.argv[1])
+from dotenv import parse
+
+print(dict(parse(Path(sys.argv[2]))).get("CURRENT_TAG", ""))
+PY
+)"
+fi
+if [[ -n "$forced_image_tag" ]]; then
+  desired_image_tag="$forced_image_tag"
+elif [[ -n "$environment_image_tag" ]]; then
+  desired_image_tag="$environment_image_tag"
+elif [[ -n "$archive_release_tag" ]]; then
+  desired_image_tag="$archive_release_tag"
+else
+  desired_image_tag="$(git rev-parse --short=12 HEAD 2>/dev/null || printf 'local')"
+fi
+if [[ ! "$desired_image_tag" =~ ^[a-zA-Z0-9_.-]+$ ]]; then
+  echo "Backup selected an invalid image tag: $desired_image_tag" >&2
+  exit 1
 fi
 
+if [[ ! -d "$staging/config/sftp_keys" ]]; then
+  mkdir -p "$staging/config/sftp_keys"
+  ssh-keygen -y -f "$staging/config/sftp_private_key" \
+    >"$staging/config/sftp_keys/n8n.pub"
+fi
+export N8N_OWNER_ENV_FILE="$staging/config/n8n_owner.env"
+export SFTP_KEYS_DIR="$staging/config/sftp_keys"
+export SYNDICATOR_IMAGE_TAG="$desired_image_tag"
+
+if [[ "$build_images" -eq 1 ]]; then
+  compose build
+else
+  for image in \
+    "syndicator-n8n:$desired_image_tag" \
+    "syndicator-pyautoflip:$desired_image_tag"; do
+    if ! docker image inspect "$image" >/dev/null 2>&1; then
+      echo "Required restore image is missing: $image" >&2
+      exit 1
+    fi
+  done
+fi
+
+compose stop n8n sftp pyautoflip >/dev/null
+for service in n8n sftp pyautoflip; do
+  if [[ -n "$(compose ps --status running -q "$service")" ]]; then
+    echo "Service did not stop before restore: $service" >&2
+    exit 1
+  fi
+done
+
+ENV_FILE="$target_env_file"
 mkdir -p "$(dirname "$ENV_FILE")"
 cp "$staging/config/environment.env" "$ENV_FILE"
 chmod 600 "$ENV_FILE"
-unset SYNDICATOR_IMAGE_TAG
+unset N8N_OWNER_ENV_FILE SFTP_KEYS_DIR SYNDICATOR_IMAGE_TAG
 load_env
-environment_image_tag="${SYNDICATOR_IMAGE_TAG:-}"
 
 restore_file() {
   local name="$1"
@@ -140,22 +244,11 @@ rm -rf "$keys_dir"
 mkdir -p "$(dirname "$keys_dir")"
 if [[ -d "$staging/config/sftp_keys" ]]; then
   cp -Rp "$staging/config/sftp_keys" "$keys_dir"
-else
-  mkdir -p "$keys_dir"
-  ssh-keygen -y -f "$private_key" >"$keys_dir/n8n.pub"
 fi
 
-if [[ -n "$forced_image_tag" ]]; then
-  export SYNDICATOR_IMAGE_TAG="$forced_image_tag"
-elif [[ -n "$environment_image_tag" ]]; then
-  export SYNDICATOR_IMAGE_TAG="$environment_image_tag"
-else
-  unset SYNDICATOR_IMAGE_TAG CURRENT_TAG PREVIOUS_TAG ROLLBACK_BACKUP
-  load_release_state
-  if [[ -n "${CURRENT_TAG:-}" ]]; then
-    export SYNDICATOR_IMAGE_TAG="$CURRENT_TAG"
-  fi
-fi
+export N8N_OWNER_ENV_FILE="$owner_env"
+export SFTP_KEYS_DIR="$keys_dir"
+export SYNDICATOR_IMAGE_TAG="$desired_image_tag"
 
 for volume in n8n_data sftp_data sftp_host_keys; do
   echo "Restoring volume $volume..."
@@ -170,9 +263,6 @@ for volume in n8n_data sftp_data sftp_host_keys; do
     ' >/dev/null
 done
 
-if [[ "$build_images" -eq 1 ]]; then
-  compose build
-fi
 compose up -d --remove-orphans
 "$ROOT/scripts/bootstrap-n8n.sh"
 "$ROOT/scripts/verify.sh"

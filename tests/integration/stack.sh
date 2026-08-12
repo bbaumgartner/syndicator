@@ -45,11 +45,13 @@ SFTP_KEYS_DIR=$tmp/keys
 PYAUTOFLIP_WARM_MODELS=0
 SYNDICATOR_BACKUP_DIR=$tmp/backups
 SYNDICATOR_RELEASE_STATE_FILE=$tmp/release.env
+SYNDICATOR_ALLOW_DIRTY=1
 EOF
 chmod 600 "$env_file"
 
 export SYNDICATOR_ENV_FILE="$env_file"
 export SYNDICATOR_PROJECT="$project"
+export SYNDICATOR_ALLOW_DIRTY=1
 
 cleanup() {
   status=$?
@@ -64,7 +66,40 @@ cleanup() {
 }
 trap cleanup EXIT
 
+test_failed_deployment() {
+  printf '%s\n' 'SYNDICATOR_TEST_FAIL_AFTER_START=1' >>"$env_file"
+  set +e
+  "$ROOT/bin/syndicator" update --tag integration-failure \
+    >"$tmp/failed-deploy.log" 2>&1
+  failed_status=$?
+  set -e
+  if [[ "$failed_status" -eq 0 ]]; then
+    echo "Deliberately invalid deployment unexpectedly succeeded." >&2
+    exit 1
+  fi
+  if [[ ! -s "$tmp/release.env.pending" ]]; then
+    echo "Failed deployment did not record pending recovery state." >&2
+    python3 - "$tmp/failed-deploy.log" <<'PY' >&2
+from pathlib import Path
+import sys
+
+print(Path(sys.argv[1]).read_text(encoding="utf-8"))
+PY
+    exit 1
+  fi
+  if [[ -n "$(docker compose --env-file "$env_file" -p "$project" \
+    ps --status running -q n8n)" ]]; then
+    echo "Failed deployment left unverified n8n running." >&2
+    exit 1
+  fi
+}
+
 "$ROOT/bin/syndicator" deploy
+if [[ "${SYNDICATOR_INTEGRATION_FAILURE_ONLY:-0}" == "1" ]]; then
+  test_failed_deployment
+  echo "Failed deployment containment test passed."
+  exit 0
+fi
 
 cp "$tmp/n8n_api_key" "$tmp/n8n_api_key.before"
 if ! "$ROOT/bin/syndicator" deploy | tee "$tmp/second-deploy.log"; then
@@ -162,5 +197,7 @@ if [[ "${CURRENT_TAG:-}" != "$initial_tag" || \
   echo "Rollback release state is incorrect." >&2
   exit 1
 fi
+
+test_failed_deployment
 
 echo "Isolated stack integration test passed."

@@ -21,7 +21,7 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 n8n_base="http://127.0.0.1:${N8N_HOST_PORT:-5678}"
 
-for file in n8n/workflows/*.json; do
+for file in "$SOURCE_ROOT"/n8n/workflows/*.json; do
   id="$(workflow_id "$file")"
   body="$tmp/workflow-${id}.json"
   code="$(curl -sS -o "$body" -w '%{http_code}' \

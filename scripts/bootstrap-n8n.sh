@@ -184,18 +184,20 @@ ensure_api_key() {
 }
 
 bootstrap_fingerprint() {
-  python3 - <<'PY'
+  SOURCE_ROOT="$SOURCE_ROOT" python3 - <<'PY'
 import glob
 import hashlib
 import os
 
 digest = hashlib.sha256()
+root = os.environ["SOURCE_ROOT"]
 for pattern in ("n8n/credentials/*.template.json", "n8n/workflows/*.json"):
-    for path in sorted(glob.glob(pattern)):
-        digest.update(path.encode())
+    for path in sorted(glob.glob(os.path.join(root, pattern))):
+        digest.update(os.path.relpath(path, root).encode())
         with open(path, "rb") as handle:
             digest.update(handle.read())
 for name in (
+    "N8N_ENCRYPTION_KEY",
     "OPENAI_API_KEY",
     "POSTIZ_API_KEY",
     "SFTP_HOST",
@@ -208,30 +210,37 @@ print(digest.hexdigest())
 PY
 }
 
-workflow_is_active() {
+workflow_is_current() {
   local id="$1"
+  local source="$2"
   local body="$TMP_DIR/workflow-${id}.json"
   local code
   code="$(curl -sS -o "$body" -w '%{http_code}' \
     -H "X-N8N-API-KEY: ${N8N_API_KEY}" \
     "${N8N_BASE}/api/v1/workflows/${id}" || true)"
   [[ "$code" == "200" ]] || return 1
-  python3 - "$body" <<'PY'
+  python3 - "$body" "$source" <<'PY'
 import json
 import sys
 
 with open(sys.argv[1], encoding="utf-8") as handle:
     body = json.load(handle)
-data = body.get("data", body)
-raise SystemExit(0 if data.get("active") is True else 1)
+with open(sys.argv[2], encoding="utf-8") as handle:
+    desired = json.load(handle)
+deployed = body.get("data", body)
+keys = ("name", "nodes", "connections", "settings", "staticData")
+matches = deployed.get("active") is True and all(
+    deployed.get(key) == desired.get(key) for key in keys
+)
+raise SystemExit(0 if matches else 1)
 PY
 }
 
-all_workflows_active() {
+all_workflows_current() {
   local file id
   for file in "${WORKFLOW_FILES[@]}"; do
-    id="$(workflow_id "$ROOT/$file")"
-    workflow_is_active "$id" || return 1
+    id="$(workflow_id "$SOURCE_ROOT/$file")"
+    workflow_is_current "$id" "$SOURCE_ROOT/$file" || return 1
   done
 }
 
@@ -289,14 +298,14 @@ publish_workflow() {
 ensure_api_key
 fingerprint="$(bootstrap_fingerprint)"
 if [[ -s "$STATE_FILE" ]] && [[ "$(<"$STATE_FILE")" == "$fingerprint" ]] && \
-   all_workflows_active; then
+   all_workflows_current; then
   echo "n8n bootstrap is already current."
   exit 0
 fi
 
 OWNER_USER_ID="$(owner_user_id)"
 echo "Importing credentials for owner $OWNER_USER_ID..."
-for template in n8n/credentials/*.template.json; do
+for template in "$SOURCE_ROOT"/n8n/credentials/*.template.json; do
   base="$(basename "$template" .template.json)"
   rendered="$TMP_DIR/${base}.json"
   render_credential "$template" "$rendered"
@@ -308,16 +317,16 @@ done
 
 echo "Importing and publishing workflows..."
 for file in "${WORKFLOW_FILES[@]}"; do
-  id="$(workflow_id "$ROOT/$file")"
-  copy_into_n8n "$ROOT/$file" /tmp/syndicator-workflow.json
+  id="$(workflow_id "$SOURCE_ROOT/$file")"
+  copy_into_n8n "$SOURCE_ROOT/$file" /tmp/syndicator-workflow.json
   compose exec -T -u node n8n \
     n8n import:workflow --input=/tmp/syndicator-workflow.json --userId="$OWNER_USER_ID"
   compose exec -T -u node n8n rm -f /tmp/syndicator-workflow.json
   publish_workflow "$id"
 done
 
-if ! all_workflows_active; then
-  echo "At least one imported workflow is not active." >&2
+if ! all_workflows_current; then
+  echo "At least one imported workflow differs from source or is inactive." >&2
   exit 1
 fi
 
