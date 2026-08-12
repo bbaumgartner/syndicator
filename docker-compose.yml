@@ -11,20 +11,21 @@ name: syndicator
 services:
   # Docker named volumes are root-owned on first create; n8n + pyautoflip run as uid 1000.
   files-init:
-    image: alpine:3.20
+    image: ${FILES_INIT_IMAGE:-alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc}
     volumes:
       - n8n_files:/data
     command:
       [
         "sh",
         "-c",
-        "chown -R 1000:1000 /data && chmod 775 /data",
+        "chown 1000:1000 /data && chmod 775 /data",
       ]
     restart: "no"
 
   sftp:
-    build: ./sftp
-    image: syndicator-sftp:local
+    image: ${SFTP_BASE_IMAGE:-atmoz/sftp:alpine@sha256:81fa92512bf8ead4849f33c1c153907b86d32d77704d1c62a9c70b4316ae9e50}
+    # The upstream image is amd64-only; Docker Desktop emulates it on Apple Silicon.
+    platform: ${SFTP_PLATFORM:-linux/amd64}
     restart: unless-stopped
     ports:
       - "${SFTP_PUBLISH_PORT:-2222}:22"
@@ -34,11 +35,17 @@ services:
       - ./sftp/keys:/home/sftp/.ssh/keys:ro
       # Server host keys generated on first start; survive recreate.
       - sftp_host_keys:/etc/ssh/host_keys
+      # Supported atmoz startup hook; avoids replacing the sshd binary.
+      - ./sftp/setup.sh:/etc/sftp.d/10-syndicator.sh:ro
     # user::uid:gid:dirs — empty password → key-only auth
     command: sftp::1001:100:syndicator
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -x sshd >/dev/null || exit 1"]
-      interval: 30s
+      test:
+        [
+          "CMD-SHELL",
+          "kill -0 1 && /usr/sbin/sshd -t",
+        ]
+      interval: 10s
       timeout: 5s
       retries: 3
 
@@ -46,11 +53,9 @@ services:
     build:
       context: ./n8n
       args:
-        N8N_BASE_IMAGE: ${N8N_BASE_IMAGE:-docker.n8n.io/n8nio/n8n:stable}
-        FFMPEG_IMAGE: ${FFMPEG_IMAGE:-mwader/static-ffmpeg:7.1.1}
-        POSTIZ_VERSION: ${POSTIZ_NODE_VERSION:-0.2.17}
-        FFMPEG_STUDIO_VERSION: ${FFMPEG_STUDIO_NODE_VERSION:-1.0.0}
-    image: syndicator-n8n:stable
+        N8N_BASE_IMAGE: ${N8N_BASE_IMAGE:-docker.io/n8nio/n8n:2.33.7@sha256:3989d9b8ebb77b4ee8f604519eb73e44f4384bfaa689526e0104eed79a237d30}
+        FFMPEG_IMAGE: ${FFMPEG_IMAGE:-mwader/static-ffmpeg:7.1.1@sha256:11a44711684c0b9f754c047dcd64235b8b52deab251bd0e0a86f22faa160749c}
+    image: syndicator-n8n:${SYNDICATOR_IMAGE_TAG:-local}
     restart: unless-stopped
     ports:
       - "${N8N_HOST_PORT:-5678}:5678"
@@ -80,9 +85,9 @@ services:
       files-init:
         condition: service_completed_successfully
       sftp:
-        condition: service_started
-      pyautoflip:
         condition: service_healthy
+      pyautoflip:
+        condition: service_started
     healthcheck:
       test:
         [
@@ -95,8 +100,12 @@ services:
       start_period: 60s
 
   pyautoflip:
-    build: ./pyautoflip
-    image: syndicator-pyautoflip:local
+    build:
+      context: ./pyautoflip
+      args:
+        PYAUTOFLIP_BASE_IMAGE: ${PYAUTOFLIP_BASE_IMAGE:-python:3.12-slim-bookworm@sha256:4766d8b510c428e595d74b9cc5bbb2fae8e26316fffb4adc89908d79aacd58a2}
+        PYAUTOFLIP_WARM_MODELS: ${PYAUTOFLIP_WARM_MODELS:-1}
+    image: syndicator-pyautoflip:${SYNDICATOR_IMAGE_TAG:-local}
     # Same uid as n8n (node) so /files writes are readable by both.
     # HOME must be writable: compose user override otherwise sets HOME=/ and
     # InsightFace fails creating /.insightface (EACCES).

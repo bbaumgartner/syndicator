@@ -1,0 +1,12 @@
+{
+  "name": "syndicator-n8n-nodes",
+  "private": true,
+  "dependencies": {
+    "n8n-nodes-ffmpeg-studio": "1.0.0",
+    "n8n-nodes-postiz": "0.2.17",
+    "n8n-workflow": "2.33.2"
+  },
+  "overrides": {
+    "nanoid": "3.3.18"
+  }
+}

@@ -104,6 +104,37 @@ class RepositoryManifestTests(unittest.TestCase):
                 self.assertIsInstance(value, str, f"{credential.get('name')}.{key}")
                 self.assertRegex(value, placeholder, f"{credential.get('name')}.{key}")
 
+    def test_runtime_dependencies_are_locked(self) -> None:
+        runtime_files = [
+            ROOT / "docker-compose.yml",
+            ROOT / "n8n" / "Dockerfile",
+            ROOT / "pyautoflip" / "Dockerfile",
+        ]
+        runtime_config = "\n".join(
+            path.read_text(encoding="utf-8") for path in runtime_files
+        )
+        self.assertNotIn(":stable", runtime_config)
+        self.assertGreaterEqual(
+            len(re.findall(r"@sha256:[0-9a-f]{64}", runtime_config)),
+            7,
+            "container bases should be immutable by default",
+        )
+
+        package = load_json(ROOT / "n8n" / "package.json")
+        for version in package["dependencies"].values():
+            self.assertRegex(version, r"^\d+\.\d+\.\d+$")
+        self.assertTrue((ROOT / "n8n" / "package-lock.json").is_file())
+
+        requirements = (ROOT / "pyautoflip" / "requirements.txt").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("--hash=sha256:", requirements)
+        self.assertTrue((ROOT / "pyautoflip" / "requirements.in").is_file())
+
+    def test_example_configuration_is_host_neutral(self) -> None:
+        example = (ROOT / ".env.example").read_text(encoding="utf-8")
+        self.assertNotRegex(example, r"\b192\.168\.\d{1,3}\.\d{1,3}\b")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -30,3 +30,19 @@ jobs:
 
       - name: Render Compose configuration
         run: bash tests/validate-compose.sh
+
+      - name: Audit locked community nodes
+        working-directory: n8n
+        run: npm audit
+
+  build-images:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build application images
+        env:
+          PYAUTOFLIP_WARM_MODELS: "0"
+        run: |
+          bash tests/validate-compose.sh build n8n pyautoflip
