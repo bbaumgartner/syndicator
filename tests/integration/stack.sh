@@ -27,7 +27,7 @@ N8N_HOST=127.0.0.1
 N8N_PORT=5678
 N8N_PROTOCOL=http
 N8N_HOST_PORT=$n8n_port
-WEBHOOK_URL=http://127.0.0.1:$n8n_port/
+N8N_WEBHOOK_URL=http://127.0.0.1:$n8n_port/
 N8N_SECURE_COOKIE=false
 N8N_ENCRYPTION_KEY=integration-only-encryption-key
 N8N_OWNER_EMAIL=ci@example.invalid
@@ -43,7 +43,8 @@ SFTP_USERNAME=sftp
 SFTP_PRIVATE_KEY_FILE=$tmp/sftp_n8n_ed25519
 SFTP_KEYS_DIR=$tmp/keys
 PYAUTOFLIP_WARM_MODELS=0
-SYNDICATOR_IMAGE_TAG=local
+SYNDICATOR_BACKUP_DIR=$tmp/backups
+SYNDICATOR_RELEASE_STATE_FILE=$tmp/release.env
 EOF
 chmod 600 "$env_file"
 
@@ -106,9 +107,8 @@ if actual != expected:
 printf '%s\n' "integration payload" >"$tmp/upload.txt"
 ssh-keyscan -p "$sftp_port" 127.0.0.1 >"$tmp/known_hosts" 2>/dev/null
 cat >"$tmp/sftp.batch" <<EOF
-put $tmp/upload.txt syndicator/integration.txt
-get syndicator/integration.txt $tmp/download.txt
-rm syndicator/integration.txt
+put $tmp/upload.txt syndicator/restore-marker.txt
+get syndicator/restore-marker.txt $tmp/download.txt
 quit
 EOF
 sftp -q -b "$tmp/sftp.batch" \
@@ -120,5 +120,47 @@ sftp -q -b "$tmp/sftp.batch" \
   -o "UserKnownHostsFile=$tmp/known_hosts" \
   sftp@127.0.0.1
 cmp "$tmp/upload.txt" "$tmp/download.txt"
+
+backup_archive="$tmp/backups/integration.tar.gz"
+"$ROOT/bin/syndicator" backup --output "$backup_archive"
+cat >"$tmp/sftp-remove.batch" <<EOF
+rm syndicator/restore-marker.txt
+quit
+EOF
+sftp -q -b "$tmp/sftp-remove.batch" \
+  -P "$sftp_port" \
+  -i "$tmp/sftp_n8n_ed25519" \
+  -o BatchMode=yes \
+  -o IdentitiesOnly=yes \
+  -o StrictHostKeyChecking=yes \
+  -o "UserKnownHostsFile=$tmp/known_hosts" \
+  sftp@127.0.0.1
+
+"$ROOT/bin/syndicator" restore --yes --no-build "$backup_archive"
+cat >"$tmp/sftp-restored.batch" <<EOF
+get syndicator/restore-marker.txt $tmp/restored.txt
+rm syndicator/restore-marker.txt
+quit
+EOF
+sftp -q -b "$tmp/sftp-restored.batch" \
+  -P "$sftp_port" \
+  -i "$tmp/sftp_n8n_ed25519" \
+  -o BatchMode=yes \
+  -o IdentitiesOnly=yes \
+  -o StrictHostKeyChecking=yes \
+  -o "UserKnownHostsFile=$tmp/known_hosts" \
+  sftp@127.0.0.1
+cmp "$tmp/upload.txt" "$tmp/restored.txt"
+
+initial_tag="$(git rev-parse --short=12 HEAD)"
+"$ROOT/bin/syndicator" update --tag integration-next
+"$ROOT/bin/syndicator" rollback
+# shellcheck source=/dev/null
+source "$tmp/release.env"
+if [[ "${CURRENT_TAG:-}" != "$initial_tag" || \
+      "${PREVIOUS_TAG:-}" != "integration-next" ]]; then
+  echo "Rollback release state is incorrect." >&2
+  exit 1
+fi
 
 echo "Isolated stack integration test passed."

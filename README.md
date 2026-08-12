@@ -172,11 +172,19 @@ The `files-init` Compose service chowns the shared `n8n_files` volume to uid/gid
 
 `bin/syndicator export` exports sanitized workflows from n8n into `n8n/workflows/`.
 
-## Automatic updates
+## Updates and recovery
 
-`scripts/update.sh` rebuilds with `--pull`, recreates containers, prunes old images, leaves volumes alone. Covers **n8n and pyautoflip**.
+Dependencies are pinned and proposed through reviewed dependency PRs; there are no unattended production upgrades.
 
-Logs default to `update.log` (`UPDATE_LOG` to override).
+```bash
+bin/syndicator backup
+bin/syndicator update
+bin/syndicator rollback
+# Destructive and explicit:
+bin/syndicator restore --yes backups/<archive>.tar.gz
+```
+
+An update gets a commit-based image tag and creates a consistent backup when the release changes. Rollback requires both the retained previous images and their matching backup. Backup archives contain credentials and are written with mode `0600`; copy them to encrypted off-host storage.
 
 ## Architecture
 
@@ -203,7 +211,7 @@ The repo is the blueprint for a containerized instance: Compose defines the stac
 | `n8n/credentials/` | Credential templates (stable IDs; secrets from `.env`) |
 | `pyautoflip/` | Image/build context for the reframe sidecar |
 | `sftp/keys/` | Authorized client public keys (refreshed into `authorized_keys` on each sftp start) |
-| `systemd/*` | Optional host timer for updates |
+| `bin/syndicator` | Checked lifecycle: deploy, verify, backup, restore, update, rollback |
 
 ```
 docker-compose.yml
@@ -214,7 +222,7 @@ n8n/credentials/*.template.json
 pyautoflip/
 sftp/
 scripts/{ensure-sftp-keys,ensure-n8n-owner,bootstrap,export,update}.sh
-systemd/*
+bin/syndicator
 ```
 
 ### Runtime structure

@@ -19,6 +19,17 @@ services:
       ]
     restart: "no"
 
+  # Explicitly invoked by backup/restore; never part of the runtime stack.
+  volume-tool:
+    image: ${FILES_INIT_IMAGE:-alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc}
+    profiles: [tools]
+    volumes:
+      - n8n_data:/volumes/n8n_data
+      - sftp_data:/volumes/sftp_data
+      - sftp_host_keys:/volumes/sftp_host_keys
+    entrypoint: ["sh"]
+    command: ["-c", "true"]
+
   sftp:
     image: ${SFTP_BASE_IMAGE:-atmoz/sftp:alpine@sha256:81fa92512bf8ead4849f33c1c153907b86d32d77704d1c62a9c70b4316ae9e50}
     # The upstream image is amd64-only; Docker Desktop emulates it on Apple Silicon.
@@ -66,11 +77,13 @@ services:
       N8N_HOST: ${N8N_HOST:-localhost}
       N8N_PORT: ${N8N_PORT:-5678}
       N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
-      WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678/}
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-${WEBHOOK_URL:-http://localhost:5678/}}
       N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
       N8N_RESTRICT_FILE_ACCESS_TO: /files
       N8N_SECURE_COOKIE: ${N8N_SECURE_COOKIE:-false}
       N8N_COMMUNITY_PACKAGES_ENABLED: "true"
+      N8N_UNVERIFIED_PACKAGES_ENABLED: "true"
+      N8N_RUNNERS_TASK_TIMEOUT: "300"
       N8N_INSTANCE_OWNER_MANAGED_BY_ENV: "true"
       N8N_INSTANCE_OWNER_EMAIL: ${N8N_OWNER_EMAIL:?set N8N_OWNER_EMAIL in .env}
       N8N_INSTANCE_OWNER_FIRST_NAME: ${N8N_OWNER_FIRST_NAME:-Syndicator}

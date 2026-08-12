@@ -21,4 +21,4 @@ secrets/*
 !secrets/.gitkeep
 sftp/keys/*
 !sftp/keys/.gitkeep
-update.log
+backups/
