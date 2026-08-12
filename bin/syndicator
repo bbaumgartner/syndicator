@@ -20,6 +20,7 @@ Lifecycle:
   restore     Restore a validated backup archive
   update      Back up and deploy reviewed dependency changes
   rollback    Restore the recorded previous release
+  restart     Restart one or more services, then verify
   status      Show Compose service status
   logs        Follow Compose service logs
 EOF
@@ -58,6 +59,15 @@ case "$command" in
     ;;
   rollback)
     exec "$ROOT/scripts/rollback.sh" "$@"
+    ;;
+  restart)
+    if [[ "$#" -eq 0 ]]; then
+      echo "Usage: bin/syndicator restart SERVICE..." >&2
+      exit 2
+    fi
+    load_env
+    compose restart "$@"
+    "$ROOT/scripts/verify.sh"
     ;;
   status)
     load_env

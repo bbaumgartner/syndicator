@@ -50,6 +50,10 @@ release_state_file() {
   resolve_from_root "${SYNDICATOR_RELEASE_STATE_FILE:-secrets/release.env}"
 }
 
+release_sources_dir() {
+  resolve_from_root "${SYNDICATOR_RELEASE_SOURCES_DIR:-secrets/release-sources}"
+}
+
 pending_release_file() {
   printf '%s.pending\n' "$(release_state_file)"
 }
@@ -60,7 +64,34 @@ load_release_state() {
   if [[ -s "$state" ]]; then
     # shellcheck source=/dev/null
     source "$state"
+    if [[ -z "${SYNDICATOR_SOURCE_ROOT:-}" && \
+          -n "${CURRENT_SOURCE_ROOT:-}" && \
+          -d "$CURRENT_SOURCE_ROOT" ]]; then
+      SOURCE_ROOT="$CURRENT_SOURCE_ROOT"
+    fi
   fi
+}
+
+materialize_release_source() {
+  local revision="$1"
+  local base target temporary
+  base="$(release_sources_dir)"
+  target="$base/$revision"
+  if [[ -d "$target" ]]; then
+    printf '%s\n' "$target"
+    return
+  fi
+  mkdir -p "$base"
+  chmod 700 "$base"
+  temporary="$(mktemp -d "$base/.source.XXXXXX")"
+  if ! git archive "$revision" | tar -x -C "$temporary"; then
+    rm -rf "$temporary"
+    return 1
+  fi
+  printf '%s\n' "$revision" >"$temporary/.syndicator-revision"
+  chmod -R go-rwx "$temporary"
+  mv "$temporary" "$target"
+  printf '%s\n' "$target"
 }
 
 write_release_state() {
@@ -69,6 +100,8 @@ write_release_state() {
   local rollback_backup="${3:-}"
   local current_revision="${4:-}"
   local previous_revision="${5:-}"
+  local current_source_root="${6:-}"
+  local previous_source_root="${7:-}"
   local state temporary_state
   if [[ -z "$current_revision" ]]; then
     current_revision="$(git rev-parse HEAD 2>/dev/null || printf 'unknown')"
@@ -83,6 +116,8 @@ write_release_state() {
     printf 'ROLLBACK_BACKUP=%q\n' "$rollback_backup"
     printf 'CURRENT_GIT_REVISION=%q\n' "$current_revision"
     printf 'PREVIOUS_GIT_REVISION=%q\n' "$previous_revision"
+    printf 'CURRENT_SOURCE_ROOT=%q\n' "$current_source_root"
+    printf 'PREVIOUS_SOURCE_ROOT=%q\n' "$previous_source_root"
     printf 'DEPLOYED_AT=%q\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   } >"$temporary_state"
   chmod 600 "$temporary_state"

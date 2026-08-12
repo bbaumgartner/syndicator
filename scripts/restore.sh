@@ -50,7 +50,27 @@ if ! docker info >/dev/null 2>&1; then
 fi
 
 staging="$(mktemp -d)"
-trap 'rm -rf "$staging"' EXIT
+restore_mutated=0
+restore_pending=""
+cleanup() {
+  status=$?
+  if [[ "$status" -ne 0 && "$restore_mutated" -eq 1 ]]; then
+    compose stop n8n pyautoflip sftp >/dev/null 2>&1 || true
+    if [[ -n "$restore_pending" ]]; then
+      mkdir -p "$(dirname "$restore_pending")"
+      {
+        printf 'RESTORE_ARCHIVE=%q\n' "$archive"
+        printf 'RESTORE_SOURCE_REVISION=%q\n' "${source_revision:-unknown}"
+        printf 'RESTORE_IMAGE_TAG=%q\n' "${desired_image_tag:-unknown}"
+      } >"$restore_pending"
+      chmod 600 "$restore_pending"
+    fi
+    echo "Restore failed after mutation; unverified services were stopped." >&2
+  fi
+  rm -rf "$staging"
+  exit "$status"
+}
+trap cleanup EXIT
 python3 - "$archive" "$staging" <<'PY'
 import hashlib
 import json
@@ -146,6 +166,7 @@ fi
 target_env_file="$ENV_FILE"
 ENV_FILE="$staging/config/environment.env"
 load_env
+restore_pending="$(release_state_file).restore-pending"
 environment_image_tag="${SYNDICATOR_IMAGE_TAG:-}"
 archive_release_tag=""
 if [[ -f "$staging/config/release.env" ]]; then
@@ -203,6 +224,16 @@ for service in n8n sftp pyautoflip; do
     exit 1
   fi
 done
+
+mkdir -p "$(dirname "$restore_pending")"
+umask 077
+{
+  printf 'RESTORE_ARCHIVE=%q\n' "$archive"
+  printf 'RESTORE_SOURCE_REVISION=%q\n' "$source_revision"
+  printf 'RESTORE_IMAGE_TAG=%q\n' "$desired_image_tag"
+} >"$restore_pending"
+chmod 600 "$restore_pending"
+restore_mutated=1
 
 ENV_FILE="$target_env_file"
 mkdir -p "$(dirname "$ENV_FILE")"
@@ -264,6 +295,36 @@ for volume in n8n_data sftp_data sftp_host_keys; do
 done
 
 compose up -d --remove-orphans
+if [[ "${SYNDICATOR_TEST_FAIL_RESTORE_AFTER_START:-0}" == "1" ]]; then
+  echo "Deliberate post-start restore failure requested by integration test." >&2
+  false
+fi
 "$ROOT/scripts/bootstrap-n8n.sh"
 "$ROOT/scripts/verify.sh"
+
+unset CURRENT_TAG PREVIOUS_TAG ROLLBACK_BACKUP \
+  CURRENT_GIT_REVISION PREVIOUS_GIT_REVISION \
+  CURRENT_SOURCE_ROOT PREVIOUS_SOURCE_ROOT
+load_release_state
+restored_current_tag="${CURRENT_TAG:-$desired_image_tag}"
+restored_current_revision="${CURRENT_GIT_REVISION:-$manifest_revision}"
+restored_previous_tag="${PREVIOUS_TAG:-}"
+restored_previous_revision="${PREVIOUS_GIT_REVISION:-}"
+restored_rollback_backup="${ROLLBACK_BACKUP:-}"
+restored_current_source="$(materialize_release_source "$restored_current_revision")"
+restored_previous_source=""
+if [[ -n "$restored_previous_revision" ]] && \
+   git cat-file -e "${restored_previous_revision}^{commit}" 2>/dev/null; then
+  restored_previous_source="$(materialize_release_source "$restored_previous_revision")"
+fi
+write_release_state \
+  "$restored_current_tag" \
+  "$restored_previous_tag" \
+  "$restored_rollback_backup" \
+  "$restored_current_revision" \
+  "$restored_previous_revision" \
+  "$restored_current_source" \
+  "$restored_previous_source"
+rm -f "$restore_pending"
+restore_mutated=0
 echo "Restore from $archive completed."

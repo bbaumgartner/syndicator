@@ -17,6 +17,8 @@ previous_tag="${PREVIOUS_TAG:-}"
 rollback_backup="${ROLLBACK_BACKUP:-}"
 current_revision="${CURRENT_GIT_REVISION:-${DEPLOYED_GIT_REVISION:-}}"
 previous_revision="${PREVIOUS_GIT_REVISION:-}"
+current_source_root="${CURRENT_SOURCE_ROOT:-}"
+previous_source_root="${PREVIOUS_SOURCE_ROOT:-}"
 
 if [[ -z "$current_tag" || -z "$previous_tag" || -z "$rollback_backup" || \
       -z "$previous_revision" ]]; then
@@ -24,14 +26,21 @@ if [[ -z "$current_tag" || -z "$previous_tag" || -z "$rollback_backup" || \
   exit 1
 fi
 checkout_revision="$(git rev-parse HEAD 2>/dev/null || printf 'unknown')"
-if [[ -n "$current_revision" && "$checkout_revision" != "$current_revision" ]]; then
-  echo "Rollback must run from the current release source: $current_revision" >&2
+if [[ "$checkout_revision" != "$current_revision" && \
+      "$checkout_revision" != "$previous_revision" ]]; then
+  echo "Checkout $checkout_revision is unrelated to the retained releases." >&2
   exit 1
 fi
 if [[ "${SYNDICATOR_ALLOW_DIRTY:-0}" != "1" ]] && \
    [[ -n "$(git status --porcelain)" ]]; then
   echo "Refusing to roll back from a dirty working tree." >&2
   exit 1
+fi
+if [[ -z "$current_source_root" || ! -d "$current_source_root" ]]; then
+  current_source_root="$(materialize_release_source "$current_revision")"
+fi
+if [[ -z "$previous_source_root" || ! -d "$previous_source_root" ]]; then
+  previous_source_root="$(materialize_release_source "$previous_revision")"
 fi
 if [[ ! -f "$rollback_backup" ]]; then
   echo "Recorded rollback backup is missing: $rollback_backup" >&2
@@ -45,25 +54,20 @@ for image in "syndicator-n8n:$previous_tag" "syndicator-pyautoflip:$previous_tag
 done
 
 export SYNDICATOR_IMAGE_TAG="$current_tag"
+export SYNDICATOR_SOURCE_ROOT="$current_source_root"
+SOURCE_ROOT="$current_source_root"
 backup_dir="$(resolve_from_root "${SYNDICATOR_BACKUP_DIR:-backups}")"
 forward_backup="$backup_dir/pre-rollback-${current_tag}-to-${previous_tag}-$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
 "$ROOT/scripts/backup.sh" --output "$forward_backup"
 
-source_bundle="$(mktemp -d)"
-cleanup() {
-  status=$?
-  rm -rf "$source_bundle"
-  exit "$status"
-}
-trap cleanup EXIT
-git archive "$previous_revision" | tar -x -C "$source_bundle"
-if [[ ! -f "$source_bundle/docker-compose.yml" ]]; then
+if [[ ! -f "$previous_source_root/docker-compose.yml" ]]; then
   echo "Previous revision has no deployable Compose definition." >&2
   exit 1
 fi
 
 export SYNDICATOR_IMAGE_TAG="$previous_tag"
-export SYNDICATOR_SOURCE_ROOT="$source_bundle"
+export SYNDICATOR_SOURCE_ROOT="$previous_source_root"
+SOURCE_ROOT="$previous_source_root"
 export SYNDICATOR_SOURCE_REVISION="$previous_revision"
 "$ROOT/scripts/restore.sh" --yes --no-build "$rollback_backup"
 write_release_state \
@@ -71,8 +75,8 @@ write_release_state \
   "$current_tag" \
   "$forward_backup" \
   "$previous_revision" \
-  "$current_revision"
-trap - EXIT
-rm -rf "$source_bundle"
+  "$current_revision" \
+  "$previous_source_root" \
+  "$current_source_root"
 
 echo "Rolled back from $current_tag to $previous_tag."

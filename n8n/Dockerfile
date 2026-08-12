@@ -1,11 +1,8 @@
 # Custom n8n image: static ffmpeg/ffprobe + locked community nodes.
 
-ARG N8N_BASE_IMAGE=docker.io/n8nio/n8n:2.33.7@sha256:3989d9b8ebb77b4ee8f604519eb73e44f4384bfaa689526e0104eed79a237d30
-ARG FFMPEG_IMAGE=mwader/static-ffmpeg:7.1.1@sha256:11a44711684c0b9f754c047dcd64235b8b52deab251bd0e0a86f22faa160749c
+FROM mwader/static-ffmpeg:7.1.1@sha256:11a44711684c0b9f754c047dcd64235b8b52deab251bd0e0a86f22faa160749c AS ffmpeg
 
-FROM ${FFMPEG_IMAGE} AS ffmpeg
-
-FROM ${N8N_BASE_IMAGE}
+FROM docker.io/n8nio/n8n:2.33.7@sha256:3989d9b8ebb77b4ee8f604519eb73e44f4384bfaa689526e0104eed79a237d30
 
 USER root
 

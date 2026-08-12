@@ -18,13 +18,14 @@ for name in \
   need_env "$name"
 done
 
-WORKFLOW_FILES=(
-  "n8n/workflows/Adapt Hugo Media.json"
-  "n8n/workflows/Adapt Feature Image.json"
-  "n8n/workflows/Adapt Reel Media.json"
-  "n8n/workflows/Blog Post Publish.json"
-  "n8n/workflows/Reel Publish.json"
-)
+WORKFLOW_FILES=()
+while IFS= read -r file; do
+  WORKFLOW_FILES+=("$file")
+done < <(python3 "$ROOT/scripts/workflow_order.py" "$SOURCE_ROOT")
+if [[ -z "${WORKFLOW_FILES[*]-}" ]]; then
+  echo "No workflow exports found under $SOURCE_ROOT." >&2
+  exit 1
+fi
 
 if [[ -z "${SFTP_PRIVATE_KEY:-}" ]]; then
   key_file="$(resolve_from_root "${SFTP_PRIVATE_KEY_FILE:-secrets/sftp_n8n_ed25519}")"

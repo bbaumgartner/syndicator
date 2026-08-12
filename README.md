@@ -165,7 +165,7 @@ bin/syndicator deploy
 
 Owner account is provisioned from env on n8n start (`N8N_INSTANCE_OWNER_*`). Bootstrap logs in with `N8N_OWNER_EMAIL` / `N8N_OWNER_PASSWORD` to create or reuse an API key at `secrets/n8n_api_key` (or uses `N8N_API_KEY` if set), then imports credentials/workflows and publishes webhooks. UI login uses the same owner credentials.
 
-`init` writes `secrets/sftp_n8n_ed25519` (private), `sftp/keys/n8n.pub` (public), and `secrets/n8n_owner.env` (bcrypt hash for Compose). Extra client keys: copy any `.pub` into `sftp/keys/` and restart SFTP. Host keys live in the `sftp_host_keys` volume (generated on first start). Connect on port `2222` as user `sftp`.
+`init` writes `secrets/sftp_n8n_ed25519` (private), `sftp/keys/n8n.pub` (public), and `secrets/n8n_owner.env` (bcrypt hash for Compose). Extra client keys: copy any `.pub` into `sftp/keys/` and run `bin/syndicator restart sftp`. Host keys live in the `sftp_host_keys` volume (generated on first start). Connect on port `2222` as user `sftp`.
 
 Published ports bind to loopback by default. Read the [operations runbook](docs/operations.md) before enabling LAN or internet access.
 

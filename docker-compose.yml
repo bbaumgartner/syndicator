@@ -8,7 +8,7 @@ name: syndicator
 services:
   # Docker named volumes are root-owned on first create; n8n + pyautoflip run as uid 1000.
   files-init:
-    image: ${FILES_INIT_IMAGE:-alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc}
+    image: alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
     volumes:
       - n8n_files:/data
     command:
@@ -21,7 +21,7 @@ services:
 
   # Explicitly invoked by backup/restore; never part of the runtime stack.
   volume-tool:
-    image: ${FILES_INIT_IMAGE:-alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc}
+    image: alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
     profiles: [tools]
     volumes:
       - n8n_data:/volumes/n8n_data
@@ -31,7 +31,7 @@ services:
     command: ["-c", "true"]
 
   sftp:
-    image: ${SFTP_BASE_IMAGE:-atmoz/sftp:alpine@sha256:81fa92512bf8ead4849f33c1c153907b86d32d77704d1c62a9c70b4316ae9e50}
+    image: atmoz/sftp:alpine@sha256:81fa92512bf8ead4849f33c1c153907b86d32d77704d1c62a9c70b4316ae9e50
     # The upstream image is amd64-only; Docker Desktop emulates it on Apple Silicon.
     platform: ${SFTP_PLATFORM:-linux/amd64}
     restart: unless-stopped
@@ -58,11 +58,7 @@ services:
       retries: 3
 
   n8n:
-    build:
-      context: ./n8n
-      args:
-        N8N_BASE_IMAGE: ${N8N_BASE_IMAGE:-docker.io/n8nio/n8n:2.33.7@sha256:3989d9b8ebb77b4ee8f604519eb73e44f4384bfaa689526e0104eed79a237d30}
-        FFMPEG_IMAGE: ${FFMPEG_IMAGE:-mwader/static-ffmpeg:7.1.1@sha256:11a44711684c0b9f754c047dcd64235b8b52deab251bd0e0a86f22faa160749c}
+    build: ./n8n
     image: syndicator-n8n:${SYNDICATOR_IMAGE_TAG:-local}
     restart: unless-stopped
     ports:
@@ -78,12 +74,15 @@ services:
       N8N_PORT: ${N8N_PORT:-5678}
       N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
       N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-${WEBHOOK_URL:-http://localhost:5678/}}
+      N8N_PROXY_HOPS: ${N8N_PROXY_HOPS:-0}
       N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
       N8N_RESTRICT_FILE_ACCESS_TO: /files
       N8N_SECURE_COOKIE: ${N8N_SECURE_COOKIE:-false}
       N8N_COMMUNITY_PACKAGES_ENABLED: "true"
       N8N_UNVERIFIED_PACKAGES_ENABLED: "true"
       N8N_RUNNERS_TASK_TIMEOUT: "300"
+      N8N_COMPRESSION_NODE_MAX_DECOMPRESSED_SIZE_BYTES: "268435456"
+      N8N_COMPRESSION_NODE_MAX_ZIP_ENTRIES: "1000"
       N8N_INSTANCE_OWNER_MANAGED_BY_ENV: "true"
       N8N_INSTANCE_OWNER_EMAIL: ${N8N_OWNER_EMAIL:?set N8N_OWNER_EMAIL in .env}
       N8N_INSTANCE_OWNER_FIRST_NAME: ${N8N_OWNER_FIRST_NAME:-Syndicator}
@@ -113,19 +112,16 @@ services:
     build:
       context: ./pyautoflip
       args:
-        PYAUTOFLIP_BASE_IMAGE: ${PYAUTOFLIP_BASE_IMAGE:-python:3.12-slim-bookworm@sha256:4766d8b510c428e595d74b9cc5bbb2fae8e26316fffb4adc89908d79aacd58a2}
         PYAUTOFLIP_WARM_MODELS: ${PYAUTOFLIP_WARM_MODELS:-1}
     image: syndicator-pyautoflip:${SYNDICATOR_IMAGE_TAG:-local}
     # Same uid as n8n (node) so /files writes are readable by both.
-    # HOME must be writable: compose user override otherwise sets HOME=/ and
-    # InsightFace fails creating /.insightface (EACCES).
+    # HOME contains the image-pinned InsightFace models and remains writable.
     user: "1000:1000"
     environment:
       HOME: /home/pyautoflip
     restart: unless-stopped
     volumes:
       - n8n_files:/files
-      - pyautoflip_home:/home/pyautoflip
     depends_on:
       files-init:
         condition: service_completed_successfully
@@ -149,4 +145,3 @@ volumes:
   sftp_host_keys:
   n8n_data:
   n8n_files:
-  pyautoflip_home:

@@ -45,6 +45,7 @@ SFTP_KEYS_DIR=$tmp/keys
 PYAUTOFLIP_WARM_MODELS=0
 SYNDICATOR_BACKUP_DIR=$tmp/backups
 SYNDICATOR_RELEASE_STATE_FILE=$tmp/release.env
+SYNDICATOR_RELEASE_SOURCES_DIR=$tmp/release-sources
 SYNDICATOR_ALLOW_DIRTY=1
 EOF
 chmod 600 "$env_file"
@@ -170,6 +171,23 @@ sftp -q -b "$tmp/sftp-remove.batch" \
   -o StrictHostKeyChecking=yes \
   -o "UserKnownHostsFile=$tmp/known_hosts" \
   sftp@127.0.0.1
+
+set +e
+SYNDICATOR_TEST_FAIL_RESTORE_AFTER_START=1 \
+  "$ROOT/bin/syndicator" restore --yes --no-build "$backup_archive" \
+  >"$tmp/failed-restore.log" 2>&1
+failed_restore_status=$?
+set -e
+if [[ "$failed_restore_status" -eq 0 || \
+      ! -s "$tmp/release.env.restore-pending" ]]; then
+  echo "Failed restore was not contained and recorded." >&2
+  exit 1
+fi
+if [[ -n "$(docker compose --env-file "$env_file" -p "$project" \
+  ps --status running -q n8n)" ]]; then
+  echo "Failed restore left unverified n8n running." >&2
+  exit 1
+fi
 
 "$ROOT/bin/syndicator" restore --yes --no-build "$backup_archive"
 cat >"$tmp/sftp-restored.batch" <<EOF
