@@ -5,6 +5,7 @@ import re
 import unittest
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -151,6 +152,21 @@ class RepositoryManifestTests(unittest.TestCase):
         self.assertNotIn("PUBLISH_WORKFLOW_IDS", bootstrap)
         library = (ROOT / "scripts" / "lib.sh").read_text(encoding="utf-8")
         self.assertIn("/healthz/readiness", library)
+
+    def test_local_markdown_links_resolve(self) -> None:
+        link_pattern = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
+        for document in ROOT.rglob("*.md"):
+            if {".git", ".venv", "node_modules"}.intersection(document.parts):
+                continue
+            for raw_target in link_pattern.findall(
+                document.read_text(encoding="utf-8")
+            ):
+                target = raw_target.split(maxsplit=1)[0].strip("<>")
+                parsed = urlparse(target)
+                if parsed.scheme or target.startswith("#"):
+                    continue
+                path = (document.parent / unquote(parsed.path)).resolve()
+                self.assertTrue(path.exists(), f"{document}: broken link {target}")
 
 
 if __name__ == "__main__":

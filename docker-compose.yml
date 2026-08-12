@@ -36,7 +36,7 @@ services:
     platform: ${SFTP_PLATFORM:-linux/amd64}
     restart: unless-stopped
     ports:
-      - "${SFTP_PUBLISH_PORT:-2222}:22"
+      - "${SFTP_BIND_ADDRESS:-127.0.0.1}:${SFTP_PUBLISH_PORT:-2222}:22"
     volumes:
       - sftp_data:/home/sftp/syndicator
       # Client public keys (ensure-sftp-keys.sh writes n8n.pub here).
@@ -66,7 +66,7 @@ services:
     image: syndicator-n8n:${SYNDICATOR_IMAGE_TAG:-local}
     restart: unless-stopped
     ports:
-      - "${N8N_HOST_PORT:-5678}:5678"
+      - "${N8N_BIND_ADDRESS:-127.0.0.1}:${N8N_HOST_PORT:-5678}:5678"
     # Password hash written by ./scripts/ensure-n8n-owner.sh (bcrypt; $ escaped as $$).
     env_file:
       - ${N8N_OWNER_ENV_FILE:-secrets/n8n_owner.env}
