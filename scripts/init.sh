@@ -56,6 +56,5 @@ if [[ "$missing" -ne 0 ]]; then
 fi
 
 "$ROOT/scripts/ensure-sftp-keys.sh"
-"$ROOT/scripts/ensure-n8n-owner.sh"
 
 echo "Initialization is complete."

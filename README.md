@@ -165,7 +165,7 @@ bin/syndicator deploy
 
 Owner account is provisioned from env on n8n start (`N8N_INSTANCE_OWNER_*`). After n8n is healthy, the `n8n-reconcile` service logs in with `N8N_OWNER_EMAIL` / `N8N_OWNER_PASSWORD`, imports credentials and workflows from git, and publishes webhooks. UI login uses the same owner credentials.
 
-`init` writes `secrets/sftp_n8n_ed25519` (private), `sftp/keys/n8n.pub` (public), and `secrets/n8n_owner.env` (bcrypt hash for Compose). Extra client keys: copy any `.pub` into `sftp/keys/` and run `bin/syndicator restart sftp`. Host keys live in the `sftp_host_keys` volume (generated on first start). Connect on port `2222` as user `sftp`.
+`init` writes `secrets/sftp_n8n_ed25519` (private) and `sftp/keys/n8n.pub` (public). The n8n owner password is hashed inside the container on start. Extra client keys: copy any `.pub` into `sftp/keys/` and run `bin/syndicator restart sftp`. Host keys live in the `sftp_host_keys` volume (generated on first start). Connect on port `2222` as user `sftp`.
 
 Published ports bind to loopback by default. Read the [operations runbook](docs/operations.md) before enabling LAN or internet access.
 

@@ -118,7 +118,6 @@ metadata are removed. Review the resulting JSON before committing it.
 If the owner password changes, update `N8N_OWNER_PASSWORD` in `.env`, then run:
 
 ```bash
-scripts/ensure-n8n-owner.sh --force
 bin/syndicator deploy
 ```
 

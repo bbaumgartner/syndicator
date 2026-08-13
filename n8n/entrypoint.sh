@@ -18,5 +18,15 @@ if [ -d "$SEED_DIR/node_modules" ] && [ -f "$SEED_DIR/package-lock.json" ]; then
 	fi
 fi
 
+if [ -z "${N8N_INSTANCE_OWNER_PASSWORD_HASH:-}" ]; then
+	if [ -z "${N8N_OWNER_PASSWORD:-}" ]; then
+		echo "N8N_OWNER_PASSWORD is required" >&2
+		exit 1
+	fi
+	N8N_INSTANCE_OWNER_PASSWORD_HASH="$(node /opt/syndicator/hash-owner-password.js)"
+	export N8N_INSTANCE_OWNER_PASSWORD_HASH
+	unset N8N_OWNER_PASSWORD
+fi
+
 # Preserve upstream custom-certificate handling + default start.
 exec /docker-entrypoint.sh "$@"

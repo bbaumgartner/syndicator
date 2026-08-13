@@ -32,7 +32,6 @@ N8N_SECURE_COOKIE=false
 N8N_ENCRYPTION_KEY=integration-only-encryption-key
 N8N_OWNER_EMAIL=ci@example.invalid
 N8N_OWNER_PASSWORD=ci-owner-password
-N8N_OWNER_ENV_FILE=$ROOT/tests/fixtures/n8n_owner.env
 OPENAI_API_KEY=integration-openai-key
 POSTIZ_API_KEY=integration-postiz-key
 SFTP_PUBLISH_PORT=$sftp_port
