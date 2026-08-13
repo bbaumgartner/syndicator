@@ -25,6 +25,7 @@ mkdir -p "$tmp/keys"
 ssh-keygen -t ed25519 -f "$tmp/sftp_client" -N '' -C 'syndicator-it' </dev/null
 cp "$tmp/sftp_client.pub" "$tmp/keys/client.pub"
 rm -f "$tmp/sftp_client.pub"
+export SFTP_CLIENT_KEY_FILE="$tmp/sftp_client"
 
 cat >"$env_file" <<EOF
 GENERIC_TIMEZONE=UTC
@@ -43,14 +44,11 @@ SFTP_PUBLISH_PORT=$sftp_port
 SFTP_KEYS_DIR=$tmp/keys
 SFTP_CLIENT_KEY_FILE=$tmp/sftp_client
 PYAUTOFLIP_WARM_MODELS=0
-SYNDICATOR_RELEASE_STATE_FILE=$tmp/release.env
-SYNDICATOR_ALLOW_DIRTY=1
 EOF
 chmod 600 "$env_file"
 
 export SYNDICATOR_ENV_FILE="$env_file"
 export SYNDICATOR_PROJECT="$project"
-export SYNDICATOR_ALLOW_DIRTY=1
 
 cleanup() {
   status=$?
@@ -68,22 +66,12 @@ trap cleanup EXIT
 test_failed_deployment() {
   printf '%s\n' 'SYNDICATOR_TEST_FAIL_AFTER_START=1' >>"$env_file"
   set +e
-  "$ROOT/bin/syndicator" deploy --tag integration-failure \
+  "$ROOT/bin/syndicator" deploy \
     >"$tmp/failed-deploy.log" 2>&1
   failed_status=$?
   set -e
   if [[ "$failed_status" -eq 0 ]]; then
     echo "Deliberately invalid deployment unexpectedly succeeded." >&2
-    exit 1
-  fi
-  if [[ ! -s "$tmp/release.env.pending" ]]; then
-    echo "Failed deployment did not record pending recovery state." >&2
-    python3 - "$tmp/failed-deploy.log" <<'PY' >&2
-from pathlib import Path
-import sys
-
-print(Path(sys.argv[1]).read_text(encoding="utf-8"))
-PY
     exit 1
   fi
   if [[ -n "$(docker compose --env-file "$env_file" -p "$project" \

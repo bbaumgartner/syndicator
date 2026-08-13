@@ -35,9 +35,9 @@ with a list of values that still need input. Fill in:
 - Postiz API key
 - the public URL and bind addresses appropriate for the host
 
-The lifecycle parses `.env` as data, never as shell code. Quote values that
-contain spaces or `#`; single quotes preserve `$`, backticks, and other
-characters literally.
+The lifecycle passes `.env` to Compose as an env file, never as shell code. Quote
+values that contain spaces or `#`; single quotes preserve `$`, backticks, and
+other characters literally.
 
 Then deploy:
 
@@ -50,9 +50,8 @@ inputs, starts the stack, waits for the in-container n8n reconcile, and runs
 end-to-end health checks. Running it again is safe. If source configuration is
 unchanged and all workflows remain published, n8n import is skipped.
 
-The first controlled deployment writes `secrets/release.env`. Unless
-`SYNDICATOR_IMAGE_TAG` is explicitly set, images use the current 12-character
-Git revision as their tag.
+Unless `SYNDICATOR_IMAGE_TAG` is set, images use the current 12-character Git
+revision as their tag.
 
 ## Local and network configuration
 
@@ -150,16 +149,8 @@ stack, reconciles n8n, and verifies. Instance volumes are not snapshotted;
 callers keep working when `.env`, SFTP host keys, and authorized client keys
 stay in place.
 
-An explicit tag is available for release testing:
-
-```bash
-bin/syndicator deploy --tag release-candidate-1
-```
-
-If bootstrap or verification fails, the new services are stopped and pending
-details remain in `secrets/release.env.pending`. The last healthy release state
-is not overwritten. Do not simply restart the failed containers; fix the
-checkout and deploy again.
+If reconcile or verification fails, the new services are stopped. Do not simply
+restart the failed containers; fix the checkout and deploy again.
 
 ## Disaster recovery
 
@@ -202,7 +193,7 @@ The stack integration test uses random loopback ports and a unique Compose
 project. It deploys twice, checks that an unchanged reconcile is skipped,
 uploads over SFTP, and removes all test containers and volumes. A
 deliberately failed release also verifies that unverified containers are
-stopped and pending recovery state is recorded. A separate Buildx job verifies
+stopped. A separate Buildx job verifies
 n8n and pyautoflip for Linux arm64.
 
 ## Troubleshooting

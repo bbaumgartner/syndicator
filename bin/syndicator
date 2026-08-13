@@ -36,7 +36,6 @@ case "$command" in
     exec "$ROOT/scripts/deploy.sh" "$@"
     ;;
   bootstrap)
-    load_env
     wait_for_n8n
     run_reconcile
     ;;
@@ -51,16 +50,13 @@ case "$command" in
       echo "Usage: bin/syndicator restart SERVICE..." >&2
       exit 2
     fi
-    load_env
     compose restart "$@"
     "$ROOT/scripts/verify.sh"
     ;;
   status)
-    load_env
     compose ps "$@"
     ;;
   logs)
-    load_env
     compose logs -f "$@"
     ;;
   help | --help | -h)

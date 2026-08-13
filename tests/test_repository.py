@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import re
 import subprocess
-import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
@@ -198,8 +197,6 @@ class RepositoryManifestTests(unittest.TestCase):
         self.assertNotIn("PUBLISH_WORKFLOW_IDS", reconcile)
         library = (ROOT / "scripts" / "lib.sh").read_text(encoding="utf-8")
         self.assertIn("/healthz/readiness", library)
-
-    def test_local_markdown_links_resolve(self) -> None:
         link_pattern = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
         for document in ROOT.rglob("*.md"):
             if {".git", ".venv", "node_modules"}.intersection(document.parts):
@@ -213,36 +210,6 @@ class RepositoryManifestTests(unittest.TestCase):
                     continue
                 path = (document.parent / unquote(parsed.path)).resolve()
                 self.assertTrue(path.exists(), f"{document}: broken link {target}")
-
-    def test_dotenv_parser_does_not_evaluate_values(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            marker = root / "executed"
-            dotenv = root / ".env"
-            dotenv.write_text(
-                "\n".join(
-                    [
-                        f"LITERAL='$(touch {marker})'",
-                        "DOLLAR=prefix$HOME",
-                        'SPACED="hello world"',
-                        "COMMENTED=value # ignored",
-                    ]
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-            result = subprocess.run(
-                ["python3", str(ROOT / "scripts" / "dotenv.py"), str(dotenv)],
-                check=True,
-                capture_output=True,
-            )
-            fields = result.stdout.split(b"\0")
-            values = dict(zip(fields[0::2], fields[1::2]))
-            self.assertEqual(values[b"LITERAL"], f"$(touch {marker})".encode())
-            self.assertEqual(values[b"DOLLAR"], b"prefix$HOME")
-            self.assertEqual(values[b"SPACED"], b"hello world")
-            self.assertEqual(values[b"COMMENTED"], b"value")
-            self.assertFalse(marker.exists())
 
 
 if __name__ == "__main__":

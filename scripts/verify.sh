@@ -5,7 +5,6 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=scripts/lib.sh
 source "$ROOT/scripts/lib.sh"
 
-load_env
 wait_for_n8n 30 2
 run_reconcile
 
@@ -24,7 +23,8 @@ client_key="$(resolve_from_root "${SFTP_CLIENT_KEY_FILE:-secrets/sftp_client_ed2
 if [[ ! -f "$client_key" ]]; then
   echo "Skipping SFTP check; no client key at $client_key."
 else
-  sftp_port="${SFTP_PUBLISH_PORT:-2222}"
+  published="$(compose port sftp 22)"
+  sftp_port="${published##*:}"
   ssh-keyscan -p "$sftp_port" 127.0.0.1 >"$tmp/known_hosts" 2>/dev/null
   printf 'pwd\nquit\n' | sftp -q -b - \
     -P "$sftp_port" \
