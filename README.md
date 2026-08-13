@@ -196,35 +196,43 @@ Software design is split into **instantiation** (how an instance is built and st
 
 ### Instantiation
 
-The repo is the blueprint for a containerized instance: Compose defines the stack, an in-container reconcile step imports credentials and workflows, and the rest is source material those steps consume.
+To start an instance you need this repository and a filled-in `.env`. `docker compose up --build` builds the images and starts sftp, n8n, and pyautoflip. n8n comes up with an owner account from `.env`, but not yet with Syndicator's workflows. `n8n-reconcile` then logs into that n8n, creates credentials from `.env`, imports the workflow JSON from git, and publishes the webhooks. After that the instance matches this checkout.
 
-| Piece | Role |
-|-------|------|
-| `docker-compose.yml` | Compose stack: files-init + SFTP + n8n + n8n-reconcile + pyautoflip |
-| `.env.example` | Env template for secrets and host paths |
-| `n8n/Dockerfile` | Custom n8n image (`ffmpeg` + community node seed + reconcile) |
-| `n8n/reconcile.js` | In-container credential/workflow import and webhook publish |
-| `sftp/setup.sh` | Supported atmoz startup hook for durable host keys, key sync, and ownership |
-| `scripts/` | Init, doctor, verify, and export helpers |
-| `n8n/workflows/` | Importable workflow exports (source of truth) |
-| `n8n/credentials/` | Credential templates (stable IDs; secrets from `.env`) |
-| `pyautoflip/` | Image/build context for the reframe sidecar |
-| `sftp/keys/` | Authorized client public keys (refreshed into `authorized_keys` on each sftp start) |
-| `bin/syndicator` | Operator CLI: verify, export, logs |
+```mermaid
+flowchart LR
+  Git["Git checkout"]
+  Env[".env"]
+  subgraph instantiate ["instantiate"]
+    Init["files-init"]
+    SFTP["sftp"]
+    N8N["n8n"]
+    PyAF["pyautoflip"]
+    Recon["n8n-reconcile"]
+  end
+  Git --> instantiate
+  Git -->|workflows, credential templates| Recon
+  Env -->|secrets, owner| N8N
+  Env --> Recon
+  Init -->|chown volumes| SFTP
+  Init --> N8N
+  Init --> PyAF
+  N8N -->|healthy| Recon
+  Recon -->|import + publish webhooks| N8N
+```
 
-```
-docker-compose.yml
-.env.example
-n8n/Dockerfile
-n8n/reconcile.js
-n8n/workflows/
-n8n/credentials/*.template.json
-pyautoflip/
-sftp/
-scripts/{init,doctor,verify,export}.sh
-docs/{operations.md,adr/}
-bin/syndicator
-```
+| Component | Role |
+|-----------|------|
+| Git checkout | Blueprint: Compose file, Dockerfiles, workflow JSON, credential templates, SFTP startup hook, authorized `.pub` keys |
+| `.env` | Instance identity: encryption key, owner login, API keys, bind addresses. Created from `.env.example` by `scripts/init.sh` |
+| `files-init` | One-shot: chowns shared `n8n_files` and `sftp_data` to uid/gid `1000` so n8n, pyautoflip, and SFTP can write |
+| `sftp` | Starts with `sftp/setup.sh`: durable host keys in `sftp_host_keys`, client keys from `sftp/keys/` |
+| `n8n` | Custom image (`ffmpeg`, community nodes). On start, hashes `N8N_OWNER_PASSWORD` and provisions the owner from env. SQLite lives in `n8n_data` |
+| `pyautoflip` | Custom image; shares `sftp_data` at `/syndicator` with n8n |
+| `n8n-reconcile` | Compose profile `reconcile`, not a long-running service. Logs in as owner, renders credential templates from `.env`, imports workflows from git, publishes webhooks |
+
+`bin/syndicator verify` is the operator gate after `docker compose up`: it waits for n8n, runs reconcile, then checks health, webhook registration, pyautoflip, and SFTP. Export and logs are the other CLI commands; they are not part of instantiate.
+
+Git remains source of truth for workflows. n8n's volume is disposable; a new instance re-imports from git. See [ADR 0001](docs/adr/0001-deployment-model.md) and [ADR 0002](docs/adr/0002-disposable-instances.md).
 
 ### Runtime structure
 
@@ -241,7 +249,7 @@ flowchart LR
   Caller -->|key auth SFTP| SFTP
   Caller -->|webhooks| N8N
   N8N -->|shared volume /syndicator| SFTP
-  N8N -->|HTTP /reframe on /files| PyAF
+  N8N -->|HTTP /reframe on /syndicator| PyAF
   N8N --> OpenAI["OpenAI"]
   N8N --> Postiz["Postiz"]
   N8N --> Hugo["Hugo site tree"]
@@ -251,7 +259,7 @@ flowchart LR
 |---------|------|
 | `sftp` | Key-only SFTP on port `2222`; chroot home with `/syndicator/…`; host keys in `sftp_host_keys` |
 | `n8n` | Workflow engine; SQLite in `n8n_data`; shares `n8n_files` → `/files` with pyautoflip and `sftp_data` → `/syndicator` |
-| `pyautoflip` | Reel reframing sidecar (`HTTP /reframe` on `/files`) |
+| `pyautoflip` | Reel reframing sidecar (`HTTP /reframe` on `/syndicator`) |
 
 | Workflow | Role |
 |----------|------|

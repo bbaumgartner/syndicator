@@ -132,9 +132,11 @@ services:
     user: "1000:1000"
     environment:
       HOME: /home/pyautoflip
+      PYAUTOFLIP_ALLOWED_ROOTS: /files;/syndicator
     restart: unless-stopped
     volumes:
       - n8n_files:/files
+      - sftp_data:/syndicator
     depends_on:
       files-init:
         condition: service_completed_successfully

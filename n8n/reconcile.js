@@ -29,6 +29,19 @@ function runN8n(args) {
   return result.stdout;
 }
 
+function importOwned(kind, inputPath, userId) {
+  const withOwner = [`import:${kind}`, `--input=${inputPath}`, `--userId=${userId}`];
+  const result = spawnSync("n8n", withOwner, { encoding: "utf8" });
+  if (result.status === 0) {
+    return;
+  }
+  const msg = `${result.stderr || ""}${result.stdout || ""}`;
+  if (!msg.includes("already owned")) {
+    fail(`n8n ${withOwner.join(" ")} failed:\n${msg}`);
+  }
+  runN8n([`import:${kind}`, `--input=${inputPath}`]);
+}
+
 function listBundle(kind, suffix) {
   const dir = path.join(BUNDLE, kind);
   return fs
@@ -281,13 +294,13 @@ async function main() {
         path.basename(templatePath, ".template.json") + ".json",
       );
       fs.writeFileSync(out, renderCredential(templatePath));
-      runN8n(["import:credentials", `--input=${out}`, `--userId=${userId}`]);
+      importOwned("credentials", out, userId);
     }
 
     console.log("Importing and publishing workflows...");
     for (const filePath of files) {
       const id = JSON.parse(fs.readFileSync(filePath, "utf8")).id;
-      runN8n(["import:workflow", `--input=${filePath}`, `--userId=${userId}`]);
+      importOwned("workflow", filePath, userId);
       await publish(cookie, id);
     }
 
