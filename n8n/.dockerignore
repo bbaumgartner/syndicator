@@ -2,6 +2,7 @@
 !Dockerfile
 !entrypoint.sh
 !reconcile.js
+!hash-owner-password.js
 !package.json
 !package-lock.json
 !workflows/*.json

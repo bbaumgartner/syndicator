@@ -18,6 +18,7 @@ RUN npm ci --omit=dev \
 
 COPY entrypoint.sh /entrypoint-syndicator.sh
 COPY reconcile.js /opt/syndicator/reconcile.js
+COPY hash-owner-password.js /opt/syndicator/hash-owner-password.js
 COPY workflows /opt/syndicator/workflows
 COPY credentials /opt/syndicator/credentials
 RUN chmod +x /entrypoint-syndicator.sh \

@@ -52,9 +52,6 @@ services:
     restart: unless-stopped
     ports:
       - "${N8N_BIND_ADDRESS:-127.0.0.1}:${N8N_HOST_PORT:-5678}:5678"
-    # Password hash written by ./scripts/ensure-n8n-owner.sh (bcrypt; $ escaped as $$).
-    env_file:
-      - ${N8N_OWNER_ENV_FILE:-secrets/n8n_owner.env}
     environment:
       GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-Europe/Zurich}
       TZ: ${GENERIC_TIMEZONE:-Europe/Zurich}
@@ -76,6 +73,7 @@ services:
       N8N_INSTANCE_OWNER_EMAIL: ${N8N_OWNER_EMAIL:?set N8N_OWNER_EMAIL in .env}
       N8N_INSTANCE_OWNER_FIRST_NAME: ${N8N_OWNER_FIRST_NAME:-Syndicator}
       N8N_INSTANCE_OWNER_LAST_NAME: ${N8N_OWNER_LAST_NAME:-Owner}
+      N8N_OWNER_PASSWORD: ${N8N_OWNER_PASSWORD:?set N8N_OWNER_PASSWORD in .env}
     volumes:
       - n8n_data:/home/node/.n8n
       - n8n_files:/files
