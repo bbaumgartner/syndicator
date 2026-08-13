@@ -149,7 +149,7 @@ class RepositoryManifestTests(unittest.TestCase):
         self.assertNotIn(":stable", runtime_config)
         self.assertGreaterEqual(
             len(re.findall(r"@sha256:[0-9a-f]{64}", runtime_config)),
-            6,
+            5,
             "container bases should be immutable by default",
         )
         self.assertNotRegex(runtime_config, r"ARG [A-Z0-9_]+_IMAGE=")

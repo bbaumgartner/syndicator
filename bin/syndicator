@@ -16,10 +16,6 @@ Lifecycle:
   bootstrap   Reconcile n8n credentials and workflows
   verify      Verify health, workflows, pyautoflip, and SFTP
   export      Export sanitized workflows from n8n
-  backup      Archive critical volumes, configuration, and secrets
-  restore     Restore a validated backup archive
-  update      Back up and deploy reviewed dependency changes
-  rollback    Restore the recorded previous release
   restart     Restart one or more services, then verify
   status      Show Compose service status
   logs        Follow Compose service logs
@@ -47,18 +43,6 @@ case "$command" in
     ;;
   export)
     exec "$ROOT/scripts/export-workflows.sh" "$@"
-    ;;
-  backup)
-    exec "$ROOT/scripts/backup.sh" "$@"
-    ;;
-  restore)
-    exec "$ROOT/scripts/restore.sh" "$@"
-    ;;
-  update)
-    exec "$ROOT/scripts/update.sh" "$@"
-    ;;
-  rollback)
-    exec "$ROOT/scripts/rollback.sh" "$@"
     ;;
   restart)
     if [[ "$#" -eq 0 ]]; then
