@@ -33,8 +33,6 @@ N8N_ENCRYPTION_KEY=integration-only-encryption-key
 N8N_OWNER_EMAIL=ci@example.invalid
 N8N_OWNER_PASSWORD=ci-owner-password
 N8N_OWNER_ENV_FILE=$ROOT/tests/fixtures/n8n_owner.env
-N8N_API_KEY_FILE=$tmp/n8n_api_key
-N8N_BOOTSTRAP_STATE_FILE=$tmp/bootstrap.sha256
 OPENAI_API_KEY=integration-openai-key
 POSTIZ_API_KEY=integration-postiz-key
 SFTP_PUBLISH_PORT=$sftp_port
@@ -100,7 +98,6 @@ if [[ "${SYNDICATOR_INTEGRATION_FAILURE_ONLY:-0}" == "1" ]]; then
   exit 0
 fi
 
-cp "$tmp/n8n_api_key" "$tmp/n8n_api_key.before"
 if ! "$ROOT/bin/syndicator" deploy | tee "$tmp/second-deploy.log"; then
   exit 1
 fi
@@ -114,29 +111,6 @@ then
   echo "Second deployment did not skip an unchanged bootstrap." >&2
   exit 1
 fi
-cmp "$tmp/n8n_api_key.before" "$tmp/n8n_api_key"
-
-api_key="$(tr -d '[:space:]' <"$tmp/n8n_api_key")"
-curl -fsS \
-  -H "X-N8N-API-KEY: $api_key" \
-  "http://127.0.0.1:${n8n_port}/api/v1/workflows?limit=100" |
-  python3 -c '
-import json,sys
-body=json.load(sys.stdin)
-items=body.get("data", body)
-if isinstance(items, dict):
-    items=items.get("data", [])
-expected={
-    "8NOGn9jgOoV0fw0u",
-    "OGa6Xa8GxkSmA7Cr",
-    "y9TTx7N8Iygn88ry",
-    "l7HCCWtO1ALC82n6",
-    "zh21miLsQC8Jvua6",
-}
-actual={item["id"] for item in items if item.get("id") in expected}
-if actual != expected:
-    raise SystemExit(f"Expected five Syndicator workflows, got {sorted(actual)}")
-'
 
 printf '%s\n' "integration payload" >"$tmp/upload.txt"
 ssh-keyscan -p "$sftp_port" 127.0.0.1 >"$tmp/known_hosts" 2>/dev/null

@@ -161,9 +161,9 @@ bin/syndicator init
 bin/syndicator deploy
 ```
 
-`deploy` checks prerequisites, generates local-only keys, builds and starts the stack, reconciles n8n credentials/workflows, and verifies n8n, pyautoflip, and SFTP. It is safe to run repeatedly; an unchanged bootstrap is skipped.
+`deploy` checks prerequisites, generates local-only keys, builds and starts the stack, reconciles n8n credentials/workflows inside Compose, and verifies n8n, pyautoflip, and SFTP. It is safe to run repeatedly; an unchanged bootstrap is skipped.
 
-Owner account is provisioned from env on n8n start (`N8N_INSTANCE_OWNER_*`). Bootstrap logs in with `N8N_OWNER_EMAIL` / `N8N_OWNER_PASSWORD` to create or reuse an API key at `secrets/n8n_api_key` (or uses `N8N_API_KEY` if set), then imports credentials/workflows and publishes webhooks. UI login uses the same owner credentials.
+Owner account is provisioned from env on n8n start (`N8N_INSTANCE_OWNER_*`). After n8n is healthy, the `n8n-reconcile` service logs in with `N8N_OWNER_EMAIL` / `N8N_OWNER_PASSWORD`, imports credentials and workflows from git, and publishes webhooks. UI login uses the same owner credentials.
 
 `init` writes `secrets/sftp_n8n_ed25519` (private), `sftp/keys/n8n.pub` (public), and `secrets/n8n_owner.env` (bcrypt hash for Compose). Extra client keys: copy any `.pub` into `sftp/keys/` and run `bin/syndicator restart sftp`. Host keys live in the `sftp_host_keys` volume (generated on first start). Connect on port `2222` as user `sftp`.
 
@@ -195,13 +195,14 @@ Software design is split into **instantiation** (how an instance is built and st
 
 ### Instantiation
 
-The repo is the blueprint for a containerized instance: Compose defines the stack, scripts bootstrap credentials and import workflows, and the rest is source material those steps consume.
+The repo is the blueprint for a containerized instance: Compose defines the stack, an in-container reconcile step imports credentials and workflows, and the rest is source material those steps consume.
 
 | Piece | Role |
 |-------|------|
-| `docker-compose.yml` | Compose stack: files-init + SFTP + n8n + pyautoflip |
+| `docker-compose.yml` | Compose stack: files-init + SFTP + n8n + n8n-reconcile + pyautoflip |
 | `.env.example` | Env template for secrets and host paths |
-| `n8n/Dockerfile` | Custom n8n image (`ffmpeg` + community node seed) |
+| `n8n/Dockerfile` | Custom n8n image (`ffmpeg` + community node seed + reconcile) |
+| `n8n/reconcile.js` | In-container credential/workflow import and webhook publish |
 | `sftp/setup.sh` | Supported atmoz startup hook for durable host keys, key sync, and ownership |
 | `scripts/` | Focused lifecycle implementations behind `bin/syndicator` |
 | `n8n/workflows/` | Importable workflow exports (source of truth) |
@@ -214,11 +215,12 @@ The repo is the blueprint for a containerized instance: Compose defines the stac
 docker-compose.yml
 .env.example
 n8n/Dockerfile
+n8n/reconcile.js
 n8n/workflows/
 n8n/credentials/*.template.json
 pyautoflip/
 sftp/
-scripts/{init,deploy,bootstrap,verify,export}.sh
+scripts/{init,deploy,verify,export}.sh
 docs/{operations.md,adr/}
 bin/syndicator
 ```

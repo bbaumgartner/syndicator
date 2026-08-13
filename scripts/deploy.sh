@@ -102,7 +102,8 @@ if [[ "${SYNDICATOR_TEST_FAIL_AFTER_START:-0}" == "1" ]]; then
   echo "Deliberate post-start failure requested by integration test." >&2
   false
 fi
-"$ROOT/scripts/bootstrap-n8n.sh"
+wait_for_n8n
+run_reconcile
 "$ROOT/scripts/verify.sh"
 
 write_release_state "$desired_tag" "$desired_revision"

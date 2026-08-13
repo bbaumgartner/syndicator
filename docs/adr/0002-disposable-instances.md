@@ -11,7 +11,7 @@ That assumed n8n SQLite, SFTP uploads, and host keys were unique state that
 had to survive a host loss or a bad update.
 
 Workflows, credentials, and webhook paths are already reconstructed from git
-and `.env` by `init` / `deploy` / `bootstrap`. Uploaded SFTP files can be
+and `.env` by `init` / `deploy` / in-container reconcile. Uploaded SFTP files can be
 re-provided by callers. The remaining identity is `.env`, SFTP host keys, and
 authorized client keys — which belong next to other host secrets, not inside
 the application lifecycle.
