@@ -16,12 +16,13 @@ resolve_from_root() {
 }
 
 compose() {
+  local env_file="${SYNDICATOR_ENV_FILE:-$ENV_FILE}"
   local args=(
     --project-directory "$SOURCE_ROOT"
     -f "$SOURCE_ROOT/docker-compose.yml"
   )
-  if [[ -f "$ENV_FILE" ]]; then
-    args+=(--env-file "$ENV_FILE")
+  if [[ -f "$env_file" ]]; then
+    args+=(--env-file "$env_file")
   fi
   if [[ -n "${SYNDICATOR_PROJECT:-}" ]]; then
     args+=(-p "$SYNDICATOR_PROJECT")

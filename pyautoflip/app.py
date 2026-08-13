@@ -17,6 +17,13 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 FILES_ROOT = Path(os.environ.get("PYAUTOFLIP_FILES_ROOT", "/files")).resolve()
+ALLOWED_ROOTS = tuple(
+    Path(part.strip()).resolve()
+    for part in os.environ.get(
+        "PYAUTOFLIP_ALLOWED_ROOTS", str(FILES_ROOT)
+    ).split(";")
+    if part.strip()
+)
 # Final encode quality (libx264). Lower = better quality / larger files.
 ENCODE_CRF = int(os.environ.get("PYAUTOFLIP_CRF", "18"))
 ENCODE_PRESET = os.environ.get("PYAUTOFLIP_PRESET", "medium")
@@ -44,14 +51,17 @@ class ReframeResponse(BaseModel):
 
 def _resolve_under_files(raw: str) -> Path:
     path = Path(raw).resolve()
-    try:
-        path.relative_to(FILES_ROOT)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=f"path must be under {FILES_ROOT}: {raw}",
-        ) from exc
-    return path
+    for root in ALLOWED_ROOTS:
+        try:
+            path.relative_to(root)
+            return path
+        except ValueError:
+            continue
+    allowed = ";".join(str(root) for root in ALLOWED_ROOTS)
+    raise HTTPException(
+        status_code=400,
+        detail=f"path must be under {allowed}: {raw}",
+    )
 
 
 def _make_even(n: int) -> int:

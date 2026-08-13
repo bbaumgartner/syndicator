@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-08T13:50:29.558Z",
+  "updatedAt": "2026-08-13T20:12:00.000Z",
   "createdAt": "2026-08-05T15:02:11.968Z",
   "id": "OGa6Xa8GxkSmA7Cr",
   "name": "Adapt Hugo Media",
@@ -82,10 +82,10 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const j = $input.item.json;\nconst root = '/files';\nconst raw = String(j.bundle_filename || 'video');\nconst stem = raw.includes('.') ? raw.slice(0, raw.lastIndexOf('.')) : raw;\nconst safe = stem.split('').map((c) => /[a-zA-Z0-9_]/.test(c) ? c : '_').join('').slice(0, 80) || 'video';\nconst local_path = root + '/syndicator-site-' + safe + '-' + Date.now() + '.mp4';\nreturn { json: Object.assign({}, j, { local_path: local_path }) };"
+        "jsCode": "const job = $input.item.json;\nfunction quote(p) {\n  return '\"' + String(p).replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"') + '\"';\n}\nconst customArgs = `-y -i ${quote(job.source_sftp_path)} -vf \"scale=700:394:force_original_aspect_ratio=decrease\" -c:v libx264 -preset veryfast -crf 28 -pix_fmt yuv420p -c:a aac -movflags +faststart ${quote(job.sftp_path)}`;\nreturn { json: { ...job, customArgs } };"
       },
-      "id": "a9a3d9c7-c671-49c4-a4bb-b00832c1714a",
-      "name": "Resolve Video Local",
+      "id": "6596da44-d212-41bd-b3b9-9eefdad0f7e5",
+      "name": "Plan Hugo Resize",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -95,78 +95,17 @@
     },
     {
       "parameters": {
-        "fileSelector": "={{ $json.source_sftp_path }}",
-        "options": {
-          "dataPropertyName": "data"
-        }
-      },
-      "id": "5e0fe57f-c744-4812-a558-6b67707b4161",
-      "name": "Download Site Video",
-      "type": "n8n-nodes-base.readWriteFile",
-      "typeVersion": 1.1,
-      "position": [
-        896,
-        352
-      ]
-    },
-    {
-      "parameters": {
-        "operation": "write",
-        "fileName": "={{ $('Resolve Video Local').item.json.local_path }}",
-        "options": {}
-      },
-      "id": "5a46c465-2538-4a04-bc1c-8264e3778df5",
-      "name": "Write Site Video Local",
-      "type": "n8n-nodes-base.readWriteFile",
-      "typeVersion": 1.1,
-      "position": [
-        1120,
-        352
-      ]
-    },
-    {
-      "parameters": {
-        "mode": "runOnceForEachItem",
-        "jsCode": "const job = $input.item.json;\nconst local = $('Resolve Video Local').item.json.local_path;\nconst outLocal = local.replace(/\\.mp4$/i, '') + '-hugo.mp4';\n// Resize to fit inside 700×394, preserve aspect, no crop.\nconst customArgs = `-y -i ${local} -vf \"scale=700:394:force_original_aspect_ratio=decrease\" -c:v libx264 -preset veryfast -crf 28 -pix_fmt yuv420p -c:a aac -movflags +faststart ${outLocal}`;\nreturn { json: { ...job, local_path: local, out_local: outLocal, customArgs } };"
-      },
-      "id": "6596da44-d212-41bd-b3b9-9eefdad0f7e5",
-      "name": "Plan Hugo Resize",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1344,
-        352
-      ]
-    },
-    {
-      "parameters": {
         "operation": "custom",
         "timeoutSeconds": 900,
         "customArgs": "={{ $json.customArgs }}",
-        "customReturnFile": true,
-        "customOutputPath": "={{ $json.out_local }}"
+        "customReturnFile": false
       },
       "id": "9a0781d5-b7e9-4bc2-8677-d0477dc6813e",
       "name": "Adapt Hugo Video",
       "type": "n8n-nodes-ffmpeg-studio.ffmpegVideo",
       "typeVersion": 1,
       "position": [
-        1568,
-        352
-      ]
-    },
-    {
-      "parameters": {
-        "operation": "write",
-        "fileName": "={{ $('Plan Hugo Resize').item.json.sftp_path }}",
-        "options": {}
-      },
-      "id": "c3c9fec5-d2d5-4985-9c27-fb8c12bafa43",
-      "name": "Upload Site Video",
-      "type": "n8n-nodes-base.readWriteFile",
-      "typeVersion": 1.1,
-      "position": [
-        1792,
+        896,
         352
       ]
     },
@@ -179,39 +118,21 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2016,
+        1120,
         176
       ],
       "executeOnce": true
     },
     {
       "parameters": {
-        "fileSelector": "={{ $json.source_sftp_path }}",
-        "options": {
-          "dataPropertyName": "data"
-        }
+        "jsCode": "const fs = require('fs');\nreturn $input.all().map((item) => {\n  const job = item.json;\n  fs.copyFileSync(job.source_sftp_path, job.sftp_path);\n  return { json: job };\n});"
       },
       "id": "769a3d75-50d8-4514-b102-b16fdaebd864",
-      "name": "Download Site Image",
-      "type": "n8n-nodes-base.readWriteFile",
-      "typeVersion": 1.1,
+      "name": "Copy Site Image",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
-        1568,
-        32
-      ]
-    },
-    {
-      "parameters": {
-        "operation": "write",
-        "fileName": "={{ $json.sftp_path }}",
-        "options": {}
-      },
-      "id": "02114a24-8540-46cd-a549-b9005598f935",
-      "name": "Upload Site Image",
-      "type": "n8n-nodes-base.readWriteFile",
-      "typeVersion": 1.1,
-      "position": [
-        1792,
+        896,
         32
       ]
     },
@@ -244,12 +165,23 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        1344,
+        672,
         112
       ]
     }
   ],
   "connections": {
+    "Adapt Hugo Trigger": {
+      "main": [
+        [
+          {
+            "node": "Plan Site Media Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Plan Site Media Jobs": {
       "main": [
         [
@@ -265,7 +197,7 @@
       "main": [
         [
           {
-            "node": "Resolve Video Local",
+            "node": "Plan Hugo Resize",
             "type": "main",
             "index": 0
           }
@@ -273,83 +205,6 @@
         [
           {
             "node": "Is Noop?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Resolve Video Local": {
-      "main": [
-        [
-          {
-            "node": "Download Site Video",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Download Site Video": {
-      "main": [
-        [
-          {
-            "node": "Write Site Video Local",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Adapt Hugo Video": {
-      "main": [
-        [
-          {
-            "node": "Upload Site Video",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upload Site Video": {
-      "main": [
-        [
-          {
-            "node": "Finish Adapt Hugo",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Download Site Image": {
-      "main": [
-        [
-          {
-            "node": "Upload Site Image",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upload Site Image": {
-      "main": [
-        [
-          {
-            "node": "Finish Adapt Hugo",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Write Site Video Local": {
-      "main": [
-        [
-          {
-            "node": "Plan Hugo Resize",
             "type": "main",
             "index": 0
           }
@@ -367,11 +222,22 @@
         ]
       ]
     },
-    "Adapt Hugo Trigger": {
+    "Adapt Hugo Video": {
       "main": [
         [
           {
-            "node": "Plan Site Media Jobs",
+            "node": "Finish Adapt Hugo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Copy Site Image": {
+      "main": [
+        [
+          {
+            "node": "Finish Adapt Hugo",
             "type": "main",
             "index": 0
           }
@@ -389,7 +255,7 @@
         ],
         [
           {
-            "node": "Download Site Image",
+            "node": "Copy Site Image",
             "type": "main",
             "index": 0
           }
@@ -413,7 +279,7 @@
   "pinData": {},
   "versionId": "9898ecb7-79c3-4a67-900b-9cc601e01b96",
   "activeVersionId": "9898ecb7-79c3-4a67-900b-9cc601e01b96",
-  "versionCounter": 2,
+  "versionCounter": 3,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": []

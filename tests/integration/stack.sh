@@ -3,8 +3,6 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
-# shellcheck source=scripts/lib.sh
-source "$ROOT/scripts/lib.sh"
 
 tmp="$(mktemp -d)"
 project="syndicator-it-${RANDOM}"
@@ -52,6 +50,8 @@ chmod 600 "$env_file"
 export SYNDICATOR_ENV_FILE="$env_file"
 export SYNDICATOR_PROJECT="$project"
 export SYNDICATOR_IMAGE_TAG="integration"
+# shellcheck source=scripts/lib.sh
+source "$ROOT/scripts/lib.sh"
 
 cleanup() {
   status=$?

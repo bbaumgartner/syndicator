@@ -2,7 +2,8 @@
 
 HTTP wrapper around [pyautoflip](https://github.com/AhmedHisham1/pyautoflip) (saliency mode)
 for the n8n **Adapt Reel Media** workflow. Runs in its own container next to n8n and shares
-the `/files` volume so videos are not uploaded through HTTP bodies.
+`/files` plus the SFTP tree at `/syndicator`, so reframes read and write on disk
+instead of going through n8n binary.
 
 Defined as the `pyautoflip` service in [`../docker-compose.yml`](../docker-compose.yml).
 
@@ -22,8 +23,8 @@ bin/syndicator verify
 ```json
 POST /reframe
 {
-  "input_path": "/files/syndicator-source-….mp4",
-  "output_path": "/files/syndicator-video-…-9x16.mp4",
+  "input_path": "/syndicator/<slug>/source/clip.mp4",
+  "output_path": "/syndicator/<slug>/reels/9x16/1.mp4",
   "aspect_ratio": "9:16",
   "method": "saliency",
   "motion_threshold": 0.5,
@@ -31,7 +32,7 @@ POST /reframe
 }
 ```
 
-Paths must stay under `/files` (or `$PYAUTOFLIP_FILES_ROOT`). Response includes
+Paths must stay under `/files` or `/syndicator` (`$PYAUTOFLIP_ALLOWED_ROOTS`). Response includes
 `output_path`, `width`, `height`, and `duration_ms`.
 
 **Upstream workarounds** (applied in `app.py` before `reframe_video`):
