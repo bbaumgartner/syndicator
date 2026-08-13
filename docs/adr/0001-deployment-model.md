@@ -91,10 +91,9 @@ add more state and failure modes than it removes.
 
 ### Direct n8n access to the SFTP data volume
 
-Deferred. It could remove the internal SFTP credential and key exchange, but
-it requires changing 17 workflow nodes and would couple workflows to the
-single-host layout. The external SFTP interface stays stable; this optimization
-can be reconsidered now that integration tests protect the behavior.
+Accepted. n8n mounts `sftp_data` at `/syndicator` and uses Read/Write File
+nodes. The external SFTP interface stays stable for callers. Revisit if
+services move to separate machines.
 
 ## Consequences
 

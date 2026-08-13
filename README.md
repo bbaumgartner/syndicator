@@ -31,7 +31,7 @@ Syndicator provides the `syndicate` interface specified in this document.
 
 Callers invoke syndicate by:
 
-1. uploading medias to SFTP (port `2222`, key-only; authorize a public key in `sftp/keys/`, or reuse `secrets/sftp_n8n_ed25519` from `./scripts/ensure-sftp-keys.sh`)
+1. uploading medias to SFTP (port `2222`, key-only; authorize a public key in `sftp/keys/`)
 2. POSTing JSON to the Blog Post Publish and Reel Publish webhook. 
 3. The webhook responds with HTTP 2xx as soon as the request is accepted and continues asynchronously.
 
@@ -165,11 +165,11 @@ bin/syndicator deploy
 
 Owner account is provisioned from env on n8n start (`N8N_INSTANCE_OWNER_*`). After n8n is healthy, the `n8n-reconcile` service logs in with `N8N_OWNER_EMAIL` / `N8N_OWNER_PASSWORD`, imports credentials and workflows from git, and publishes webhooks. UI login uses the same owner credentials.
 
-`init` writes `secrets/sftp_n8n_ed25519` (private) and `sftp/keys/n8n.pub` (public). The n8n owner password is hashed inside the container on start. Extra client keys: copy any `.pub` into `sftp/keys/` and run `bin/syndicator restart sftp`. Host keys live in the `sftp_host_keys` volume (generated on first start). Connect on port `2222` as user `sftp`.
+`init` creates `.env` and an encryption key. Authorize callers by copying a `.pub` into `sftp/keys/` and running `bin/syndicator restart sftp`. Host keys live in the `sftp_host_keys` volume (generated on first start). Connect on port `2222` as user `sftp`.
 
 Published ports bind to loopback by default. Read the [operations runbook](docs/operations.md) before enabling LAN or internet access.
 
-The `files-init` Compose service chowns the shared `n8n_files` volume to uid/gid `1000` on each `up` so n8n and pyautoflip can write under `/files`.
+The `files-init` Compose service chowns the shared `n8n_files` and `sftp_data` volumes to uid/gid `1000` on each `up` so n8n, pyautoflip, and SFTP can write.
 
 ## Update workflows
 
@@ -227,7 +227,7 @@ bin/syndicator
 
 ### Runtime structure
 
-Once instantiated, three services collaborate: callers reach **sftp** (files) and **n8n** (webhooks); n8n drives SFTP, **pyautoflip**, and external APIs.
+Once instantiated, three services collaborate: callers reach **sftp** (files) and **n8n** (webhooks); n8n reads and writes the shared SFTP volume, **pyautoflip**, and external APIs.
 
 ```mermaid
 flowchart LR
@@ -239,7 +239,7 @@ flowchart LR
   end
   Caller -->|key auth SFTP| SFTP
   Caller -->|webhooks| N8N
-  N8N -->|FTP host=sftp| SFTP
+  N8N -->|shared volume /syndicator| SFTP
   N8N -->|HTTP /reframe on /files| PyAF
   N8N --> OpenAI["OpenAI"]
   N8N --> Postiz["Postiz"]
@@ -249,7 +249,7 @@ flowchart LR
 | Service | Role |
 |---------|------|
 | `sftp` | Key-only SFTP on port `2222`; chroot home with `/syndicator/…`; host keys in `sftp_host_keys` |
-| `n8n` | Workflow engine; SQLite in `n8n_data`; shares `n8n_files` → `/files` with pyautoflip |
+| `n8n` | Workflow engine; SQLite in `n8n_data`; shares `n8n_files` → `/files` with pyautoflip and `sftp_data` → `/syndicator` |
 | `pyautoflip` | Reel reframing sidecar (`HTTP /reframe` on `/files`) |
 
 | Workflow | Role |

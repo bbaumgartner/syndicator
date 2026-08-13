@@ -35,7 +35,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const VIDEO_RE = /\\.(mp4|mov|m4v|webm|avi|mkv|mpeg|mpg)$/i;\nfunction hugoBasename(name) {\n  const n = String(name || '');\n  if (!n) return n;\n  if (VIDEO_RE.test(n)) return n.replace(/\\.[^.]+$/, '') + '.mp4';\n  return n;\n}\nfunction asBlocks(value) {\n  if (Array.isArray(value)) return value;\n  if (typeof value === 'string' && value.trim()) {\n    try {\n      const parsed = JSON.parse(value);\n      return Array.isArray(parsed) ? parsed : [];\n    } catch (e) {\n      return [];\n    }\n  }\n  return [];\n}\n\n// Prefer $input (what the previous node actually passed). Typed workflowInputs\n// on Execute Workflow Trigger often ignore pinData and arrive as nulls.\nconst raw = $input.first().json || {};\nconst slug = String(raw.slug || '').trim();\nconst blocks = asBlocks(raw.blocks);\nconst header = String(raw.header_source || '').trim();\n\nif (!slug) {\n  throw new Error(\n    'Adapt Hugo Media: missing slug. Trigger received empty workflowInputs ' +\n    '(slug/blocks/header_source). When testing manually, fill the trigger input ' +\n    'fields — pinData on Execute Workflow Trigger is not applied to typed inputs.'\n  );\n}\n\nconst base = '/syndicator';\nconst siteRoot = `${base}/hugo-site/content/posts/${slug}`;\nconst sourceRoot = `${base}/${slug}/source`;\nconst jobs = [];\n\nfor (const b of blocks) {\n  if (b?.kind !== 'media' || !b.media) continue;\n  const m = b.media;\n  const source_filename = String(m.source_filename || '').trim();\n  if (!source_filename) continue;\n  const bundle_filename = hugoBasename(source_filename);\n  const kind = m.kind || (VIDEO_RE.test(source_filename) ? 'video' : 'image');\n  jobs.push({\n    kind,\n    source_sftp_path: `${sourceRoot}/${source_filename}`,\n    sftp_path: `${siteRoot}/${bundle_filename}`,\n    bundle_filename,\n    role: '',\n    slug,\n  });\n}\n\nif (header) {\n  const ext = header.includes('.') ? header.slice(header.lastIndexOf('.')) : '.jpg';\n  jobs.push({\n    kind: 'image',\n    source_sftp_path: `${sourceRoot}/${header}`,\n    sftp_path: `${siteRoot}/featured${ext}`,\n    bundle_filename: `featured${ext}`,\n    role: 'featured',\n    slug,\n  });\n}\n\nif (!jobs.length) return [{ json: { kind: 'noop', skip: true } }];\nreturn jobs.map((j) => ({ json: j }));"
+        "jsCode": "const VIDEO_RE = /\\.(mp4|mov|m4v|webm|avi|mkv|mpeg|mpg)$/i;\nfunction hugoBasename(name) {\n  const n = String(name || '');\n  if (!n) return n;\n  if (VIDEO_RE.test(n)) return n.replace(/\\.[^.]+$/, '') + '.mp4';\n  return n;\n}\nfunction asBlocks(value) {\n  if (Array.isArray(value)) return value;\n  if (typeof value === 'string' && value.trim()) {\n    try {\n      const parsed = JSON.parse(value);\n      return Array.isArray(parsed) ? parsed : [];\n    } catch (e) {\n      return [];\n    }\n  }\n  return [];\n}\n\n// Prefer $input (what the previous node actually passed). Typed workflowInputs\n// on Execute Workflow Trigger often ignore pinData and arrive as nulls.\nconst raw = $input.first().json || {};\nconst slug = String(raw.slug || '').trim();\nconst blocks = asBlocks(raw.blocks);\nconst header = String(raw.header_source || '').trim();\n\nif (!slug) {\n  throw new Error(\n    'Adapt Hugo Media: missing slug. Trigger received empty workflowInputs ' +\n    '(slug/blocks/header_source). When testing manually, fill the trigger input ' +\n    'fields — pinData on Execute Workflow Trigger is not applied to typed inputs.'\n  );\n}\n\nconst base = '/syndicator';\nconst siteRoot = `${base}/hugo-site/content/posts/${slug}`;\nconst sourceRoot = `${base}/${slug}/source`;\nconst jobs = [];\n\nfor (const b of blocks) {\n  if (b?.kind !== 'media' || !b.media) continue;\n  const m = b.media;\n  const source_filename = String(m.source_filename || '').trim();\n  if (!source_filename) continue;\n  const bundle_filename = hugoBasename(source_filename);\n  const kind = m.kind || (VIDEO_RE.test(source_filename) ? 'video' : 'image');\n  jobs.push({\n    kind,\n    source_sftp_path: `${sourceRoot}/${source_filename}`,\n    sftp_path: `${siteRoot}/${bundle_filename}`,\n    bundle_filename,\n    role: '',\n    slug,\n  });\n}\n\nif (header) {\n  const ext = header.includes('.') ? header.slice(header.lastIndexOf('.')) : '.jpg';\n  jobs.push({\n    kind: 'image',\n    source_sftp_path: `${sourceRoot}/${header}`,\n    sftp_path: `${siteRoot}/featured${ext}`,\n    bundle_filename: `featured${ext}`,\n    role: 'featured',\n    slug,\n  });\n}\n\nif (!jobs.length) return [{ json: { kind: 'noop', skip: true } }];\nconst fs = require('fs');\nconst path = require('path');\nfor (const job of jobs) {\n  fs.mkdirSync(path.dirname(job.sftp_path), { recursive: true });\n}\nreturn jobs.map((j) => ({ json: j }));"
       },
       "id": "3c3b635c-616c-4685-bfc6-8ef7ad434874",
       "name": "Plan Site Media Jobs",
@@ -95,24 +95,19 @@
     },
     {
       "parameters": {
-        "protocol": "sftp",
-        "path": "={{ $json.source_sftp_path }}",
-        "options": {}
+        "fileSelector": "={{ $json.source_sftp_path }}",
+        "options": {
+          "dataPropertyName": "data"
+        }
       },
       "id": "5e0fe57f-c744-4812-a558-6b67707b4161",
       "name": "Download Site Video",
-      "type": "n8n-nodes-base.ftp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
       "position": [
         896,
         352
-      ],
-      "credentials": {
-        "sftp": {
-          "id": "FBrOT9WTXTtyPdxi",
-          "name": "FTP account"
-        }
-      }
+      ]
     },
     {
       "parameters": {
@@ -162,25 +157,18 @@
     },
     {
       "parameters": {
-        "protocol": "sftp",
-        "operation": "upload",
-        "path": "={{ $('Plan Hugo Resize').item.json.sftp_path }}",
+        "operation": "write",
+        "fileName": "={{ $('Plan Hugo Resize').item.json.sftp_path }}",
         "options": {}
       },
       "id": "c3c9fec5-d2d5-4985-9c27-fb8c12bafa43",
       "name": "Upload Site Video",
-      "type": "n8n-nodes-base.ftp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
       "position": [
         1792,
         352
-      ],
-      "credentials": {
-        "sftp": {
-          "id": "FBrOT9WTXTtyPdxi",
-          "name": "FTP account"
-        }
-      }
+      ]
     },
     {
       "parameters": {
@@ -198,46 +186,34 @@
     },
     {
       "parameters": {
-        "protocol": "sftp",
-        "path": "={{ $json.source_sftp_path }}",
-        "options": {}
+        "fileSelector": "={{ $json.source_sftp_path }}",
+        "options": {
+          "dataPropertyName": "data"
+        }
       },
       "id": "769a3d75-50d8-4514-b102-b16fdaebd864",
       "name": "Download Site Image",
-      "type": "n8n-nodes-base.ftp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
       "position": [
         1568,
         32
-      ],
-      "credentials": {
-        "sftp": {
-          "id": "FBrOT9WTXTtyPdxi",
-          "name": "FTP account"
-        }
-      }
+      ]
     },
     {
       "parameters": {
-        "protocol": "sftp",
-        "operation": "upload",
-        "path": "={{ $json.sftp_path }}",
+        "operation": "write",
+        "fileName": "={{ $json.sftp_path }}",
         "options": {}
       },
       "id": "02114a24-8540-46cd-a549-b9005598f935",
       "name": "Upload Site Image",
-      "type": "n8n-nodes-base.ftp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
       "position": [
         1792,
         32
-      ],
-      "credentials": {
-        "sftp": {
-          "id": "FBrOT9WTXTtyPdxi",
-          "name": "FTP account"
-        }
-      }
+      ]
     },
     {
       "parameters": {

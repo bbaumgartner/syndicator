@@ -117,24 +117,19 @@
     },
     {
       "parameters": {
-        "protocol": "sftp",
-        "path": "={{ $('Adapt Feature Image').item.json.header.facebook }}",
-        "options": {}
+        "fileSelector": "={{ $('Adapt Feature Image').item.json.header.facebook }}",
+        "options": {
+          "dataPropertyName": "data"
+        }
       },
       "id": "7ca330c5-d1f5-4bc2-a93f-8385682fbf6f",
       "name": "Download Header FB",
-      "type": "n8n-nodes-base.ftp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
       "position": [
         704,
         192
-      ],
-      "credentials": {
-        "sftp": {
-          "id": "FBrOT9WTXTtyPdxi",
-          "name": "FTP account"
-        }
-      }
+      ]
     },
     {
       "parameters": {
@@ -213,24 +208,19 @@
     },
     {
       "parameters": {
-        "protocol": "sftp",
-        "path": "={{ $('Adapt Feature Image').item.json.header.instagram }}",
-        "options": {}
+        "fileSelector": "={{ $('Adapt Feature Image').item.json.header.instagram }}",
+        "options": {
+          "dataPropertyName": "data"
+        }
       },
       "id": "6c6bd7a8-85ac-4642-a0ed-b7651e667aa3",
       "name": "Download Header IG",
-      "type": "n8n-nodes-base.ftp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
       "position": [
         704,
         384
-      ],
-      "credentials": {
-        "sftp": {
-          "id": "FBrOT9WTXTtyPdxi",
-          "name": "FTP account"
-        }
-      }
+      ]
     },
     {
       "parameters": {
@@ -309,24 +299,19 @@
     },
     {
       "parameters": {
-        "protocol": "sftp",
-        "path": "={{ $('Adapt Feature Image').item.json.header.x }}",
-        "options": {}
+        "fileSelector": "={{ $('Adapt Feature Image').item.json.header.x }}",
+        "options": {
+          "dataPropertyName": "data"
+        }
       },
       "id": "654e05e6-b06e-462c-9f82-e2f9e0428fa7",
       "name": "Download Header X",
-      "type": "n8n-nodes-base.ftp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
       "position": [
         704,
         576
-      ],
-      "credentials": {
-        "sftp": {
-          "id": "FBrOT9WTXTtyPdxi",
-          "name": "FTP account"
-        }
-      }
+      ]
     },
     {
       "parameters": {
@@ -602,7 +587,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const root = '/syndicator/hugo-site';\nreturn $('Generate Hugo Index MDs').first().json.indexFiles.map((f) => ({\n  json: {\n    sftp_path: `${root}/${f.repo_path}`,\n    content: f.content,\n  },\n}));"
+        "jsCode": "const fs = require('fs');\nconst path = require('path');\nconst root = '/syndicator/hugo-site';\nreturn $('Generate Hugo Index MDs').first().json.indexFiles.map((f) => {\n  const sftp_path = `${root}/${f.repo_path}`;\n  fs.mkdirSync(path.dirname(sftp_path), { recursive: true });\n  const content = String(f.content ?? '');\n  return {\n    json: { sftp_path, content },\n    binary: {\n      data: {\n        data: Buffer.from(content, 'utf8').toString('base64'),\n        mimeType: 'text/markdown',\n        fileName: path.basename(sftp_path),\n      },\n    },\n  };\n});"
       },
       "id": "1301589f-ac65-4019-985e-ebe2768c5c53",
       "name": "Stage Site Files",
@@ -615,27 +600,18 @@
     },
     {
       "parameters": {
-        "protocol": "sftp",
-        "operation": "upload",
-        "path": "={{ $json.sftp_path }}",
-        "binaryData": false,
-        "fileContent": "={{ $json.content }}",
+        "operation": "write",
+        "fileName": "={{ $json.sftp_path }}",
         "options": {}
       },
       "id": "9429c516-3ce2-4936-8879-3bd6d59746f7",
       "name": "Upload Site Files",
-      "type": "n8n-nodes-base.ftp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
       "position": [
         704,
         0
-      ],
-      "credentials": {
-        "sftp": {
-          "id": "FBrOT9WTXTtyPdxi",
-          "name": "FTP account"
-        }
-      }
+      ]
     },
     {
       "parameters": {

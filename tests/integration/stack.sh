@@ -21,6 +21,11 @@ PY
 n8n_port="$(free_port)"
 sftp_port="$(free_port)"
 
+mkdir -p "$tmp/keys"
+ssh-keygen -t ed25519 -f "$tmp/sftp_client" -N '' -C 'syndicator-it' </dev/null
+cp "$tmp/sftp_client.pub" "$tmp/keys/client.pub"
+rm -f "$tmp/sftp_client.pub"
+
 cat >"$env_file" <<EOF
 GENERIC_TIMEZONE=UTC
 N8N_HOST=127.0.0.1
@@ -35,10 +40,8 @@ N8N_OWNER_PASSWORD=ci-owner-password
 OPENAI_API_KEY=integration-openai-key
 POSTIZ_API_KEY=integration-postiz-key
 SFTP_PUBLISH_PORT=$sftp_port
-SFTP_HOST=sftp
-SFTP_USERNAME=sftp
-SFTP_PRIVATE_KEY_FILE=$tmp/sftp_n8n_ed25519
 SFTP_KEYS_DIR=$tmp/keys
+SFTP_CLIENT_KEY_FILE=$tmp/sftp_client
 PYAUTOFLIP_WARM_MODELS=0
 SYNDICATOR_RELEASE_STATE_FILE=$tmp/release.env
 SYNDICATOR_ALLOW_DIRTY=1
@@ -121,7 +124,7 @@ quit
 EOF
 sftp -q -b "$tmp/sftp.batch" \
   -P "$sftp_port" \
-  -i "$tmp/sftp_n8n_ed25519" \
+  -i "$tmp/sftp_client" \
   -o BatchMode=yes \
   -o IdentitiesOnly=yes \
   -o StrictHostKeyChecking=yes \

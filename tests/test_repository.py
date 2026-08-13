@@ -54,6 +54,20 @@ class RepositoryManifestTests(unittest.TestCase):
             },
         )
 
+    def test_workflows_use_local_files_instead_of_ftp(self) -> None:
+        for path, workflow in self.workflows.items():
+            for node in workflow.get("nodes", []):
+                self.assertNotEqual(
+                    node.get("type"),
+                    "n8n-nodes-base.ftp",
+                    f"{path.name}: {node.get('name')}",
+                )
+                self.assertNotIn(
+                    "sftp",
+                    node.get("credentials") or {},
+                    f"{path.name}: {node.get('name')}",
+                )
+
     def test_workflow_names_and_ids_are_unique(self) -> None:
         ids: list[str] = []
         for path, workflow in self.workflows.items():

@@ -64,24 +64,19 @@
     },
     {
       "parameters": {
-        "protocol": "sftp",
-        "path": "={{ '/syndicator/' + $json.slug + '/source/' + $json.header_source }}",
-        "options": {}
+        "fileSelector": "={{ '/syndicator/' + $json.slug + '/source/' + $json.header_source }}",
+        "options": {
+          "dataPropertyName": "data"
+        }
       },
       "id": "8f1a0d03-f964-45fb-b5fb-a2ee8670eff0",
       "name": "Download Feature Source",
-      "type": "n8n-nodes-base.ftp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
       "position": [
         448,
         0
-      ],
-      "credentials": {
-        "sftp": {
-          "id": "FBrOT9WTXTtyPdxi",
-          "name": "FTP account"
-        }
-      }
+      ]
     },
     {
       "parameters": {
@@ -130,7 +125,7 @@
     },
     {
       "parameters": {
-        "jsCode": "function cropBox(width, height, targetRatio, focus) {\n  const fx = focus?.x ?? 0.5;\n  const fy = focus?.y ?? 0.5;\n  const srcRatio = width / height;\n  let cropW, cropH;\n  if (srcRatio > targetRatio) { cropH = height; cropW = Math.round(height * targetRatio); }\n  else { cropW = width; cropH = Math.round(width / targetRatio); }\n  let left = Math.round(fx * width - cropW / 2);\n  let top = Math.round(fy * height - cropH / 2);\n  left = Math.min(Math.max(left, 0), width - cropW);\n  top = Math.min(Math.max(top, 0), height - cropH);\n  return { left, top, width: cropW, height: cropH };\n}\nfunction even(n) { return n % 2 === 0 ? n : n - 1; }\nfunction fitWithoutUpscale(cropW, cropH, maxW, maxH) {\n  if (cropW <= maxW && cropH <= maxH) return { width: cropW, height: cropH };\n  const scale = Math.min(maxW / cropW, maxH / cropH);\n  return { width: even(Math.floor(cropW * scale)), height: even(Math.floor(cropH * scale)) };\n}\nfunction parseFocus(raw) {\n  try {\n    let t = raw?.content ?? raw?.text ?? raw?.[0]?.content?.[0]?.text ?? raw?.output?.[0]?.content?.[0]?.text ?? raw;\n    if (typeof t !== 'string') t = JSON.stringify(t);\n    const m = t.match(/\\{[\\s\\S]*\\}/);\n    if (!m) return { x: 0.5, y: 0.5 };\n    const j = JSON.parse(m[0]);\n    return { x: Number(j.x) || 0.5, y: Number(j.y) || 0.5 };\n  } catch (e) { return { x: 0.5, y: 0.5 }; }\n}\nfunction readSize(info) {\n  const width = Number(info?.size?.width || info?.width || info?.data?.width || 0);\n  const height = Number(info?.size?.height || info?.height || info?.data?.height || 0);\n  if (width > 0 && height > 0) return { width, height };\n  const geo = String(info?.Geometry || '');\n  const m = geo.match(/^(\\d+)x(\\d+)/);\n  if (m) return { width: Number(m[1]), height: Number(m[2]) };\n  throw new Error('Feature Image Info missing size: ' + JSON.stringify(Object.keys(info || {})));\n}\nconst trigger = $('Adapt Feature Trigger').first().json;\nconst slug = String(trigger.slug || '');\nconst { width, height } = readSize($('Feature Image Info').first().json);\nconst focus = parseFocus($('Feature Crop Focus').first().json);\nconst jobs = [];\n{\n  const box = cropBox(width, height, 1080 / 1350, focus);\n  const out = fitWithoutUpscale(box.width, box.height, 1080, 1350);\n  jobs.push({ platform: 'instagram', crop: box, out, sftp_path: '/syndicator/' + slug + '/header/instagram.jpg' });\n}\nfor (const platform of ['facebook', 'x']) {\n  let outW = width, outH = height;\n  const maxEdge = Math.max(width, height);\n  if (maxEdge > 2048) {\n    const scale = 2048 / maxEdge;\n    outW = even(Math.floor(width * scale));\n    outH = even(Math.floor(height * scale));\n  }\n  jobs.push({ platform, crop: { left: 0, top: 0, width, height }, out: { width: outW, height: outH }, sftp_path: '/syndicator/' + slug + '/header/' + platform + '.jpg' });\n}\nreturn jobs.map((j) => ({ json: j }));"
+        "jsCode": "function cropBox(width, height, targetRatio, focus) {\n  const fx = focus?.x ?? 0.5;\n  const fy = focus?.y ?? 0.5;\n  const srcRatio = width / height;\n  let cropW, cropH;\n  if (srcRatio > targetRatio) { cropH = height; cropW = Math.round(height * targetRatio); }\n  else { cropW = width; cropH = Math.round(width / targetRatio); }\n  let left = Math.round(fx * width - cropW / 2);\n  let top = Math.round(fy * height - cropH / 2);\n  left = Math.min(Math.max(left, 0), width - cropW);\n  top = Math.min(Math.max(top, 0), height - cropH);\n  return { left, top, width: cropW, height: cropH };\n}\nfunction even(n) { return n % 2 === 0 ? n : n - 1; }\nfunction fitWithoutUpscale(cropW, cropH, maxW, maxH) {\n  if (cropW <= maxW && cropH <= maxH) return { width: cropW, height: cropH };\n  const scale = Math.min(maxW / cropW, maxH / cropH);\n  return { width: even(Math.floor(cropW * scale)), height: even(Math.floor(cropH * scale)) };\n}\nfunction parseFocus(raw) {\n  try {\n    let t = raw?.content ?? raw?.text ?? raw?.[0]?.content?.[0]?.text ?? raw?.output?.[0]?.content?.[0]?.text ?? raw;\n    if (typeof t !== 'string') t = JSON.stringify(t);\n    const m = t.match(/\\{[\\s\\S]*\\}/);\n    if (!m) return { x: 0.5, y: 0.5 };\n    const j = JSON.parse(m[0]);\n    return { x: Number(j.x) || 0.5, y: Number(j.y) || 0.5 };\n  } catch (e) { return { x: 0.5, y: 0.5 }; }\n}\nfunction readSize(info) {\n  const width = Number(info?.size?.width || info?.width || info?.data?.width || 0);\n  const height = Number(info?.size?.height || info?.height || info?.data?.height || 0);\n  if (width > 0 && height > 0) return { width, height };\n  const geo = String(info?.Geometry || '');\n  const m = geo.match(/^(\\d+)x(\\d+)/);\n  if (m) return { width: Number(m[1]), height: Number(m[2]) };\n  throw new Error('Feature Image Info missing size: ' + JSON.stringify(Object.keys(info || {})));\n}\nconst trigger = $('Adapt Feature Trigger').first().json;\nconst slug = String(trigger.slug || '');\nconst { width, height } = readSize($('Feature Image Info').first().json);\nconst focus = parseFocus($('Feature Crop Focus').first().json);\nconst jobs = [];\n{\n  const box = cropBox(width, height, 1080 / 1350, focus);\n  const out = fitWithoutUpscale(box.width, box.height, 1080, 1350);\n  jobs.push({ platform: 'instagram', crop: box, out, sftp_path: '/syndicator/' + slug + '/header/instagram.jpg' });\n}\nfor (const platform of ['facebook', 'x']) {\n  let outW = width, outH = height;\n  const maxEdge = Math.max(width, height);\n  if (maxEdge > 2048) {\n    const scale = 2048 / maxEdge;\n    outW = even(Math.floor(width * scale));\n    outH = even(Math.floor(height * scale));\n  }\n  jobs.push({ platform, crop: { left: 0, top: 0, width, height }, out: { width: outW, height: outH }, sftp_path: '/syndicator/' + slug + '/header/' + platform + '.jpg' });\n}\nconst fs = require('fs');\nconst path = require('path');\nfor (const job of jobs) {\n  fs.mkdirSync(path.dirname(job.sftp_path), { recursive: true });\n}\nreturn jobs.map((j) => ({ json: j }));"
       },
       "id": "4df52cea-42cf-475c-b35a-a41df142a831",
       "name": "Plan Header Jobs",
@@ -192,25 +187,18 @@
     },
     {
       "parameters": {
-        "protocol": "sftp",
-        "operation": "upload",
-        "path": "={{ $('Plan Header Jobs').item.json.sftp_path }}",
+        "operation": "write",
+        "fileName": "={{ $('Plan Header Jobs').item.json.sftp_path }}",
         "options": {}
       },
       "id": "a520fc28-03b5-498b-bf77-d82046094c37",
       "name": "Upload Header",
-      "type": "n8n-nodes-base.ftp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
       "position": [
         1792,
         0
-      ],
-      "credentials": {
-        "sftp": {
-          "id": "FBrOT9WTXTtyPdxi",
-          "name": "FTP account"
-        }
-      }
+      ]
     },
     {
       "parameters": {

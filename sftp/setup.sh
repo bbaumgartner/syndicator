@@ -4,8 +4,8 @@
 set -Eeo pipefail
 
 HOST_KEY_DIR="${SFTP_HOST_KEY_DIR:-/etc/ssh/host_keys}"
-SFTP_UID="${SFTP_UID:-1001}"
-SFTP_GID="${SFTP_GID:-100}"
+SFTP_UID="${SFTP_UID:-1000}"
+SFTP_GID="${SFTP_GID:-1000}"
 DATA_DIR="${SFTP_DATA_DIR:-/home/sftp/syndicator}"
 
 mkdir -p "$HOST_KEY_DIR"

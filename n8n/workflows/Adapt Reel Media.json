@@ -35,7 +35,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const j = $input.first().json;\nconst slug = String(j.slug || 'unknown');\nconst index = Number(j.index || 1);\nconst source_filename = String(j.source_filename || '').trim();\nconst source_sftp_path = '/syndicator/' + slug + '/source/' + source_filename;\nconst base = '/files';\nconst safeSlug = slug.split('').map((c) => /[a-zA-Z0-9_]/.test(c) ? c : '_').join('').slice(0, 60);\nconst stamp = safeSlug + '-' + index + '-' + Date.now();\nconst source_local = base + '/syndicator-source-' + stamp + '.mp4';\nreturn [{ json: {\n  slug: slug,\n  index: index,\n  source_filename: source_filename,\n  source_sftp_path: source_sftp_path,\n  source_local: source_local,\n  video_4x5_local: base + '/syndicator-video-' + stamp + '-4x5.mp4',\n  video_9x16_local: base + '/syndicator-video-' + stamp + '-9x16.mp4',\n  video_4x5_sftp: '/syndicator/' + slug + '/reels/4x5/' + index + '.mp4',\n  video_9x16_sftp: '/syndicator/' + slug + '/reels/9x16/' + index + '.mp4',\n} }];"
+        "jsCode": "const j = $input.first().json;\nconst slug = String(j.slug || 'unknown');\nconst index = Number(j.index || 1);\nconst source_filename = String(j.source_filename || '').trim();\nconst source_sftp_path = '/syndicator/' + slug + '/source/' + source_filename;\nconst base = '/files';\nconst safeSlug = slug.split('').map((c) => /[a-zA-Z0-9_]/.test(c) ? c : '_').join('').slice(0, 60);\nconst stamp = safeSlug + '-' + index + '-' + Date.now();\nconst source_local = base + '/syndicator-source-' + stamp + '.mp4';\nconst video_4x5_sftp = '/syndicator/' + slug + '/reels/4x5/' + index + '.mp4';\nconst video_9x16_sftp = '/syndicator/' + slug + '/reels/9x16/' + index + '.mp4';\nconst fs = require('fs');\nconst path = require('path');\nfs.mkdirSync(path.dirname(video_4x5_sftp), { recursive: true });\nfs.mkdirSync(path.dirname(video_9x16_sftp), { recursive: true });\nreturn [{ json: {\n  slug: slug,\n  index: index,\n  source_filename: source_filename,\n  source_sftp_path: source_sftp_path,\n  source_local: source_local,\n  video_4x5_local: base + '/syndicator-video-' + stamp + '-4x5.mp4',\n  video_9x16_local: base + '/syndicator-video-' + stamp + '-9x16.mp4',\n  video_4x5_sftp: video_4x5_sftp,\n  video_9x16_sftp: video_9x16_sftp,\n} }];"
       },
       "id": "46f8dd7d-9ead-45cf-ad9c-a6e0be30a879",
       "name": "Resolve Paths",
@@ -48,24 +48,19 @@
     },
     {
       "parameters": {
-        "protocol": "sftp",
-        "path": "={{ $json.source_sftp_path }}",
-        "options": {}
+        "fileSelector": "={{ $json.source_sftp_path }}",
+        "options": {
+          "dataPropertyName": "data"
+        }
       },
       "id": "1467dfaf-5f3d-453b-bb1d-d906c42bcb5a",
       "name": "Download Source",
-      "type": "n8n-nodes-base.ftp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
       "position": [
         448,
         -16
-      ],
-      "credentials": {
-        "sftp": {
-          "id": "FBrOT9WTXTtyPdxi",
-          "name": "FTP account"
-        }
-      }
+      ]
     },
     {
       "parameters": {
@@ -84,25 +79,18 @@
     },
     {
       "parameters": {
-        "protocol": "sftp",
-        "operation": "upload",
-        "path": "={{ $('Plan Reframe').item.json.video_4x5_sftp }}",
+        "operation": "write",
+        "fileName": "={{ $('Plan Reframe').item.json.video_4x5_sftp }}",
         "options": {}
       },
       "id": "f199b77d-8e6d-4ba8-b837-28b255e24536",
       "name": "Upload Reel",
-      "type": "n8n-nodes-base.ftp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
       "position": [
         1568,
         -112
-      ],
-      "credentials": {
-        "sftp": {
-          "id": "FBrOT9WTXTtyPdxi",
-          "name": "FTP account"
-        }
-      }
+      ]
     },
     {
       "parameters": {
@@ -119,25 +107,18 @@
     },
     {
       "parameters": {
-        "protocol": "sftp",
-        "operation": "upload",
-        "path": "={{ $('Plan Reframe').item.json.video_9x16_sftp }}",
+        "operation": "write",
+        "fileName": "={{ $('Plan Reframe').item.json.video_9x16_sftp }}",
         "options": {}
       },
       "id": "0ed402a8-830f-420e-bb82-3183564bb162",
       "name": "Upload Reel 9:16",
-      "type": "n8n-nodes-base.ftp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
       "position": [
         1568,
         80
-      ],
-      "credentials": {
-        "sftp": {
-          "id": "FBrOT9WTXTtyPdxi",
-          "name": "FTP account"
-        }
-      }
+      ]
     },
     {
       "parameters": {
