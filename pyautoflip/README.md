@@ -8,7 +8,8 @@ Defined as the `pyautoflip` service in [`../docker-compose.yml`](../docker-compo
 
 ```bash
 # From the repository root:
-bin/syndicator deploy
+docker compose up -d --build
+bin/syndicator verify
 ```
 
 ## API

@@ -16,7 +16,7 @@ The host needs:
 Check the host without changing anything:
 
 ```bash
-bin/syndicator doctor
+scripts/doctor.sh
 ```
 
 ## First installation
@@ -24,7 +24,7 @@ bin/syndicator doctor
 Create the local configuration:
 
 ```bash
-bin/syndicator init
+scripts/init.sh
 ```
 
 On the first run this creates `.env`, generates `N8N_ENCRYPTION_KEY`, and stops
@@ -39,19 +39,19 @@ The lifecycle passes `.env` to Compose as an env file, never as shell code. Quot
 values that contain spaces or `#`; single quotes preserve `$`, backticks, and
 other characters literally.
 
-Then deploy:
+Then start the stack and verify:
 
 ```bash
-bin/syndicator deploy
+docker compose up -d --build
+bin/syndicator verify
 ```
 
-`deploy` performs initialization and diagnostics again, builds immutable
-inputs, starts the stack, waits for the in-container n8n reconcile, and runs
-end-to-end health checks. Running it again is safe. If source configuration is
-unchanged and all workflows remain published, n8n import is skipped.
+Compose builds and starts the services. `verify` waits for n8n, runs the
+in-container reconcile, and checks health, webhook registration, pyautoflip,
+and SFTP. Running it again is safe. If source configuration is unchanged and
+all workflows remain published, n8n import is skipped.
 
-Unless `SYNDICATOR_IMAGE_TAG` is set, images use the current 12-character Git
-revision as their tag.
+Unless `SYNDICATOR_IMAGE_TAG` is set, images are tagged `local`.
 
 ## Local and network configuration
 
@@ -85,23 +85,16 @@ application contract change and must be coordinated with callers.
 
 ## Routine commands
 
-Inspect status:
+Inspect logs:
 
 ```bash
-bin/syndicator status
 bin/syndicator logs
 ```
 
-Run non-mutating service and contract checks:
+Run reconcile and non-mutating service checks:
 
 ```bash
 bin/syndicator verify
-```
-
-Reconcile n8n after a workflow or credential-template change:
-
-```bash
-bin/syndicator bootstrap
 ```
 
 Export workflows after editing them in n8n:
@@ -114,17 +107,19 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 Exports are normalized: pin data, instance IDs, project ownership, and version
 metadata are removed. Review the resulting JSON before committing it.
 
-If the owner password changes, update `N8N_OWNER_PASSWORD` in `.env`, then run:
+If the owner password changes, update `N8N_OWNER_PASSWORD` in `.env`, then
+recreate n8n and verify:
 
 ```bash
-bin/syndicator deploy
+docker compose up -d --force-recreate n8n
+bin/syndicator verify
 ```
 
 After adding or removing a public key under `sftp/keys/`, apply it through the
 supported hook:
 
 ```bash
-bin/syndicator restart sftp
+docker compose up -d --force-recreate sftp
 ```
 
 ## Dependency updates
@@ -135,22 +130,22 @@ Dependabot. Do not edit a floating `latest` or `stable` tag on the server.
 For an update:
 
 1. Review the release notes and dependency diff.
-2. Let CI validate manifests, audit npm dependencies, build both images, deploy
+2. Let CI validate manifests, audit npm dependencies, build both images, start
    an isolated stack twice, and test SFTP I/O.
 3. Pull the reviewed Git revision on the server.
 4. Run:
 
 ```bash
-bin/syndicator deploy --pull
+docker compose up -d --build --pull always
+bin/syndicator verify
 ```
 
-Deploy rebuilds commit-tagged images from the current checkout, starts the
-stack, reconciles n8n, and verifies. Instance volumes are not snapshotted;
-callers keep working when `.env`, SFTP host keys, and authorized client keys
-stay in place.
+This rebuilds images from the current checkout, starts the stack, reconciles
+n8n, and verifies. Instance volumes are not snapshotted; callers keep working
+when `.env`, SFTP host keys, and authorized client keys stay in place.
 
-If reconcile or verification fails, the new services are stopped. Do not simply
-restart the failed containers; fix the checkout and deploy again.
+If reconcile or verification fails, bring the new services down. Do not simply
+restart the failed containers; fix the checkout and start again.
 
 ## Disaster recovery
 
@@ -160,7 +155,8 @@ Syndicator does not back up application volumes. A lost host is a new instance:
 2. Check out the desired Git revision.
 3. Restore `.env` from wherever you keep secrets, or recreate it and fill the
    required values.
-4. Run `bin/syndicator init` and `bin/syndicator deploy`.
+4. Run `scripts/init.sh`, `docker compose up -d --build`, and
+   `bin/syndicator verify`.
 5. Restore authorized client public keys under `sftp/keys/` if you kept them.
 6. Verify firewall, DNS, and reverse proxy.
 
@@ -190,18 +186,16 @@ bash tests/integration/stack.sh
 
 CI first builds the production model-warmed image and performs a real reframe.
 The stack integration test uses random loopback ports and a unique Compose
-project. It deploys twice, checks that an unchanged reconcile is skipped,
-uploads over SFTP, and removes all test containers and volumes. A
-deliberately failed release also verifies that unverified containers are
-stopped. A separate Buildx job verifies
-n8n and pyautoflip for Linux arm64.
+project. It starts the stack, verifies twice, checks that an unchanged
+reconcile is skipped, uploads over SFTP, and removes all test containers and
+volumes. A separate Buildx job verifies n8n and pyautoflip for Linux arm64.
 
 ## Troubleshooting
 
 If n8n is unavailable during reconcile, inspect readiness and logs:
 
 ```bash
-bin/syndicator status
+docker compose ps
 bin/syndicator logs n8n
 ```
 
@@ -235,7 +229,8 @@ should stop at:
 - creating the deployment user and directory
 - configuring firewall, TLS proxy, and optional off-host secret backup
 - placing `.env` and other bootstrap secrets from a vault
-- checking out a reviewed Git revision and invoking `bin/syndicator deploy`
+- checking out a reviewed Git revision and running `docker compose up -d --build`
+  plus `bin/syndicator verify`
 
 Do not duplicate Compose services, Dockerfile package installation, or n8n
 bootstrap in Ansible. Terraform belongs one level further out: VM, DNS,

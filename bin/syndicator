@@ -9,15 +9,8 @@ usage() {
   cat <<'EOF'
 Usage: bin/syndicator <command>
 
-Lifecycle:
-  doctor      Check host prerequisites
-  init        Create and validate local configuration and keys
-  deploy      Build, start, reconcile, and verify the stack
-  bootstrap   Re-run in-container n8n credential and workflow reconcile
-  verify      Verify health, reconcile, pyautoflip, and SFTP
+  verify      Reconcile n8n, then check health, webhooks, pyautoflip, and SFTP
   export      Export sanitized workflows from n8n
-  restart     Restart one or more services, then verify
-  status      Show Compose service status
   logs        Follow Compose service logs
 EOF
 }
@@ -26,35 +19,11 @@ command="${1:-help}"
 shift || true
 
 case "$command" in
-  doctor)
-    exec "$ROOT/scripts/doctor.sh" "$@"
-    ;;
-  init)
-    exec "$ROOT/scripts/init.sh" "$@"
-    ;;
-  deploy)
-    exec "$ROOT/scripts/deploy.sh" "$@"
-    ;;
-  bootstrap)
-    wait_for_n8n
-    run_reconcile
-    ;;
   verify)
     exec "$ROOT/scripts/verify.sh" "$@"
     ;;
   export)
     exec "$ROOT/scripts/export-workflows.sh" "$@"
-    ;;
-  restart)
-    if [[ "$#" -eq 0 ]]; then
-      echo "Usage: bin/syndicator restart SERVICE..." >&2
-      exit 2
-    fi
-    compose restart "$@"
-    "$ROOT/scripts/verify.sh"
-    ;;
-  status)
-    compose ps "$@"
     ;;
   logs)
     compose logs -f "$@"

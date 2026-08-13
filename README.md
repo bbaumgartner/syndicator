@@ -156,16 +156,17 @@ Once Syndicator has finished processing Blog Post Publish the static Hugo post c
 ## Setup
 
 ```bash
-bin/syndicator init
+scripts/init.sh
 # Fill the values requested in .env, then:
-bin/syndicator deploy
+docker compose up -d --build
+bin/syndicator verify
 ```
 
-`deploy` checks prerequisites, generates local-only keys, builds and starts the stack, reconciles n8n credentials/workflows inside Compose, and verifies n8n, pyautoflip, and SFTP. It is safe to run repeatedly; an unchanged bootstrap is skipped.
+`init.sh` creates `.env` and an encryption key. Compose builds and starts the stack. `verify` reconciles n8n credentials and workflows inside Compose, then checks n8n, webhook registration, pyautoflip, and SFTP. It is safe to run repeatedly; an unchanged reconcile is skipped.
 
 Owner account is provisioned from env on n8n start (`N8N_INSTANCE_OWNER_*`). After n8n is healthy, the `n8n-reconcile` service logs in with `N8N_OWNER_EMAIL` / `N8N_OWNER_PASSWORD`, imports credentials and workflows from git, and publishes webhooks. UI login uses the same owner credentials.
 
-`init` creates `.env` and an encryption key. Authorize callers by copying a `.pub` into `sftp/keys/` and running `bin/syndicator restart sftp`. Host keys live in the `sftp_host_keys` volume (generated on first start). Connect on port `2222` as user `sftp`.
+Authorize callers by copying a `.pub` into `sftp/keys/` and recreating the SFTP service (`docker compose up -d --force-recreate sftp`). Host keys live in the `sftp_host_keys` volume (generated on first start). Connect on port `2222` as user `sftp`.
 
 Published ports bind to loopback by default. Read the [operations runbook](docs/operations.md) before enabling LAN or internet access.
 
@@ -179,15 +180,15 @@ The `files-init` Compose service chowns the shared `n8n_files` and `sftp_data` v
 
 Instances are disposable. `.env`, SFTP host keys, and authorized client keys are identity; everything else can be rebuilt from git.
 
-Pull a reviewed revision and run `bin/syndicator deploy` (add `--pull` to refresh base images). A failed deploy stops the unverified services; fix the checkout and deploy again.
+Pull a reviewed revision and run `docker compose up -d --build --pull always`, then `bin/syndicator verify`. If verify fails, bring the stack down, fix the checkout, and start again.
 
-Disaster recovery is a new instance: reprovide `.env`, run `init` and `deploy`, and regenerate SFTP keys unless you kept them outside Syndicator. Callers may need to accept a new SSH host key and re-upload files.
+Disaster recovery is a new instance: reprovide `.env`, run `scripts/init.sh` and `docker compose up -d --build`, then `bin/syndicator verify`. Regenerate SFTP keys unless you kept them outside Syndicator. Callers may need to accept a new SSH host key and re-upload files.
 
 ## Architecture
 
 The workflow engine, n8n, orchestrates all blog post processing via modular workflows. The most important non-functional requirements are repeatability, testability, automation, and maintainability. The initial custom pipeline became difficult to change, which motivated decomposing processing into visible workflow nodes.
 
-Compose remains the application boundary because it isolates three different runtimes and provides the same topology on macOS and Linux. The operator lifecycle is intentionally separate and tested through `bin/syndicator`. The rationale and rejected alternatives are recorded in [ADR 0001](docs/adr/0001-deployment-model.md); disposable instances are [ADR 0002](docs/adr/0002-disposable-instances.md).
+Compose remains the application boundary because it isolates three different runtimes and provides the same topology on macOS and Linux. Instantiate with Compose; `bin/syndicator` covers verify, export, and logs. The rationale and rejected alternatives are recorded in [ADR 0001](docs/adr/0001-deployment-model.md); disposable instances are [ADR 0002](docs/adr/0002-disposable-instances.md).
  
 ## Software Design
 
@@ -204,12 +205,12 @@ The repo is the blueprint for a containerized instance: Compose defines the stac
 | `n8n/Dockerfile` | Custom n8n image (`ffmpeg` + community node seed + reconcile) |
 | `n8n/reconcile.js` | In-container credential/workflow import and webhook publish |
 | `sftp/setup.sh` | Supported atmoz startup hook for durable host keys, key sync, and ownership |
-| `scripts/` | Focused lifecycle implementations behind `bin/syndicator` |
+| `scripts/` | Init, doctor, verify, and export helpers |
 | `n8n/workflows/` | Importable workflow exports (source of truth) |
 | `n8n/credentials/` | Credential templates (stable IDs; secrets from `.env`) |
 | `pyautoflip/` | Image/build context for the reframe sidecar |
 | `sftp/keys/` | Authorized client public keys (refreshed into `authorized_keys` on each sftp start) |
-| `bin/syndicator` | Checked lifecycle: init, deploy, bootstrap, verify, export |
+| `bin/syndicator` | Operator CLI: verify, export, logs |
 
 ```
 docker-compose.yml
@@ -220,7 +221,7 @@ n8n/workflows/
 n8n/credentials/*.template.json
 pyautoflip/
 sftp/
-scripts/{init,deploy,verify,export}.sh
+scripts/{init,doctor,verify,export}.sh
 docs/{operations.md,adr/}
 bin/syndicator
 ```
