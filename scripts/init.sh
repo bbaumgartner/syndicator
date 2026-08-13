@@ -40,9 +40,7 @@ for name in \
   N8N_OWNER_EMAIL \
   N8N_OWNER_PASSWORD \
   OPENAI_API_KEY \
-  POSTIZ_API_KEY \
-  SFTP_HOST \
-  SFTP_USERNAME; do
+  POSTIZ_API_KEY; do
   if ! need_env "$name"; then
     missing=1
   fi
@@ -54,7 +52,5 @@ if [[ "$missing" -ne 0 ]]; then
   fi
   exit 2
 fi
-
-"$ROOT/scripts/ensure-sftp-keys.sh"
 
 echo "Initialization is complete."

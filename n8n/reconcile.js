@@ -15,8 +15,6 @@ const N8N_BASE = (process.env.N8N_INTERNAL_URL || "http://n8n:5678").replace(
   /\/$/,
   "",
 );
-const KEY_FILE =
-  process.env.SFTP_PRIVATE_KEY_FILE || "/run/secrets/sftp_private_key";
 
 function fail(message) {
   console.error(message);
@@ -29,16 +27,6 @@ function runN8n(args) {
     fail(`n8n ${args.join(" ")} failed:\n${result.stderr || result.stdout}`);
   }
   return result.stdout;
-}
-
-function loadPrivateKey() {
-  if (process.env.SFTP_PRIVATE_KEY) {
-    return process.env.SFTP_PRIVATE_KEY;
-  }
-  if (!fs.existsSync(KEY_FILE)) {
-    fail(`Missing SFTP private key: ${KEY_FILE}`);
-  }
-  return fs.readFileSync(KEY_FILE, "utf8");
 }
 
 function listBundle(kind, suffix) {
@@ -59,14 +47,7 @@ function fingerprint() {
     digest.update(path.relative(BUNDLE, filePath));
     digest.update(fs.readFileSync(filePath));
   }
-  for (const name of [
-    "N8N_ENCRYPTION_KEY",
-    "OPENAI_API_KEY",
-    "POSTIZ_API_KEY",
-    "SFTP_HOST",
-    "SFTP_USERNAME",
-    "SFTP_PRIVATE_KEY",
-  ]) {
+  for (const name of ["N8N_ENCRYPTION_KEY", "OPENAI_API_KEY", "POSTIZ_API_KEY"]) {
     digest.update(name);
     digest.update(process.env[name] || "");
   }
@@ -269,15 +250,12 @@ async function main() {
     "N8N_OWNER_PASSWORD",
     "OPENAI_API_KEY",
     "POSTIZ_API_KEY",
-    "SFTP_HOST",
-    "SFTP_USERNAME",
   ]) {
     if (!process.env[name]) {
       fail(`Missing required environment value: ${name}`);
     }
   }
 
-  process.env.SFTP_PRIVATE_KEY = loadPrivateKey();
   const files = workflowFiles();
   if (!files.length) {
     fail(`No workflow exports found under ${BUNDLE}`);

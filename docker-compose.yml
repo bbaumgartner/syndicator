@@ -10,12 +10,13 @@ services:
   files-init:
     image: alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
     volumes:
-      - n8n_files:/data
+      - n8n_files:/files
+      - sftp_data:/syndicator
     command:
       [
         "sh",
         "-c",
-        "chown 1000:1000 /data && chmod 775 /data",
+        "chown 1000:1000 /files /syndicator && chmod 775 /files /syndicator",
       ]
     restart: "no"
 
@@ -28,14 +29,14 @@ services:
       - "${SFTP_BIND_ADDRESS:-127.0.0.1}:${SFTP_PUBLISH_PORT:-2222}:22"
     volumes:
       - sftp_data:/home/sftp/syndicator
-      # Client public keys (ensure-sftp-keys.sh writes n8n.pub here).
+      # Client public keys (copy any .pub into sftp/keys/).
       - ${SFTP_KEYS_DIR:-./sftp/keys}:/home/sftp/.ssh/keys:ro
       # Server host keys generated on first start; survive recreate.
       - sftp_host_keys:/etc/ssh/host_keys
       # Supported atmoz startup hook; avoids replacing the sshd binary.
       - ./sftp/setup.sh:/etc/sftp.d/10-syndicator.sh:ro
     # user::uid:gid:dirs — empty password → key-only auth
-    command: sftp::1001:100:syndicator
+    command: sftp::1000:1000:syndicator
     healthcheck:
       test:
         [
@@ -62,10 +63,11 @@ services:
       N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-${WEBHOOK_URL:-http://localhost:5678/}}
       N8N_PROXY_HOPS: ${N8N_PROXY_HOPS:-0}
       N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
-      N8N_RESTRICT_FILE_ACCESS_TO: /files
+      N8N_RESTRICT_FILE_ACCESS_TO: /files;/syndicator
       N8N_SECURE_COOKIE: ${N8N_SECURE_COOKIE:-false}
       N8N_COMMUNITY_PACKAGES_ENABLED: "true"
       N8N_UNVERIFIED_PACKAGES_ENABLED: "true"
+      NODE_FUNCTION_ALLOW_BUILTIN: fs,path
       N8N_RUNNERS_TASK_TIMEOUT: "300"
       N8N_COMPRESSION_NODE_MAX_DECOMPRESSED_SIZE_BYTES: "268435456"
       N8N_COMPRESSION_NODE_MAX_ZIP_ENTRIES: "1000"
@@ -77,6 +79,7 @@ services:
     volumes:
       - n8n_data:/home/node/.n8n
       - n8n_files:/files
+      - sftp_data:/syndicator
     depends_on:
       files-init:
         condition: service_completed_successfully
@@ -110,14 +113,11 @@ services:
       N8N_OWNER_PASSWORD: ${N8N_OWNER_PASSWORD:?set N8N_OWNER_PASSWORD in .env}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?set OPENAI_API_KEY in .env}
       POSTIZ_API_KEY: ${POSTIZ_API_KEY:?set POSTIZ_API_KEY in .env}
-      SFTP_HOST: ${SFTP_HOST:-sftp}
-      SFTP_USERNAME: ${SFTP_USERNAME:-sftp}
       N8N_INTERNAL_URL: http://n8n:5678
     volumes:
       - n8n_data:/home/node/.n8n
       - ./n8n/workflows:/opt/syndicator/workflows:ro
       - ./n8n/credentials:/opt/syndicator/credentials:ro
-      - ${SFTP_PRIVATE_KEY_FILE:-./secrets/sftp_n8n_ed25519}:/run/secrets/sftp_private_key:ro
     entrypoint: ["node", "/opt/syndicator/reconcile.js"]
 
   pyautoflip:

@@ -1,3 +1,3 @@
 # Example OpenSSH public key (replace with a real key before compose up).
-# Copy to this directory as e.g. mac.pub or n8n.pub — filenames are arbitrary.
+# Copy to this directory as e.g. mac.pub or laptop.pub — filenames are arbitrary.
 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleReplaceWithRealPublicKey syndicator-example
