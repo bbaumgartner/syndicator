@@ -177,13 +177,11 @@ class RepositoryManifestTests(unittest.TestCase):
         example = (ROOT / ".env.example").read_text(encoding="utf-8")
         self.assertNotRegex(example, r"\b192\.168\.\d{1,3}\.\d{1,3}\b")
 
-    def test_bootstrap_uses_supported_interfaces(self) -> None:
-        bootstrap = (ROOT / "scripts" / "bootstrap-n8n.sh").read_text(
-            encoding="utf-8"
-        )
-        self.assertNotIn("docker volume", bootstrap)
-        self.assertNotIn("sqlite", bootstrap.lower())
-        self.assertNotIn("PUBLISH_WORKFLOW_IDS", bootstrap)
+    def test_reconcile_uses_supported_interfaces(self) -> None:
+        reconcile = (ROOT / "n8n" / "reconcile.js").read_text(encoding="utf-8")
+        self.assertNotIn("docker volume", reconcile)
+        self.assertNotIn("sqlite", reconcile.lower())
+        self.assertNotIn("PUBLISH_WORKFLOW_IDS", reconcile)
         library = (ROOT / "scripts" / "lib.sh").read_text(encoding="utf-8")
         self.assertIn("/healthz/readiness", library)
 

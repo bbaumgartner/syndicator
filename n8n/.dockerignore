@@ -1,5 +1,8 @@
 *
 !Dockerfile
 !entrypoint.sh
+!reconcile.js
 !package.json
 !package-lock.json
+!workflows/*.json
+!credentials/*.template.json

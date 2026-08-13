@@ -17,7 +17,11 @@ RUN npm ci --omit=dev \
 	&& chown -R node:node /opt/n8n-nodes-seed
 
 COPY entrypoint.sh /entrypoint-syndicator.sh
-RUN chmod +x /entrypoint-syndicator.sh
+COPY reconcile.js /opt/syndicator/reconcile.js
+COPY workflows /opt/syndicator/workflows
+COPY credentials /opt/syndicator/credentials
+RUN chmod +x /entrypoint-syndicator.sh \
+	&& chown -R node:node /opt/syndicator
 
 USER node
 WORKDIR /home/node

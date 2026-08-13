@@ -117,6 +117,10 @@ wait_for_n8n() {
   return 1
 }
 
+run_reconcile() {
+  compose --profile reconcile run --rm -T n8n-reconcile
+}
+
 workflow_id() {
   python3 - "$1" <<'PY'
 import json

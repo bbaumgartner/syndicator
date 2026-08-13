@@ -46,7 +46,7 @@ bin/syndicator deploy
 ```
 
 `deploy` performs initialization and diagnostics again, builds immutable
-inputs, starts the stack, reconciles n8n credentials and workflows, and runs
+inputs, starts the stack, waits for the in-container n8n reconcile, and runs
 end-to-end health checks. Running it again is safe. If source configuration is
 unchanged and all workflows remain published, n8n import is skipped.
 
@@ -200,15 +200,15 @@ bash tests/integration/stack.sh
 
 CI first builds the production model-warmed image and performs a real reframe.
 The stack integration test uses random loopback ports and a unique Compose
-project. It deploys twice, checks that API keys and resources are not
-duplicated, uploads over SFTP, and removes all test containers and volumes. A
+project. It deploys twice, checks that an unchanged reconcile is skipped,
+uploads over SFTP, and removes all test containers and volumes. A
 deliberately failed release also verifies that unverified containers are
 stopped and pending recovery state is recorded. A separate Buildx job verifies
 n8n and pyautoflip for Linux arm64.
 
 ## Troubleshooting
 
-If bootstrap reports n8n as unavailable, inspect readiness and logs:
+If n8n is unavailable during reconcile, inspect readiness and logs:
 
 ```bash
 bin/syndicator status
@@ -224,7 +224,7 @@ in `sftp_host_keys` and survive container recreate, but not a volume wipe.
 
 If credentials cannot be decrypted, `N8N_ENCRYPTION_KEY` in `.env` does not
 match the existing `n8n_data` volume. Use the original key, or remove the
-volume and let bootstrap recreate credentials.
+volume and let reconcile recreate credentials.
 
 If Apple Silicon reports an SFTP platform warning, confirm
 `SFTP_PLATFORM=linux/amd64`; the image is intentionally emulated.
