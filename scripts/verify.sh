@@ -10,6 +10,22 @@ run_reconcile
 
 echo "n8n health and workflow publication are valid."
 
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+n8n_published="$(compose port n8n 5678 | head -n1)"
+n8n_url="http://${n8n_published}"
+for path in publish reel; do
+  code="$(curl -sS -o "$tmp/webhook-${path}.txt" -w '%{http_code}' \
+    "${n8n_url}/webhook/${path}" || true)"
+  body="$(<"$tmp/webhook-${path}.txt")"
+  if [[ "$code" != "404" ]] || [[ "$body" != *[Ww]ebhook* ]]; then
+    echo "Webhook /webhook/${path} is not registered (HTTP ${code}): ${body}" >&2
+    exit 1
+  fi
+done
+echo "Publish and reel webhooks are registered."
+
 health="$(compose exec -T n8n wget -qO- http://pyautoflip:8080/health || true)"
 if [[ "$health" != *'"status":"ok"'* && "$health" != *'"status": "ok"'* ]]; then
   echo "pyautoflip health check failed: $health" >&2
@@ -17,8 +33,6 @@ if [[ "$health" != *'"status":"ok"'* && "$health" != *'"status": "ok"'* ]]; then
 fi
 echo "pyautoflip is reachable from n8n."
 
-tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
 client_key="$(resolve_from_root "${SFTP_CLIENT_KEY_FILE:-secrets/sftp_client_ed25519}")"
 if [[ ! -f "$client_key" ]]; then
   echo "Skipping SFTP check; no client key at $client_key."

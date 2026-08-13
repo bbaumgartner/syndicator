@@ -29,19 +29,18 @@ Keep Docker Compose as the application packaging and runtime boundary.
   packages, and model preparation.
 - Compose owns service networking, health, startup dependencies, ports, and
   persistent volumes.
-- `bin/syndicator` is the only operator-facing lifecycle. It delegates to
-  focused scripts for initialization, deployment, reconciliation, and
-  verification.
+- Operators instantiate with Compose. `bin/syndicator` covers verify, export,
+  and logs; `scripts/init.sh` creates `.env`.
 - Runtime inputs are pinned. Dependency changes arrive as reviewable pull
   requests and must pass an isolated full-stack test before deployment.
-- Each changed release is tagged by Git revision. Application volumes are
-  disposable; identity (`.env` and SFTP keys) is supplied at instantiate time.
-  Volume backup and rollback are out of scope; see
-  [ADR 0002](0002-disposable-instances.md).
+- Application volumes are disposable; identity (`.env` and SFTP keys) is
+  supplied at instantiate time. Volume backup and rollback are out of scope;
+  see [ADR 0002](0002-disposable-instances.md).
 
 Ansible may be added outside this boundary to prepare a Linux host: install
 Docker, configure a firewall or reverse proxy, place the repository and
-encrypted secrets, and invoke `bin/syndicator deploy`. It must not reproduce
+encrypted secrets, and run `docker compose up -d --build` plus
+`bin/syndicator verify`. It must not reproduce
 the application installation, workflow import, or update logic.
 
 Terraform is reserved for infrastructure resources such as a VM, DNS records,

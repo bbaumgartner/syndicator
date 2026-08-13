@@ -6,7 +6,7 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 set +e
-SYNDICATOR_ENV_FILE="$tmp/.env" "$ROOT/bin/syndicator" init >/dev/null 2>&1
+SYNDICATOR_ENV_FILE="$tmp/.env" "$ROOT/scripts/init.sh" >/dev/null 2>&1
 status=$?
 set -e
 
