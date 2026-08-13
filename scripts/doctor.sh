@@ -36,23 +36,10 @@ if [[ "$require_config" -eq 0 ]]; then
   exit 0
 fi
 
-load_env
-for name in \
-  N8N_ENCRYPTION_KEY \
-  N8N_OWNER_EMAIL \
-  N8N_OWNER_PASSWORD \
-  OPENAI_API_KEY \
-  POSTIZ_API_KEY; do
-  need_env "$name"
-done
-
-compose config --quiet
-
-if [[ "${N8N_HOST:-localhost}" != "localhost" && \
-      "${N8N_HOST:-localhost}" != "127.0.0.1" && \
-      "${N8N_HOST:-localhost}" != "::1" && \
-      "${N8N_PROTOCOL:-http}" != "https" ]]; then
-  echo "Warning: n8n is configured for non-local HTTP without TLS." >&2
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "Missing environment file: $ENV_FILE" >&2
+  exit 1
 fi
+compose config --quiet
 
 echo "Host and configuration are valid."

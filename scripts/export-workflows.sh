@@ -6,7 +6,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=scripts/lib.sh
 source "$ROOT/scripts/lib.sh"
-load_env
 
 OUT_DIR="$ROOT/n8n/workflows"
 mkdir -p "$OUT_DIR"
