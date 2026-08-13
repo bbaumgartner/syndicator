@@ -43,9 +43,7 @@ SFTP_USERNAME=sftp
 SFTP_PRIVATE_KEY_FILE=$tmp/sftp_n8n_ed25519
 SFTP_KEYS_DIR=$tmp/keys
 PYAUTOFLIP_WARM_MODELS=0
-SYNDICATOR_BACKUP_DIR=$tmp/backups
 SYNDICATOR_RELEASE_STATE_FILE=$tmp/release.env
-SYNDICATOR_RELEASE_SOURCES_DIR=$tmp/release-sources
 SYNDICATOR_ALLOW_DIRTY=1
 EOF
 chmod 600 "$env_file"
@@ -70,7 +68,7 @@ trap cleanup EXIT
 test_failed_deployment() {
   printf '%s\n' 'SYNDICATOR_TEST_FAIL_AFTER_START=1' >>"$env_file"
   set +e
-  "$ROOT/bin/syndicator" update --tag integration-failure \
+  "$ROOT/bin/syndicator" deploy --tag integration-failure \
     >"$tmp/failed-deploy.log" 2>&1
   failed_status=$?
   set -e
@@ -143,8 +141,9 @@ if actual != expected:
 printf '%s\n' "integration payload" >"$tmp/upload.txt"
 ssh-keyscan -p "$sftp_port" 127.0.0.1 >"$tmp/known_hosts" 2>/dev/null
 cat >"$tmp/sftp.batch" <<EOF
-put $tmp/upload.txt syndicator/restore-marker.txt
-get syndicator/restore-marker.txt $tmp/download.txt
+put $tmp/upload.txt syndicator/upload.txt
+get syndicator/upload.txt $tmp/download.txt
+rm syndicator/upload.txt
 quit
 EOF
 sftp -q -b "$tmp/sftp.batch" \
@@ -156,65 +155,6 @@ sftp -q -b "$tmp/sftp.batch" \
   -o "UserKnownHostsFile=$tmp/known_hosts" \
   sftp@127.0.0.1
 cmp "$tmp/upload.txt" "$tmp/download.txt"
-
-backup_archive="$tmp/backups/integration.tar.gz"
-"$ROOT/bin/syndicator" backup --output "$backup_archive"
-cat >"$tmp/sftp-remove.batch" <<EOF
-rm syndicator/restore-marker.txt
-quit
-EOF
-sftp -q -b "$tmp/sftp-remove.batch" \
-  -P "$sftp_port" \
-  -i "$tmp/sftp_n8n_ed25519" \
-  -o BatchMode=yes \
-  -o IdentitiesOnly=yes \
-  -o StrictHostKeyChecking=yes \
-  -o "UserKnownHostsFile=$tmp/known_hosts" \
-  sftp@127.0.0.1
-
-set +e
-SYNDICATOR_TEST_FAIL_RESTORE_AFTER_START=1 \
-  "$ROOT/bin/syndicator" restore --yes --no-build "$backup_archive" \
-  >"$tmp/failed-restore.log" 2>&1
-failed_restore_status=$?
-set -e
-if [[ "$failed_restore_status" -eq 0 || \
-      ! -s "$tmp/release.env.restore-pending" ]]; then
-  echo "Failed restore was not contained and recorded." >&2
-  exit 1
-fi
-if [[ -n "$(docker compose --env-file "$env_file" -p "$project" \
-  ps --status running -q n8n)" ]]; then
-  echo "Failed restore left unverified n8n running." >&2
-  exit 1
-fi
-
-"$ROOT/bin/syndicator" restore --yes --no-build "$backup_archive"
-cat >"$tmp/sftp-restored.batch" <<EOF
-get syndicator/restore-marker.txt $tmp/restored.txt
-rm syndicator/restore-marker.txt
-quit
-EOF
-sftp -q -b "$tmp/sftp-restored.batch" \
-  -P "$sftp_port" \
-  -i "$tmp/sftp_n8n_ed25519" \
-  -o BatchMode=yes \
-  -o IdentitiesOnly=yes \
-  -o StrictHostKeyChecking=yes \
-  -o "UserKnownHostsFile=$tmp/known_hosts" \
-  sftp@127.0.0.1
-cmp "$tmp/upload.txt" "$tmp/restored.txt"
-
-initial_tag="$(git rev-parse --short=12 HEAD)"
-"$ROOT/bin/syndicator" update --tag integration-next
-"$ROOT/bin/syndicator" rollback
-# shellcheck source=/dev/null
-source "$tmp/release.env"
-if [[ "${CURRENT_TAG:-}" != "$initial_tag" || \
-      "${PREVIOUS_TAG:-}" != "integration-next" ]]; then
-  echo "Rollback release state is incorrect." >&2
-  exit 1
-fi
 
 test_failed_deployment
 

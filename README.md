@@ -177,23 +177,17 @@ The `files-init` Compose service chowns the shared `n8n_files` volume to uid/gid
 
 ## Updates and recovery
 
-Dependencies are pinned and proposed through reviewed dependency PRs; there are no unattended production upgrades.
+Instances are disposable. `.env`, SFTP host keys, and authorized client keys are identity; everything else can be rebuilt from git.
 
-```bash
-bin/syndicator backup
-bin/syndicator update
-bin/syndicator rollback
-# Destructive and explicit:
-bin/syndicator restore --yes backups/<archive>.tar.gz
-```
+Pull a reviewed revision and run `bin/syndicator deploy` (add `--pull` to refresh base images). A failed deploy stops the unverified services; fix the checkout and deploy again.
 
-An update gets a commit-based image tag and creates a consistent backup when the release changes. Rollback requires both the retained previous images and their matching backup. Backup archives contain credentials and are written with mode `0600`; copy them to encrypted off-host storage.
+Disaster recovery is a new instance: reprovide `.env`, run `init` and `deploy`, and regenerate SFTP keys unless you kept them outside Syndicator. Callers may need to accept a new SSH host key and re-upload files.
 
 ## Architecture
 
 The workflow engine, n8n, orchestrates all blog post processing via modular workflows. The most important non-functional requirements are repeatability, testability, automation, and maintainability. The initial custom pipeline became difficult to change, which motivated decomposing processing into visible workflow nodes.
 
-Compose remains the application boundary because it isolates three different runtimes and provides the same topology on macOS and Linux. The operator lifecycle is intentionally separate and tested through `bin/syndicator`. The rationale and rejected alternatives are recorded in [ADR 0001](docs/adr/0001-deployment-model.md).
+Compose remains the application boundary because it isolates three different runtimes and provides the same topology on macOS and Linux. The operator lifecycle is intentionally separate and tested through `bin/syndicator`. The rationale and rejected alternatives are recorded in [ADR 0001](docs/adr/0001-deployment-model.md); disposable instances are [ADR 0002](docs/adr/0002-disposable-instances.md).
  
 ## Software Design
 
@@ -214,7 +208,7 @@ The repo is the blueprint for a containerized instance: Compose defines the stac
 | `n8n/credentials/` | Credential templates (stable IDs; secrets from `.env`) |
 | `pyautoflip/` | Image/build context for the reframe sidecar |
 | `sftp/keys/` | Authorized client public keys (refreshed into `authorized_keys` on each sftp start) |
-| `bin/syndicator` | Checked lifecycle: deploy, verify, backup, restore, update, rollback |
+| `bin/syndicator` | Checked lifecycle: init, deploy, bootstrap, verify, export |
 
 ```
 docker-compose.yml
@@ -224,7 +218,7 @@ n8n/workflows/
 n8n/credentials/*.template.json
 pyautoflip/
 sftp/
-scripts/{init,deploy,bootstrap,verify,backup,restore,update,rollback,export}.sh
+scripts/{init,deploy,bootstrap,verify,export}.sh
 docs/{operations.md,adr/}
 bin/syndicator
 ```

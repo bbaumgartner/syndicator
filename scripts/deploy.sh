@@ -34,28 +34,13 @@ load_env
 
 load_release_state
 old_tag="${CURRENT_TAG:-}"
-old_previous_tag="${PREVIOUS_TAG:-}"
-old_rollback_backup="${ROLLBACK_BACKUP:-}"
-old_revision="${CURRENT_GIT_REVISION:-${DEPLOYED_GIT_REVISION:-}}"
-old_previous_revision="${PREVIOUS_GIT_REVISION:-}"
-old_source_root="${CURRENT_SOURCE_ROOT:-}"
-old_previous_source_root="${PREVIOUS_SOURCE_ROOT:-}"
+old_revision="${CURRENT_GIT_REVISION:-}"
 desired_revision="$(git rev-parse HEAD 2>/dev/null || printf 'unknown')"
-if [[ -n "$old_source_root" && ! -d "$old_source_root" ]]; then
-  old_source_root=""
-fi
 
 if [[ "${SYNDICATOR_ALLOW_DIRTY:-0}" != "1" ]] && \
    [[ -n "$(git status --porcelain 2>/dev/null || true)" ]]; then
   echo "Refusing to build a release from a dirty working tree." >&2
   exit 1
-fi
-if [[ -z "$old_source_root" && -n "$old_revision" && "$old_revision" != "unknown" ]]; then
-  old_source_root="$(materialize_release_source "$old_revision")"
-fi
-if [[ -n "$old_source_root" ]]; then
-  export SYNDICATOR_SOURCE_ROOT="$old_source_root"
-  SOURCE_ROOT="$old_source_root"
 fi
 
 if [[ -n "$requested_tag" ]]; then
@@ -75,29 +60,7 @@ if [[ -n "$old_tag" && "$old_tag" == "$desired_tag" && \
   echo "Use a new --tag value for revision $desired_revision." >&2
   exit 1
 fi
-if [[ -n "$old_previous_tag" && "$old_previous_tag" == "$desired_tag" && \
-      -n "$old_previous_revision" && \
-      "$old_previous_revision" != "$desired_revision" ]]; then
-  echo "Image tag $desired_tag is retained for rollback revision $old_previous_revision." >&2
-  echo "Use a different --tag value for revision $desired_revision." >&2
-  exit 1
-fi
 
-backup_path=""
-release_changed=0
-if [[ "$old_tag" != "$desired_tag" || "$old_revision" != "$desired_revision" ]]; then
-  release_changed=1
-fi
-if [[ "$release_changed" -eq 1 ]] && persistent_state_exists; then
-  backup_dir="$(resolve_from_root "${SYNDICATOR_BACKUP_DIR:-backups}")"
-  from_tag="${old_tag:-legacy}"
-  backup_path="$backup_dir/pre-update-${from_tag}-to-${desired_tag}-$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
-  "$ROOT/scripts/backup.sh" --output "$backup_path"
-fi
-
-desired_source_root="$(materialize_release_source "$desired_revision")"
-export SYNDICATOR_SOURCE_ROOT="$ROOT"
-SOURCE_ROOT="$ROOT"
 export SYNDICATOR_IMAGE_TAG="$desired_tag"
 if [[ "$pull" -eq 1 ]]; then
   compose build --pull
@@ -111,8 +74,6 @@ umask 077
 {
   printf 'PENDING_TAG=%q\n' "$desired_tag"
   printf 'PENDING_GIT_REVISION=%q\n' "$desired_revision"
-  printf 'PENDING_SOURCE_ROOT=%q\n' "$desired_source_root"
-  printf 'RECOVERY_BACKUP=%q\n' "$backup_path"
 } >"$pending_state"
 chmod 600 "$pending_state"
 
@@ -130,9 +91,6 @@ deployment_cleanup() {
         echo "Unverified service is still running: $service" >&2
       fi
     done
-    if [[ -n "$backup_path" ]]; then
-      echo "Recovery backup: $backup_path" >&2
-    fi
   fi
   exit "$status"
 }
@@ -147,26 +105,7 @@ fi
 "$ROOT/scripts/bootstrap-n8n.sh"
 "$ROOT/scripts/verify.sh"
 
-if [[ "$release_changed" -eq 1 ]]; then
-  previous_tag="$old_tag"
-  rollback_backup="$backup_path"
-  previous_revision="$old_revision"
-  previous_source_root="$old_source_root"
-else
-  previous_tag="$old_previous_tag"
-  rollback_backup="$old_rollback_backup"
-  previous_revision="$old_previous_revision"
-  previous_source_root="$old_previous_source_root"
-fi
-
-write_release_state \
-  "$desired_tag" \
-  "$previous_tag" \
-  "$rollback_backup" \
-  "$desired_revision" \
-  "$previous_revision" \
-  "$desired_source_root" \
-  "$previous_source_root"
+write_release_state "$desired_tag" "$desired_revision"
 rm -f "$pending_state"
 trap - EXIT
 

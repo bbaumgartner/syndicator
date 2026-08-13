@@ -13,9 +13,9 @@ Syndicator runs three materially different services on one machine:
 
 The previous setup mixed a small declarative Compose file with a large,
 stateful host bootstrap. Image tags floated, workflow IDs were duplicated in
-scripts, bootstrap read n8n's private SQLite schema, and updates had no tested
-backup or rollback. This made Docker appear to be the source of the
-complexity, although most fragility was in the imperative lifecycle around it.
+scripts, and bootstrap read n8n's private SQLite schema. This made Docker
+appear to be the source of the complexity, although most fragility was in the
+imperative lifecycle around it.
 
 The supported target for the next one to two years is a developer Mac and one
 production Linux host. Repeatability, testability, and low operator effort are
@@ -30,17 +30,19 @@ Keep Docker Compose as the application packaging and runtime boundary.
 - Compose owns service networking, health, startup dependencies, ports, and
   persistent volumes.
 - `bin/syndicator` is the only operator-facing lifecycle. It delegates to
-  focused scripts for initialization, deployment, reconciliation,
-  verification, backup, restore, update, and rollback.
+  focused scripts for initialization, deployment, reconciliation, and
+  verification.
 - Runtime inputs are pinned. Dependency changes arrive as reviewable pull
   requests and must pass an isolated full-stack test before deployment.
-- Each changed release is tagged by Git revision, backed up before deployment,
-  and retains the previous images and matching state for rollback.
+- Each changed release is tagged by Git revision. Application volumes are
+  disposable; identity (`.env` and SFTP keys) is supplied at instantiate time.
+  Volume backup and rollback are out of scope; see
+  [ADR 0002](0002-disposable-instances.md).
 
 Ansible may be added outside this boundary to prepare a Linux host: install
 Docker, configure a firewall or reverse proxy, place the repository and
 encrypted secrets, and invoke `bin/syndicator deploy`. It must not reproduce
-the application installation, workflow import, backup, or update logic.
+the application installation, workflow import, or update logic.
 
 Terraform is reserved for infrastructure resources such as a VM, DNS records,
 firewall rules, and backup storage. It is not used to configure processes or
@@ -66,9 +68,9 @@ Linux VM test matrix would also replace the current Mac/Linux parity.
 ### Ansible wrapping Compose
 
 Compatible with this decision. It becomes worthwhile when rebuilding the
-production host itself is frequent or when firewall, TLS, and off-host backup
-configuration need to be managed. For one host it remains optional so the
-application does not acquire a second mandatory control plane.
+production host itself is frequent or when firewall, TLS, and secret placement
+need to be managed. For one host it remains optional so the application does
+not acquire a second mandatory control plane.
 
 ### Puppet
 
@@ -106,12 +108,10 @@ can be reconsidered now that integration tests protect the behavior.
 - The stack does not provide TLS or webhook authentication. Safe defaults bind
   published ports to loopback; exposing them requires an explicit network and
   reverse-proxy decision.
-- Backups contain secrets. File mode `0600` is only a local safeguard; off-host
-  copies must be encrypted.
 - pyautoflip's Python graph and model archive are hash-pinned, but Debian media
-  packages still come from the live Bookworm repositories. Retained,
-  commit-tagged images are the rollback artifact; use a Debian snapshot if
-  bit-for-bit disaster rebuilds become a requirement.
+  packages still come from the live Bookworm repositories. Rebuild from the
+  same Git revision if a bit-for-bit image recreate is required; use a Debian
+  snapshot if that recreate must be independent of current Bookworm.
 
 ## Revisit when
 

@@ -9,7 +9,7 @@ The host needs:
 
 - Docker Engine or Docker Desktop with `docker compose`
 - Bash, Python 3, curl, OpenSSL, and an OpenSSH client
-- enough disk for the n8n and pyautoflip images, media staging, and backups
+- enough disk for the n8n and pyautoflip images and media staging
 - amd64 execution support for the SFTP image; Docker Desktop supplies
   emulation on Apple Silicon
 
@@ -52,9 +52,7 @@ unchanged and all workflows remain published, n8n import is skipped.
 
 The first controlled deployment writes `secrets/release.env`. Unless
 `SYNDICATOR_IMAGE_TAG` is explicitly set, images use the current 12-character
-Git revision as their tag. The exact Compose/workflow source is retained under
-`secrets/release-sources/`, so routine commands continue to target the running
-release even after the checkout moves forward or a rollback completes.
+Git revision as their tag.
 
 ## Local and network configuration
 
@@ -140,116 +138,46 @@ For an update:
 
 1. Review the release notes and dependency diff.
 2. Let CI validate manifests, audit npm dependencies, build both images, deploy
-   an isolated stack twice, test SFTP I/O, restore a backup, and exercise
-   rollback.
+   an isolated stack twice, and test SFTP I/O.
 3. Pull the reviewed Git revision on the server.
 4. Run:
 
 ```bash
-bin/syndicator update
+bin/syndicator deploy --pull
 ```
 
-When the Git revision changes, update creates a consistent pre-update backup,
-builds commit-tagged images, deploys, and verifies. Previous images are not
-pruned because rollback needs them.
+Deploy rebuilds commit-tagged images from the current checkout, starts the
+stack, reconciles n8n, and verifies. Instance volumes are not snapshotted;
+callers keep working when `.env`, SFTP host keys, and authorized client keys
+stay in place.
 
 An explicit tag is available for release testing:
 
 ```bash
-bin/syndicator update --tag release-candidate-1
+bin/syndicator deploy --tag release-candidate-1
 ```
 
-If bootstrap or verification fails, the new services are stopped and recovery
+If bootstrap or verification fails, the new services are stopped and pending
 details remain in `secrets/release.env.pending`. The last healthy release state
-is not overwritten. Use the recorded backup with the matching Git revision;
-do not simply restart the failed containers.
+is not overwritten. Do not simply restart the failed containers; fix the
+checkout and deploy again.
 
-## Backups
+## Disaster recovery
 
-Create a backup:
-
-```bash
-bin/syndicator backup
-```
-
-The command briefly stops stateful services so SQLite and SFTP data are
-consistent. It archives:
-
-- `n8n_data`
-- `sftp_data`
-- `sftp_host_keys`
-- `.env`, n8n owner/API/bootstrap state, SFTP client keys, and release state
-- a manifest containing SHA-256 checksums and the Git revision
-
-The shared processing directory `n8n_files` is scratch space and is not backed
-up. InsightFace models are checksum-pinned inside the pyautoflip image, not
-stored in a mutable volume.
-
-Archives default to `backups/` and mode `0600`. They still contain plaintext
-credentials. Copy them to encrypted off-host storage and apply an external
-retention policy; the repository deliberately does not choose a storage
-provider or encryption key lifecycle.
-
-To select a destination:
-
-```bash
-bin/syndicator backup --output /secure/path/syndicator.tar.gz
-```
-
-## Restore and disaster recovery
-
-Restore is destructive and requires explicit confirmation:
-
-```bash
-bin/syndicator restore --yes /secure/path/syndicator.tar.gz
-```
-
-Before changing state, restore rejects unsafe archive paths, unsupported
-members, missing critical volume archives, unsupported formats, and checksum
-mismatches. It also requires the checkout to match the archive's Git revision.
-Only after validating inner volume archives and building or locating the
-required images does it stop services and cross the destructive boundary. It
-then replaces current configuration and critical volumes, starts the stack,
-reconciles n8n, and verifies all services.
-
-If a post-mutation restore step fails, all restored-but-unverified services are
-stopped and recovery context is written beside `release.env` with the suffix
-`.restore-pending`.
-
-For disaster recovery on a new host:
+Syndicator does not back up application volumes. A lost host is a new instance:
 
 1. Install the prerequisites.
-2. Check out the Git revision recorded in `manifest.json` inside the backup.
-3. Place the encrypted backup on the host and decrypt it locally.
-4. Run the restore command.
-5. Verify firewall, DNS, reverse proxy, and off-host backup scheduling.
+2. Check out the desired Git revision.
+3. Restore `.env` from wherever you keep secrets, or recreate it and fill the
+   required values.
+4. Run `bin/syndicator init` and `bin/syndicator deploy`.
+5. Restore authorized client public keys under `sftp/keys/` if you kept them.
+6. Verify firewall, DNS, and reverse proxy.
 
-`--no-build` is reserved for rollback or for a restore where the exact tagged
-images are already present.
-
-## Rollback
-
-Rollback is available after a release-changing update:
-
-```bash
-bin/syndicator rollback
-```
-
-It requires:
-
-- `PREVIOUS_TAG` and `ROLLBACK_BACKUP` in `secrets/release.env`
-- a clean checkout at the recorded current Git revision
-- both previous application images still present locally
-- the matching pre-update backup
-
-Rollback refuses dirty or mismatched current source. Before restoring the
-previous release, it uses the current lifecycle to back up the current release.
-It then selects the retained source bundle for the exact previous Git revision,
-uses the current hardened restore implementation with that revision's
-Compose/workflow definitions, restores matching data, starts the previous image
-tags, verifies the stack, and swaps the current and previous release records.
-
-Do not use `docker image prune -a` while rollback retention is required.
+SFTP host keys are generated on first start. Callers must accept the new host
+key unless you restore the `sftp_host_keys` volume yourself. Uploaded files are
+gone; callers re-upload. If you want `.env` and SFTP keys to survive a host
+loss, back them up outside Syndicator.
 
 ## Testing
 
@@ -273,12 +201,10 @@ bash tests/integration/stack.sh
 CI first builds the production model-warmed image and performs a real reframe.
 The stack integration test uses random loopback ports and a unique Compose
 project. It deploys twice, checks that API keys and resources are not
-duplicated, uploads over SFTP, validates backup/restore, deploys a second
-release tag, rolls back, and removes all test containers and volumes. A
-deliberately failed release also verifies that untrusted containers are
-stopped and pending recovery state is recorded; the same containment is tested
-for a failed restore. A separate Buildx job verifies n8n and pyautoflip for
-Linux arm64.
+duplicated, uploads over SFTP, and removes all test containers and volumes. A
+deliberately failed release also verifies that unverified containers are
+stopped and pending recovery state is recorded. A separate Buildx job verifies
+n8n and pyautoflip for Linux arm64.
 
 ## Troubleshooting
 
@@ -294,11 +220,11 @@ migrations must finish before provisioning starts.
 
 If SFTP host-key verification changes unexpectedly, do not delete the client
 known-host entry until the cause is understood. Host keys are persistent state
-in `sftp_host_keys` and are included in backups.
+in `sftp_host_keys` and survive container recreate, but not a volume wipe.
 
-If credentials cannot be decrypted after a restore, the
-`N8N_ENCRYPTION_KEY` does not match `n8n_data`. Restore `.env` and the volume
-from the same archive.
+If credentials cannot be decrypted, `N8N_ENCRYPTION_KEY` in `.env` does not
+match the existing `n8n_data` volume. Use the original key, or remove the
+volume and let bootstrap recreate credentials.
 
 If Apple Silicon reports an SFTP platform warning, confirm
 `SFTP_PLATFORM=linux/amd64`; the image is intentionally emulated.
@@ -317,10 +243,10 @@ should stop at:
 
 - installing a reviewed Docker Engine/Compose version and host utilities
 - creating the deployment user and directory
-- configuring firewall, TLS proxy, and encrypted off-host backup transport
+- configuring firewall, TLS proxy, and optional off-host secret backup
 - placing `.env` and other bootstrap secrets from a vault
 - checking out a reviewed Git revision and invoking `bin/syndicator deploy`
 
-Do not duplicate Compose services, Dockerfile package installation, n8n
-bootstrap, or backup logic in Ansible. Terraform belongs one level further
-out: VM, DNS, network rules, and storage resources only.
+Do not duplicate Compose services, Dockerfile package installation, or n8n
+bootstrap in Ansible. Terraform belongs one level further out: VM, DNS,
+network rules, and storage resources only.

@@ -16,9 +16,8 @@ node_modules/
 config.local.yaml
 .mypy_cache/
 
-# Compose secrets / local keys / update log
+# Compose secrets / local keys
 secrets/*
 !secrets/.gitkeep
 sftp/keys/*
 !sftp/keys/.gitkeep
-backups/
