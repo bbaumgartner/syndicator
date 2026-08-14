@@ -236,6 +236,8 @@ Git remains source of truth for workflows. n8n's volume is disposable; a new ins
 
 ### Runtime structure
 
+![Blog Post Publish Workflow](assets/workflow-example.png)
+
 Once instantiated, three services collaborate: callers reach **sftp** (files) and **n8n** (webhooks); n8n reads and writes the shared SFTP volume, **pyautoflip**, and external APIs.
 
 ```mermaid
