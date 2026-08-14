@@ -79,6 +79,20 @@ class RepositoryManifestTests(unittest.TestCase):
 
         self.assertEqual(len(ids), len(set(ids)), "workflow IDs must be unique")
 
+    def test_webhook_nodes_have_stable_production_paths(self) -> None:
+        found: dict[str, str] = {}
+        for path, workflow in self.workflows.items():
+            for node in workflow.get("nodes") or []:
+                if node.get("type") != "n8n-nodes-base.webhook":
+                    continue
+                parameters = node.get("parameters") or {}
+                hook = str(parameters.get("path") or "").strip().strip("/")
+                self.assertTrue(node.get("webhookId"), f"{path.name}: missing webhookId")
+                self.assertEqual(parameters.get("httpMethod"), "POST", path.name)
+                self.assertTrue(hook, path.name)
+                found[hook] = path.name
+        self.assertEqual(set(found), {"publish", "reel"})
+
     def test_subworkflow_references_resolve(self) -> None:
         known_ids = {workflow["id"] for workflow in self.workflows.values()}
         for path, workflow in self.workflows.items():
@@ -195,6 +209,14 @@ class RepositoryManifestTests(unittest.TestCase):
         self.assertNotIn("docker volume", reconcile)
         self.assertNotIn("sqlite", reconcile.lower())
         self.assertNotIn("PUBLISH_WORKFLOW_IDS", reconcile)
+        self.assertNotIn("publish:workflow", reconcile)
+        self.assertIn("/rest/workflows/", reconcile)
+        self.assertIn("/deactivate", reconcile)
+        self.assertIn("/activate", reconcile)
+        self.assertIn("active = false", reconcile)
+        verify = (ROOT / "scripts" / "verify.sh").read_text(encoding="utf-8")
+        self.assertIn("Did you mean to make a POST request", verify)
+        self.assertNotIn("*[Ww]ebhook*", verify)
         library = (ROOT / "scripts" / "lib.sh").read_text(encoding="utf-8")
         self.assertIn("/healthz/readiness", library)
         link_pattern = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")

@@ -150,10 +150,13 @@ function cookieHeader(res) {
   return list.map((item) => item.split(";")[0]).join("; ");
 }
 
+const BROWSER_ID = crypto.randomUUID();
+
 async function request(url, { method = "GET", headers = {}, body, cookie } = {}) {
   const res = await fetch(url, {
     method,
     headers: {
+      "browser-id": BROWSER_ID,
       ...headers,
       ...(cookie ? { Cookie: cookie } : {}),
     },
@@ -197,27 +200,149 @@ async function rest(cookie, method, urlPath, body) {
   });
 }
 
-async function publish(cookie, id) {
-  const cli = spawnSync("n8n", ["publish:workflow", `--id=${id}`], {
-    encoding: "utf8",
-  });
-  if (cli.status === 0) {
-    return;
-  }
+function payloadOf(result) {
+  return (result.json && result.json.data) || result.json || {};
+}
 
-  for (const urlPath of [
-    `/rest/workflows/${id}/publish`,
-    `/rest/workflows/${id}/activate`,
-    `/api/v1/workflows/${id}/publish`,
-    `/api/v1/workflows/${id}/activate`,
-  ]) {
-    const result = await rest(cookie, "POST", urlPath);
-    if (result.res.status === 200) {
-      return;
+async function getWorkflow(cookie, id) {
+  for (const urlPath of [`/rest/workflows/${id}`, `/api/v1/workflows/${id}`]) {
+    const result = await rest(cookie, "GET", urlPath);
+    if (result.res.ok) {
+      return payloadOf(result);
     }
   }
+  return null;
+}
+
+async function postFirstOk(cookie, paths, body) {
+  let last = null;
+  for (const urlPath of paths) {
+    const result = await rest(cookie, "POST", urlPath, body);
+    last = result;
+    if (result.res.ok) {
+      return result;
+    }
+  }
+  return last;
+}
+
+function isInactive(result) {
+  return payloadOf(result).active === false;
+}
+
+async function unpublish(cookie, id) {
+  const result = await postFirstOk(
+    cookie,
+    [
+      `/rest/workflows/${id}/deactivate`,
+      `/rest/workflows/${id}/unpublish`,
+      `/api/v1/workflows/${id}/deactivate`,
+      `/api/v1/workflows/${id}/unpublish`,
+    ],
+    {},
+  );
+  if (result && (result.res.ok || isInactive(result))) {
+    return;
+  }
+  const current = await getWorkflow(cookie, id);
+  if (current && current.active !== true) {
+    return;
+  }
   fail(
-    `Failed to publish workflow ${id} (CLI: ${cli.stderr || cli.stdout})`,
+    `Failed to unpublish workflow ${id} (HTTP ${result ? result.res.status : "none"}): ${result ? result.text : ""}`,
+  );
+}
+
+async function publish(cookie, id) {
+  // Publish through the running n8n HTTP API so production webhooks register
+  // in its live router. CLI publish from this sidecar only writes the DB.
+  await unpublish(cookie, id);
+  const current = await getWorkflow(cookie, id);
+  if (!current || !current.versionId) {
+    fail(`Workflow ${id} has no versionId after import`);
+  }
+  const result = await postFirstOk(
+    cookie,
+    [
+      `/rest/workflows/${id}/activate`,
+      `/rest/workflows/${id}/publish`,
+      `/api/v1/workflows/${id}/activate`,
+      `/api/v1/workflows/${id}/publish`,
+    ],
+    { versionId: current.versionId },
+  );
+  if (result && result.res.ok && payloadOf(result).active === true) {
+    return;
+  }
+  fail(
+    `Failed to publish workflow ${id} (HTTP ${result ? result.res.status : "none"}): ${result ? result.text : ""}`,
+  );
+}
+
+async function publishAll(cookie, files) {
+  for (const filePath of files) {
+    await publish(cookie, JSON.parse(fs.readFileSync(filePath, "utf8")).id);
+  }
+}
+
+function importWorkflow(filePath, userId, tmpDir) {
+  const workflow = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  workflow.active = false;
+  delete workflow.activeVersionId;
+  const out = path.join(tmpDir, path.basename(filePath));
+  fs.writeFileSync(out, `${JSON.stringify(workflow)}\n`);
+  importOwned("workflow", out, userId);
+}
+
+function webhookPaths() {
+  const paths = [];
+  for (const filePath of listBundle("workflows", ".json")) {
+    const workflow = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    for (const node of workflow.nodes || []) {
+      if (node.type !== "n8n-nodes-base.webhook") {
+        continue;
+      }
+      const hook = String((node.parameters && node.parameters.path) || "")
+        .trim()
+        .replace(/^\/+/, "");
+      if (hook) {
+        paths.push(hook);
+      }
+    }
+  }
+  return paths.sort();
+}
+
+function webhookIsLive(status, message) {
+  if (status === 405) {
+    return true;
+  }
+  return (
+    /not registered for GET/i.test(message) ||
+    /Did you mean to make a POST/i.test(message)
+  );
+}
+
+async function webhooksLive() {
+  for (const hook of webhookPaths()) {
+    const { res, text, json } = await request(`${N8N_BASE}/webhook/${hook}`, {
+      method: "GET",
+    });
+    const message = (json && json.message) || text || "";
+    if (!webhookIsLive(res.status, message)) {
+      return { ok: false, hook, status: res.status, message };
+    }
+  }
+  return { ok: true };
+}
+
+async function assertWebhooksLive() {
+  const result = await webhooksLive();
+  if (result.ok) {
+    return;
+  }
+  fail(
+    `Production webhook /webhook/${result.hook} is not registered (HTTP ${result.status}): ${result.message}`,
   );
 }
 
@@ -281,7 +406,19 @@ async function main() {
     fs.readFileSync(STATE_FILE, "utf8").trim() === digest &&
     (await allWorkflowsCurrent(cookie, files))
   ) {
-    console.log("n8n bootstrap is already current.");
+    if ((await webhooksLive()).ok) {
+      console.log("n8n bootstrap is already current.");
+      return;
+    }
+    console.log(
+      "Workflows are current but production webhooks are not registered; republishing...",
+    );
+    await publishAll(cookie, files);
+    if (!(await allWorkflowsCurrent(cookie, files))) {
+      fail("Republished workflows differ from source or are inactive.");
+    }
+    await assertWebhooksLive();
+    console.log("n8n bootstrap complete.");
     return;
   }
 
@@ -299,14 +436,14 @@ async function main() {
 
     console.log("Importing and publishing workflows...");
     for (const filePath of files) {
-      const id = JSON.parse(fs.readFileSync(filePath, "utf8")).id;
-      importOwned("workflow", filePath, userId);
-      await publish(cookie, id);
+      importWorkflow(filePath, userId, tmp);
+      await publish(cookie, JSON.parse(fs.readFileSync(filePath, "utf8")).id);
     }
 
     if (!(await allWorkflowsCurrent(cookie, files))) {
       fail("At least one imported workflow differs from source or is inactive.");
     }
+    await assertWebhooksLive();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
