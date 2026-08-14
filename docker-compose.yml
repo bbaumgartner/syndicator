@@ -117,6 +117,7 @@ services:
       N8N_INTERNAL_URL: http://n8n:5678
     volumes:
       - n8n_data:/home/node/.n8n
+      - ./n8n/reconcile.js:/opt/syndicator/reconcile.js:ro
       - ./n8n/workflows:/opt/syndicator/workflows:ro
       - ./n8n/credentials:/opt/syndicator/credentials:ro
     entrypoint: ["node", "/opt/syndicator/reconcile.js"]
