@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-13T20:12:00.000Z",
+  "updatedAt": "2026-08-14T13:50:59.000Z",
   "createdAt": "2026-08-05T15:02:11.968Z",
   "id": "OGa6Xa8GxkSmA7Cr",
   "name": "Adapt Hugo Media",
@@ -277,8 +277,8 @@
   },
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "9898ecb7-79c3-4a67-900b-9cc601e01b96",
-  "activeVersionId": "9898ecb7-79c3-4a67-900b-9cc601e01b96",
+  "versionId": "5adeb0eb-4e0a-4a67-9fba-63b7ad1e087a",
+  "activeVersionId": "5adeb0eb-4e0a-4a67-9fba-63b7ad1e087a",
   "versionCounter": 3,
   "triggerCount": 0,
   "sourceWorkflowId": null,

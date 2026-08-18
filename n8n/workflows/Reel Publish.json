@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-09T17:32:30.829Z",
+  "updatedAt": "2026-08-18T11:31:39.051Z",
   "createdAt": "2026-08-05T15:02:30.610Z",
   "id": "zh21miLsQC8Jvua6",
   "name": "Reel Publish",
@@ -19,13 +19,13 @@
       "typeVersion": 2.1,
       "position": [
         -672,
-        -32
+        64
       ],
       "webhookId": "4e23d978-d4c3-4ed4-9803-0e31e00f0779"
     },
     {
       "parameters": {
-        "jsCode": "const raw = $input.first().json;\nconst p = raw.body ?? raw;\nreturn [{ json: p }];"
+        "jsCode": "const raw = $input.first().json;\nconst p = raw.body ?? raw;\nconst video = p.video && typeof p.video === 'object' ? { ...p.video } : {};\nconst src = String(video.section_text || '');\nconst marker = src.indexOf('[VIDEO]');\nlet clip = src;\nif (marker !== -1) {\n  const before = src.slice(0, marker);\n  const headingAt = Math.max(before.lastIndexOf('\\n### '), before.lastIndexOf('\\n## '));\n  const start = headingAt >= 0 ? headingAt + 1 : 0;\n  const after = src.slice(marker);\n  const nextHeading = after.search(/\\n#{2,3} /);\n  const end = nextHeading === -1 ? src.length : marker + nextHeading;\n  clip = src.slice(start, end).trim();\n}\nif (clip.length > 1800) {\n  const m = clip.indexOf('[VIDEO]');\n  clip = m >= 0 ? clip.slice(Math.max(0, m - 500), m + 1000).trim() : clip.slice(0, 1800);\n}\nvideo.clip_context = clip || src.slice(0, 1200);\np.video = video;\nreturn [{ json: p }];\n"
       },
       "id": "893e7ffe-c8cf-4f71-a65b-0866865219a0",
       "name": "Parse Reel Payload",
@@ -33,7 +33,7 @@
       "typeVersion": 2,
       "position": [
         -448,
-        -32
+        64
       ]
     },
     {
@@ -45,11 +45,12 @@
           "mode": "id",
           "value": "gpt-5.4-mini"
         },
-        "text": "=You write a Facebook post for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Goal: grow the audience and earn clicks. Write in English. This is one short reel from the blog post titled \"{{ $(\"Parse Reel Payload\").item.json.post.title }}\". Base the post ONLY on this section. Section title: {{ $(\"Parse Reel Payload\").item.json.video.section_title }}. Section text: \n\n{{ $(\"Parse Reel Payload\").item.json.video.section_text }}.\n\nThe section text contains a [VIDEO] marker showing where this reel's clip sits in the surrounding prose; the sentence describing the clip may come just before or just after the marker, so rely on the text nearest the marker and treat the rest as background. The attached image is the reel cover frame; use it for concrete visual detail. Write 2 to 4 short, warm, personal paragraphs with a strong first-line hook. A tasteful emoji is fine. End with a light call to action. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends. Do not invent facts not in the section. Do NOT include any URL. After the caption, add 0 to 3 relevant hashtags on their own final line, each starting with #. Return ONLY the caption text followed by that hashtag line.",
+        "text": "=You write a Facebook post for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Write in English.\n\nThe attached images are several frames from this reel, in time order. Look at ALL of them. Write only about what those frames show. If it is not visible in the frames, do not write it. Do not summarize the blog post.\n\nNearby blog text for this clip (use it only to name things you can actually see in the frames):\nSection title: {{ $('Parse Reel Payload').item.json.video.section_title }}\n\n{{ $('Parse Reel Payload').item.json.video.clip_context }}\n\nRules:\n- One short paragraph, two or three sentences max.\n- If a distinctive building, monument, or place is visible in the frames, find its name in the nearby text and use that name.\n- Do not write about a road, city, or scene from the text unless it is visible in the frames.\n- End with a plain \"Read more.\" That is the only call to action. No questions to the reader, no \"watch till the end\".\n- A single tasteful emoji is optional.\n- Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends.\n- Do NOT include any URL.\nAfter the caption, add 0 to 3 relevant hashtags on their own final line, each starting with #. Return ONLY the caption text followed by that hashtag line.",
         "inputType": "base64",
+        "binaryPropertyName": "={{ $json.frameKeys }}",
         "options": {
           "detail": "auto",
-          "maxTokens": 500
+          "maxTokens": 250
         }
       },
       "id": "5097e942-465d-44f2-8716-cdb4c9485865",
@@ -57,7 +58,7 @@
       "type": "@n8n/n8n-nodes-langchain.openAi",
       "typeVersion": 2.3,
       "position": [
-        448,
+        896,
         160
       ],
       "retryOnFail": true,
@@ -81,7 +82,7 @@
       "type": "n8n-nodes-base.readWriteFile",
       "typeVersion": 1.1,
       "position": [
-        672,
+        1120,
         160
       ]
     },
@@ -95,62 +96,7 @@
       "type": "n8n-nodes-postiz.postiz",
       "typeVersion": 1,
       "position": [
-        896,
-        160
-      ],
-      "credentials": {
-        "postizApi": {
-          "id": "mkv19KbAM7doUSaU",
-          "name": "Postiz account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "type": "draft",
-        "date": "={{ $now.plus(1 + $('Reel Webhook').item.json.body.video.index, \"days\").toISO() }}",
-        "posts": {
-          "post": [
-            {
-              "integrationId": "cmrmbindh050spg0ypnszg5ag",
-              "group": "={{ $(\"Parse Reel Payload\").item.json.slug }}-reel-{{ $(\"Parse Reel Payload\").item.json.video.index }}",
-              "settings": {
-                "setting": [
-                  {
-                    "key": "__type",
-                    "stringValue": "facebook"
-                  },
-                  {
-                    "key": "post_type",
-                    "stringValue": "post"
-                  }
-                ]
-              },
-              "value": {
-                "contentItem": [
-                  {
-                    "content": "={{ $('Caption FB').item.json[0].content[0].text }}\n\n{{ $(\"Parse Reel Payload\").item.json.post.url }}",
-                    "image": {
-                      "imageItem": [
-                        {
-                          "id": "={{ $json.id }}",
-                          "path": "={{ $json.path }}"
-                        }
-                      ]
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        }
-      },
-      "id": "47c495c8-8552-4ef2-8e05-dbbf389deca8",
-      "name": "Create FB Draft",
-      "type": "n8n-nodes-postiz.postiz",
-      "typeVersion": 1,
-      "position": [
-        1120,
+        1344,
         160
       ],
       "credentials": {
@@ -169,11 +115,12 @@
           "mode": "id",
           "value": "gpt-5.4-mini"
         },
-        "text": "=You write an Instagram caption for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Goal: reach, saves and profile visits; the blog link lives in the bio. Write in English. This is one short reel from the blog post titled \"{{ $(\"Parse Reel Payload\").item.json.post.title }}\". Base the caption ONLY on this section. Section title: {{ $(\"Parse Reel Payload\").item.json.video.section_title }}. Section text: \n\n{{ $(\"Parse Reel Payload\").item.json.video.section_text }}. \n\nThe section text contains a [VIDEO] marker showing where this reel's clip sits in the surrounding prose; the sentence describing the clip may come just before or just after the marker, so rely on the text nearest the marker and treat the rest as background. The attached image is the reel cover frame; use it for concrete visual detail. The first line must hook within about 125 characters. Short airy paragraphs, emojis welcome but not overloaded. End with a question or a save-this nudge. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends. Do NOT include any URL or a link-in-bio call to action. Do not invent facts not in the section. After the caption, add 5 to 8 specific hashtags on their own final line, each starting with #, mixing niche sailing and travel tags with location tags, avoiding banned or spammy tags. Return ONLY the caption text followed by that hashtag line.",
+        "text": "=You write an Instagram caption for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. The blog link lives in the bio. Write in English.\n\nThe attached images are several frames from this reel, in time order. Look at ALL of them. Write only about what those frames show. If it is not visible in the frames, do not write it. Do not summarize the blog post.\n\nNearby blog text for this clip (use it only to name things you can actually see in the frames):\nSection title: {{ $('Parse Reel Payload').item.json.video.section_title }}\n\n{{ $('Parse Reel Payload').item.json.video.clip_context }}\n\nRules:\n- One or two short sentences.\n- If a distinctive building, monument, or place is visible in the frames, find its name in the nearby text and use that name.\n- Do not write about a road, city, or scene from the text unless it is visible in the frames.\n- End with a plain \"Link in bio.\" That is the only call to action. No questions to the reader, no save-this nudge.\n- Emojis welcome but not overloaded.\n- Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends.\n- Do NOT include any URL.\nAfter the caption, add 5 to 8 specific hashtags on their own final line, each starting with #, mixing niche sailing and travel tags with location tags, avoiding banned or spammy tags. Return ONLY the caption text followed by that hashtag line.",
         "inputType": "base64",
+        "binaryPropertyName": "={{ $json.frameKeys }}",
         "options": {
           "detail": "auto",
-          "maxTokens": 500
+          "maxTokens": 250
         }
       },
       "id": "5bee0fe2-b8e6-4023-81ae-92e09f0b6f42",
@@ -181,7 +128,7 @@
       "type": "@n8n/n8n-nodes-langchain.openAi",
       "typeVersion": 2.3,
       "position": [
-        448,
+        896,
         -32
       ],
       "retryOnFail": true,
@@ -206,7 +153,7 @@
       "type": "n8n-nodes-base.readWriteFile",
       "typeVersion": 1.1,
       "position": [
-        672,
+        1120,
         -32
       ]
     },
@@ -220,66 +167,7 @@
       "type": "n8n-nodes-postiz.postiz",
       "typeVersion": 1,
       "position": [
-        896,
-        -32
-      ],
-      "credentials": {
-        "postizApi": {
-          "id": "mkv19KbAM7doUSaU",
-          "name": "Postiz account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "type": "draft",
-        "date": "={{ $now.plus(1 + $('Reel Webhook').item.json.body.video.index, \"days\").toISO() }}",
-        "posts": {
-          "post": [
-            {
-              "integrationId": "cmrmbjfkp00win60ybjz64sxw",
-              "group": "={{ $(\"Parse Reel Payload\").item.json.slug }}-reel-{{ $(\"Parse Reel Payload\").item.json.video.index }}",
-              "settings": {
-                "setting": [
-                  {
-                    "key": "__type",
-                    "stringValue": "instagram"
-                  },
-                  {
-                    "key": "post_type",
-                    "stringValue": "post"
-                  },
-                  {
-                    "key": "is_trial_reel",
-                    "valueType": "boolean"
-                  }
-                ]
-              },
-              "value": {
-                "contentItem": [
-                  {
-                    "content": "={{ $('Caption IG').item.json[0].content[0].text }}",
-                    "image": {
-                      "imageItem": [
-                        {
-                          "id": "={{ $json.id }}",
-                          "path": "={{ $json.path }}"
-                        }
-                      ]
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        }
-      },
-      "id": "efadcedc-c20d-4839-8d94-c6f69066ca2c",
-      "name": "Create IG Draft",
-      "type": "n8n-nodes-postiz.postiz",
-      "typeVersion": 1,
-      "position": [
-        1120,
+        1344,
         -32
       ],
       "credentials": {
@@ -298,11 +186,12 @@
           "mode": "id",
           "value": "gpt-5.4-mini"
         },
-        "text": "=You write a post for X (Twitter) for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Goal: grow the audience. Write in English. This is one short reel from the blog post titled \"{{ $(\"Parse Reel Payload\").item.json.post.title }}\". Base the post ONLY on this section. Section title: {{ $(\"Parse Reel Payload\").item.json.video.section_title }}. Section text: \n\n{{ $(\"Parse Reel Payload\").item.json.video.section_text }}. \n\nThe section text contains a [VIDEO] marker showing where this reel's clip sits in the surrounding prose; the sentence describing the clip may come just before or just after the marker, so rely on the text nearest the marker and treat the rest as background. The attached image is the reel cover frame; use it for a vivid concrete detail. One punchy thought relating to the video: a hook, a vivid detail or a dry observation. Plain language, at most one emoji. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends. Do NOT include any URL. End the post with 0 to 2 short relevant hashtags, each starting with #. The entire post including the hashtags must be at most 240 characters. Return ONLY the post text followed by the hashtags.",
+        "text": "=You write a post for X (Twitter) for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. The blog link lives in the profile. Write in English.\n\nThe attached images are several frames from this reel, in time order. Look at ALL of them. Write only about what those frames show. If it is not visible in the frames, do not write it. Do not summarize the blog post.\n\nNearby blog text for this clip (use it only to name things you can actually see in the frames):\nSection title: {{ $('Parse Reel Payload').item.json.video.section_title }}\n\n{{ $('Parse Reel Payload').item.json.video.clip_context }}\n\nRules:\n- One punchy thought about what the video shows.\n- If a distinctive building, monument, or place is visible in the frames, find its name in the nearby text and use that name.\n- Do not write about a road, city, or scene from the text unless it is visible in the frames.\n- Plain language, at most one emoji. End with a plain \"Link in bio.\" That is the only call to action. No questions to the reader.\n- Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends.\n- Do NOT include any URL.\nEnd the post with 0 to 2 short relevant hashtags, each starting with #. The entire post including the hashtags must be at most 240 characters. Return ONLY the post text followed by the hashtags.",
         "inputType": "base64",
+        "binaryPropertyName": "={{ $json.frameKeys }}",
         "options": {
           "detail": "auto",
-          "maxTokens": 300
+          "maxTokens": 220
         }
       },
       "id": "2780dbf7-1c10-476d-aee5-683c56d756f8",
@@ -310,9 +199,11 @@
       "type": "@n8n/n8n-nodes-langchain.openAi",
       "typeVersion": 2.3,
       "position": [
-        -672,
-        480
+        896,
+        448
       ],
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
       "credentials": {
         "openAiApi": {
           "id": "MadfM6xwVCQEZSpV",
@@ -332,8 +223,8 @@
       "type": "n8n-nodes-base.readWriteFile",
       "typeVersion": 1.1,
       "position": [
-        0,
-        576
+        1568,
+        544
       ]
     },
     {
@@ -346,63 +237,8 @@
       "type": "n8n-nodes-postiz.postiz",
       "typeVersion": 1,
       "position": [
-        224,
-        480
-      ],
-      "credentials": {
-        "postizApi": {
-          "id": "mkv19KbAM7doUSaU",
-          "name": "Postiz account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "type": "draft",
-        "date": "={{ $now.plus(1, \"days\").toISO() }}",
-        "posts": {
-          "post": [
-            {
-              "integrationId": "cmrmbk0b9050zpg0ytkz5uy0r",
-              "group": "={{ $(\"Parse Reel Payload\").item.json.slug }}-reel-{{ $(\"Parse Reel Payload\").item.json.video.index }}",
-              "settings": {
-                "setting": [
-                  {
-                    "key": "__type",
-                    "stringValue": "x"
-                  },
-                  {
-                    "key": "who_can_reply_post",
-                    "stringValue": "everyone"
-                  }
-                ]
-              },
-              "value": {
-                "contentItem": [
-                  {
-                    "content": "={{ $('Caption X').item.json[0].content[0].text }}",
-                    "image": {
-                      "imageItem": [
-                        {
-                          "id": "={{ $json.id }}",
-                          "path": "={{ $json.path }}"
-                        }
-                      ]
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        }
-      },
-      "id": "4ed1a112-ba40-4305-ae49-dbf45fd8f824",
-      "name": "Create X Draft",
-      "type": "n8n-nodes-postiz.postiz",
-      "typeVersion": 1,
-      "position": [
-        448,
-        480
+        1792,
+        448
       ],
       "credentials": {
         "postizApi": {
@@ -473,7 +309,7 @@
       "typeVersion": 1.3,
       "position": [
         -224,
-        -32
+        64
       ]
     },
     {
@@ -486,23 +322,7 @@
       "typeVersion": 2,
       "position": [
         0,
-        -32
-      ]
-    },
-    {
-      "parameters": {
-        "operation": "thumbnail",
-        "inputVideo": "={{ $('Merge Adapt Into Payload').item.json.video_4x5_local }}",
-        "thumbTimestamp": "0",
-        "thumbWidth": 1080
-      },
-      "id": "5763f935-4586-4132-9d74-c59f47d8f836",
-      "name": "Extract Cover",
-      "type": "n8n-nodes-ffmpeg-studio.ffmpegVideo",
-      "typeVersion": 1,
-      "position": [
-        224,
-        -32
+        64
       ]
     },
     {
@@ -514,8 +334,8 @@
       "type": "n8n-nodes-ffmpeg-studio.ffmpegAnalyze",
       "typeVersion": 1,
       "position": [
-        -448,
-        480
+        1120,
+        448
       ]
     },
     {
@@ -547,8 +367,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -224,
-        480
+        1344,
+        448
       ]
     },
     {
@@ -561,8 +381,8 @@
       "type": "n8n-nodes-ffmpeg-studio.ffmpegVideo",
       "typeVersion": 1,
       "position": [
-        0,
-        384
+        1568,
+        352
       ]
     },
     {
@@ -574,11 +394,12 @@
           "mode": "id",
           "value": "gpt-5.4-mini"
         },
-        "text": "=You write a YouTube Short for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Goal: watch time and channel growth. Write in English. This is one short reel from the blog post titled \"{{ $(\"Parse Reel Payload\").item.json.post.title }}\". Base the copy ONLY on this section. Section title: {{ $(\"Parse Reel Payload\").item.json.video.section_title }}. Section text:\n\n{{ $(\"Parse Reel Payload\").item.json.video.section_text }}.\n\nThe section text contains a [VIDEO] marker showing where this reel's clip sits in the surrounding prose; the sentence describing the clip may come just before or just after the marker, so rely on the text nearest the marker and treat the rest as background. The attached image is the reel cover frame; use it for concrete visual detail.\n\nReturn EXACTLY this format and nothing else:\nTITLE: <short YouTube Shorts title, max 70 characters, punchy, no hashtags>\nDESCRIPTION:\n<1 to 3 short sentences, warm and personal, at most one emoji. End with 2 to 4 relevant hashtags including #Shorts, each starting with #. Do NOT include any URL. Do not invent facts not in the section. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches.>",
+        "text": "=You write a YouTube Short for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Write in English.\n\nThe attached images are several frames from this reel, in time order. Look at ALL of them. Write only about what those frames show. If it is not visible in the frames, do not write it. Do not summarize the blog post.\n\nNearby blog text for this clip (use it only to name things you can actually see in the frames):\nSection title: {{ $('Parse Reel Payload').item.json.video.section_title }}\n\n{{ $('Parse Reel Payload').item.json.video.clip_context }}\n\nIf a distinctive building, monument, or place is visible in the frames, find its name in the nearby text and use that name. Do not write about a road, city, or scene from the text unless it is visible in the frames. End the description with a plain \"Read more.\" That is the only call to action. No questions to the reader. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends.\n\nReturn EXACTLY this format and nothing else:\nTITLE: <short YouTube Shorts title about this clip, max 70 characters, punchy, no hashtags>\nDESCRIPTION:\n<1 or 2 short sentences about what the clip shows, at most one emoji. Then \"Read more.\" End with 2 to 4 relevant hashtags including #Shorts, each starting with #. Do NOT include any URL.>",
         "inputType": "base64",
+        "binaryPropertyName": "={{ $json.frameKeys }}",
         "options": {
           "detail": "auto",
-          "maxTokens": 300
+          "maxTokens": 200
         }
       },
       "id": "64dcb311-d5a3-4d9f-a207-fcd74c4bc9a8",
@@ -586,7 +407,7 @@
       "type": "@n8n/n8n-nodes-langchain.openAi",
       "typeVersion": 2.3,
       "position": [
-        1120,
+        1568,
         -224
       ],
       "retryOnFail": true,
@@ -607,7 +428,7 @@
       "type": "n8n-nodes-ffmpeg-studio.ffmpegAnalyze",
       "typeVersion": 1,
       "position": [
-        448,
+        896,
         -224
       ]
     },
@@ -640,7 +461,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        672,
+        1120,
         -224
       ]
     },
@@ -656,7 +477,7 @@
       "type": "n8n-nodes-base.readWriteFile",
       "typeVersion": 1.1,
       "position": [
-        1568,
+        2016,
         -224
       ]
     },
@@ -670,7 +491,7 @@
       "type": "n8n-nodes-postiz.postiz",
       "typeVersion": 1,
       "position": [
-        1792,
+        2240,
         -224
       ],
       "credentials": {
@@ -682,7 +503,78 @@
     },
     {
       "parameters": {
-        "type": "draft",
+        "jsCode": "const frames = $('Merge Frames').first();\nreturn [{\n  json: { ...$input.first().json, frameKeys: frames.json.frameKeys, frameCount: frames.json.frameCount },\n  binary: frames.binary,\n}];\n"
+      },
+      "id": "ff686fa2-3ac7-46db-886a-1a2ec8c5e470",
+      "name": "Attach Frames for YT",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        -224
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst text = String(raw?.[0]?.content?.[0]?.text ?? '').trim();\nconst titleMatch = text.match(/^TITLE:\\s*(.+)$/im);\nconst descMatch = text.match(/DESCRIPTION:\\s*([\\s\\S]*)$/i);\nlet title = (titleMatch?.[1] || '').trim().split('\\n')[0].trim();\nlet description = (descMatch?.[1] || '').trim();\nif (!title) title = text.split('\\n').map((l) => l.trim()).find(Boolean) || 'Sailing Nomads';\nif (!description) description = text;\ntitle = title.replace(/^TITLE:\\s*/i, '').slice(0, 100).trim();\nif (title.length < 2) title = 'Sailing Nomads';\nreturn [{ json: { title, description } }];"
+      },
+      "id": "ee51c944-9bd2-4c66-8f38-60c818b66236",
+      "name": "Parse YT Caption",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        -224
+      ]
+    },
+    {
+      "parameters": {
+        "inputFile": "={{ $('Merge Adapt Into Payload').item.json.video_4x5_local }}"
+      },
+      "id": "d6398ea0-bc46-428c-a396-44db7b87a214",
+      "name": "Analyze Reel Duration",
+      "type": "n8n-nodes-ffmpeg-studio.ffmpegAnalyze",
+      "typeVersion": 1,
+      "position": [
+        224,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "extractFrames",
+        "inputFile": "={{ $('Merge Adapt Into Payload').item.json.video_4x5_local }}",
+        "frameInterval": "={{ Math.max(1, Math.round(($json.duration || 10) / 5)) }}",
+        "frameWidth": 720,
+        "maxFrames": 5,
+        "framesOutputDir": "=/tmp/frames/{{ $('Parse Reel Payload').item.json.slug }}-{{ $('Parse Reel Payload').item.json.video.index }}",
+        "returnBinary": true
+      },
+      "id": "c6a2fa43-bab3-430c-97f5-c29bd771b308",
+      "name": "Extract Frames",
+      "type": "n8n-nodes-ffmpeg-studio.ffmpegAnalyze",
+      "typeVersion": 1,
+      "position": [
+        448,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst path = require('path');\nconst items = $input.all();\nconst first = items[0];\nconst files = Array.isArray(first.json.files) ? first.json.files : [];\nconst binary = {};\nlet n = 0;\nfunction addBuffer(buffer, fileName) {\n  n += 1;\n  binary['frame' + n] = {\n    data: buffer.toString('base64'),\n    mimeType: 'image/jpeg',\n    fileName: fileName,\n    fileExtension: 'jpg',\n  };\n}\nif (files.length) {\n  for (const filePath of files) {\n    if (!filePath || !fs.existsSync(filePath)) continue;\n    addBuffer(fs.readFileSync(filePath), path.basename(filePath));\n  }\n} else {\n  for (const item of items) {\n    if (!item.binary) continue;\n    for (const key of Object.keys(item.binary)) {\n      n += 1;\n      binary['frame' + n] = item.binary[key];\n    }\n  }\n}\nif (n === 0) {\n  throw new Error('No reel frames extracted');\n}\nreturn [{ json: { ...first.json, frameCount: n, frameKeys: Object.keys(binary).join(',') }, binary }];\n"
+      },
+      "id": "a9fdff45-1de6-4368-b037-a806621ee36d",
+      "name": "Merge Frames",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "type": "schedule",
         "date": "={{ $now.plus(1 + $('Reel Webhook').item.json.body.video.index, \"days\").toISO() }}",
         "posts": {
           "post": [
@@ -729,11 +621,11 @@
         }
       },
       "id": "c69c2ad9-29b2-48de-85ab-4468b75920d0",
-      "name": "Create YT Draft",
+      "name": "Create YT Short",
       "type": "n8n-nodes-postiz.postiz",
       "typeVersion": 1,
       "position": [
-        2016,
+        2464,
         -224
       ],
       "credentials": {
@@ -745,29 +637,172 @@
     },
     {
       "parameters": {
-        "jsCode": "const cover = $('Extract Cover').first();\nreturn [{\n  json: { ...$input.first().json },\n  binary: cover.binary,\n}];"
+        "type": "schedule",
+        "date": "={{ $now.plus(1 + $('Reel Webhook').item.json.body.video.index, \"days\").toISO() }}",
+        "posts": {
+          "post": [
+            {
+              "integrationId": "cmrmbjfkp00win60ybjz64sxw",
+              "group": "={{ $(\"Parse Reel Payload\").item.json.slug }}-reel-{{ $(\"Parse Reel Payload\").item.json.video.index }}",
+              "settings": {
+                "setting": [
+                  {
+                    "key": "__type",
+                    "stringValue": "instagram"
+                  },
+                  {
+                    "key": "post_type",
+                    "stringValue": "post"
+                  },
+                  {
+                    "key": "is_trial_reel",
+                    "valueType": "boolean"
+                  }
+                ]
+              },
+              "value": {
+                "contentItem": [
+                  {
+                    "content": "={{ $('Caption IG').item.json[0].content[0].text }}",
+                    "image": {
+                      "imageItem": [
+                        {
+                          "id": "={{ $json.id }}",
+                          "path": "={{ $json.path }}"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
       },
-      "id": "ff686fa2-3ac7-46db-886a-1a2ec8c5e470",
-      "name": "Attach Cover for YT",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "id": "efadcedc-c20d-4839-8d94-c6f69066ca2c",
+      "name": "Create IG Reel",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
       "position": [
-        896,
-        -224
-      ]
+        1568,
+        -32
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "mkv19KbAM7doUSaU",
+          "name": "Postiz account"
+        }
+      }
     },
     {
       "parameters": {
-        "jsCode": "const raw = $input.first().json;\nconst text = String(raw?.[0]?.content?.[0]?.text ?? '').trim();\nconst titleMatch = text.match(/^TITLE:\\s*(.+)$/im);\nconst descMatch = text.match(/DESCRIPTION:\\s*([\\s\\S]*)$/i);\nlet title = (titleMatch?.[1] || '').trim().split('\\n')[0].trim();\nlet description = (descMatch?.[1] || '').trim();\nif (!title) title = text.split('\\n').map((l) => l.trim()).find(Boolean) || 'Sailing Nomads';\nif (!description) description = text;\ntitle = title.replace(/^TITLE:\\s*/i, '').slice(0, 100).trim();\nif (title.length < 2) title = 'Sailing Nomads';\nreturn [{ json: { title, description } }];"
+        "type": "schedule",
+        "date": "={{ $now.plus(1 + $('Reel Webhook').item.json.body.video.index, \"days\").toISO() }}",
+        "posts": {
+          "post": [
+            {
+              "integrationId": "cmrmbindh050spg0ypnszg5ag",
+              "group": "={{ $(\"Parse Reel Payload\").item.json.slug }}-reel-{{ $(\"Parse Reel Payload\").item.json.video.index }}",
+              "settings": {
+                "setting": [
+                  {
+                    "key": "__type",
+                    "stringValue": "facebook"
+                  },
+                  {
+                    "key": "post_type",
+                    "stringValue": "post"
+                  }
+                ]
+              },
+              "value": {
+                "contentItem": [
+                  {
+                    "content": "={{ $('Caption FB').item.json[0].content[0].text }}\n\n{{ $(\"Parse Reel Payload\").item.json.post.url }}",
+                    "image": {
+                      "imageItem": [
+                        {
+                          "id": "={{ $json.id }}",
+                          "path": "={{ $json.path }}"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
       },
-      "id": "ee51c944-9bd2-4c66-8f38-60c818b66236",
-      "name": "Parse YT Caption",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "id": "47c495c8-8552-4ef2-8e05-dbbf389deca8",
+      "name": "Create FB Reel",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
       "position": [
-        1344,
-        -224
-      ]
+        1568,
+        160
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "mkv19KbAM7doUSaU",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "type": "schedule",
+        "date": "={{ $now.plus(1 + $('Reel Webhook').item.json.body.video.index, \"days\").toISO() }}",
+        "posts": {
+          "post": [
+            {
+              "integrationId": "cmrmbk0b9050zpg0ytkz5uy0r",
+              "group": "={{ $(\"Parse Reel Payload\").item.json.slug }}-reel-{{ $(\"Parse Reel Payload\").item.json.video.index }}",
+              "settings": {
+                "setting": [
+                  {
+                    "key": "__type",
+                    "stringValue": "x"
+                  },
+                  {
+                    "key": "who_can_reply_post",
+                    "stringValue": "everyone"
+                  }
+                ]
+              },
+              "value": {
+                "contentItem": [
+                  {
+                    "content": "={{ $('Caption X').item.json[0].content[0].text }}",
+                    "image": {
+                      "imageItem": [
+                        {
+                          "id": "={{ $json.id }}",
+                          "path": "={{ $json.path }}"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "4ed1a112-ba40-4305-ae49-dbf45fd8f824",
+      "name": "Create X Video",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        2016,
+        448
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "mkv19KbAM7doUSaU",
+          "name": "Postiz account"
+        }
+      }
     }
   ],
   "connections": {
@@ -797,7 +832,7 @@
       "main": [
         [
           {
-            "node": "Create FB Draft",
+            "node": "Create FB Reel",
             "type": "main",
             "index": 0
           }
@@ -830,7 +865,7 @@
       "main": [
         [
           {
-            "node": "Create IG Draft",
+            "node": "Create IG Reel",
             "type": "main",
             "index": 0
           }
@@ -852,7 +887,7 @@
       "main": [
         [
           {
-            "node": "Create X Draft",
+            "node": "Create X Video",
             "type": "main",
             "index": 0
           }
@@ -885,28 +920,7 @@
       "main": [
         [
           {
-            "node": "Extract Cover",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Extract Cover": {
-      "main": [
-        [
-          {
-            "node": "Caption FB",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Caption IG",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Analyze YT Duration",
+            "node": "Analyze Reel Duration",
             "type": "main",
             "index": 0
           }
@@ -990,7 +1004,7 @@
       "main": [
         [
           {
-            "node": "Create YT Draft",
+            "node": "Create YT Short",
             "type": "main",
             "index": 0
           }
@@ -1012,18 +1026,7 @@
       "main": [
         [
           {
-            "node": "Attach Cover for YT",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Attach Cover for YT": {
-      "main": [
-        [
-          {
-            "node": "Caption YT",
+            "node": "Attach Frames for YT",
             "type": "main",
             "index": 0
           }
@@ -1051,6 +1054,65 @@
           }
         ]
       ]
+    },
+    "Analyze Reel Duration": {
+      "main": [
+        [
+          {
+            "node": "Extract Frames",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Frames": {
+      "main": [
+        [
+          {
+            "node": "Merge Frames",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Frames": {
+      "main": [
+        [
+          {
+            "node": "Caption FB",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Caption IG",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Caption X",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Analyze YT Duration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach Frames for YT": {
+      "main": [
+        [
+          {
+            "node": "Caption YT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
@@ -1068,9 +1130,9 @@
   },
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "be986d7e-a2ed-470e-bbdf-1a56ceba51c3",
-  "activeVersionId": "be986d7e-a2ed-470e-bbdf-1a56ceba51c3",
-  "versionCounter": 20,
+  "versionId": "0c689b25-e3ef-40d1-8e3c-aecba1ee70d4",
+  "activeVersionId": "0c689b25-e3ef-40d1-8e3c-aecba1ee70d4",
+  "versionCounter": 38,
   "triggerCount": 1,
   "sourceWorkflowId": null,
   "tags": []

@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-08T13:50:20.575Z",
+  "updatedAt": "2026-08-14T13:50:50.000Z",
   "createdAt": "2026-08-05T15:02:16.577Z",
   "id": "8NOGn9jgOoV0fw0u",
   "name": "Adapt Feature Image",
@@ -350,8 +350,8 @@
   },
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "c59563bc-81d6-4039-8f63-fec4295e5c11",
-  "activeVersionId": "c59563bc-81d6-4039-8f63-fec4295e5c11",
+  "versionId": "e207a340-86d5-4573-b839-e57ddac97fba",
+  "activeVersionId": "e207a340-86d5-4573-b839-e57ddac97fba",
   "versionCounter": 2,
   "triggerCount": 0,
   "sourceWorkflowId": null,

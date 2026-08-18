@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-10T07:49:59.596Z",
+  "updatedAt": "2026-08-18T09:45:11.217Z",
   "createdAt": "2026-08-05T15:02:25.910Z",
   "id": "l7HCCWtO1ALC82n6",
   "name": "Blog Post Publish",
@@ -153,61 +153,6 @@
     },
     {
       "parameters": {
-        "type": "draft",
-        "date": "={{ $now.plus(1, \"days\").toISO() }}",
-        "posts": {
-          "post": [
-            {
-              "integrationId": "cmrmbindh050spg0ypnszg5ag",
-              "group": "={{ $(\"Publish Webhook\").item.json.body.slug }}-intro",
-              "settings": {
-                "setting": [
-                  {
-                    "key": "__type",
-                    "stringValue": "facebook"
-                  },
-                  {
-                    "key": "post_type",
-                    "stringValue": "post"
-                  }
-                ]
-              },
-              "value": {
-                "contentItem": [
-                  {
-                    "content": "={{ $('Caption Intro FB').item.json.output[0].content[0].text }}\n\n{{ $(\"Publish Webhook\").item.json.body.post_url }}",
-                    "image": {
-                      "imageItem": [
-                        {
-                          "id": "={{ $json.id }}",
-                          "path": "={{ $json.path }}"
-                        }
-                      ]
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        }
-      },
-      "id": "e246e3de-0d94-4ee4-a633-6ed3696e7261",
-      "name": "Create Intro FB Draft",
-      "type": "n8n-nodes-postiz.postiz",
-      "typeVersion": 1,
-      "position": [
-        1152,
-        192
-      ],
-      "credentials": {
-        "postizApi": {
-          "id": "mkv19KbAM7doUSaU",
-          "name": "Postiz account"
-        }
-      }
-    },
-    {
-      "parameters": {
         "fileSelector": "={{ $('Adapt Feature Image').item.json.header.instagram }}",
         "options": {
           "dataPropertyName": "data"
@@ -233,61 +178,6 @@
       "typeVersion": 1,
       "position": [
         928,
-        384
-      ],
-      "credentials": {
-        "postizApi": {
-          "id": "mkv19KbAM7doUSaU",
-          "name": "Postiz account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "type": "draft",
-        "date": "={{ $now.plus(1, \"days\").toISO() }}",
-        "posts": {
-          "post": [
-            {
-              "integrationId": "cmrmbjfkp00win60ybjz64sxw",
-              "group": "={{ $(\"Publish Webhook\").item.json.body.slug }}-intro",
-              "settings": {
-                "setting": [
-                  {
-                    "key": "__type",
-                    "stringValue": "instagram"
-                  },
-                  {
-                    "key": "post_type",
-                    "stringValue": "post"
-                  }
-                ]
-              },
-              "value": {
-                "contentItem": [
-                  {
-                    "content": "={{ $('Caption Intro IG').item.json.output[0].content[0].text }}",
-                    "image": {
-                      "imageItem": [
-                        {
-                          "id": "={{ $json.id }}",
-                          "path": "={{ $json.path }}"
-                        }
-                      ]
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        }
-      },
-      "id": "ae8c9865-804f-487e-b081-ece115e498b4",
-      "name": "Create Intro IG Draft",
-      "type": "n8n-nodes-postiz.postiz",
-      "typeVersion": 1,
-      "position": [
-        1152,
         384
       ],
       "credentials": {
@@ -335,61 +225,6 @@
     },
     {
       "parameters": {
-        "type": "draft",
-        "date": "={{ $now.plus(1, \"days\").toISO() }}",
-        "posts": {
-          "post": [
-            {
-              "integrationId": "cmrmbk0b9050zpg0ytkz5uy0r",
-              "group": "={{ $(\"Publish Webhook\").item.json.body.slug }}-intro",
-              "settings": {
-                "setting": [
-                  {
-                    "key": "__type",
-                    "stringValue": "x"
-                  },
-                  {
-                    "key": "who_can_reply_post",
-                    "stringValue": "everyone"
-                  }
-                ]
-              },
-              "value": {
-                "contentItem": [
-                  {
-                    "content": "={{ $('Caption Intro X').item.json.output[0].content[0].text }}",
-                    "image": {
-                      "imageItem": [
-                        {
-                          "id": "={{ $json.id }}",
-                          "path": "={{ $json.path }}"
-                        }
-                      ]
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        }
-      },
-      "id": "d0c30e04-5d43-4090-a805-aaf1f29c3eff",
-      "name": "Create Intro X Draft",
-      "type": "n8n-nodes-postiz.postiz",
-      "typeVersion": 1,
-      "position": [
-        1152,
-        576
-      ],
-      "credentials": {
-        "postizApi": {
-          "id": "mkv19KbAM7doUSaU",
-          "name": "Postiz account"
-        }
-      }
-    },
-    {
-      "parameters": {
         "modelId": {
           "__rl": true,
           "mode": "id",
@@ -399,7 +234,7 @@
           "values": [
             {
               "role": "system",
-              "content": "=You write a Facebook intro post for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Goal: make people click through to the blog post. Write in English. You get the blog post TITLE, SUMMARY, CONTENT and an optional POSITION HINT. Summarize the whole post and make people want to read it. Write 2 to 4 short, warm, personal paragraphs with a strong first-line hook. A tasteful emoji is fine. End with a light call to action. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends. Do NOT include any URL. After the caption, add 0 to 3 relevant hashtags on their own final line, each starting with #. Return ONLY the caption text followed by that hashtag line."
+              "content": "=You write a Facebook intro post for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Write in English. You get the blog post TITLE, SUMMARY, CONTENT and an optional POSITION HINT. Pick the one or two most interesting concrete details and say them plainly. One short paragraph, two or three sentences max. End with a plain \"Read more.\" That is the only call to action. No questions to the reader. A single tasteful emoji is optional. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends. Do NOT include any URL. After the caption, add 0 to 3 relevant hashtags on their own final line, each starting with #. Return ONLY the caption text followed by that hashtag line."
             },
             {
               "content": "=TITLE:\n{{ $('Assemble Multilingual Blocks').item.json.titles.en }}\n\nSUMMARY:\n{{ $('Publish Webhook').item.json.body.meta.summary }}\n\nCONTENT:\n{{ $('Assemble Multilingual Blocks').item.json.english_text }}\n\nPOSITION HINT:\n{{ $('Publish Webhook').item.json.body.meta.position }}"
@@ -408,7 +243,7 @@
         },
         "builtInTools": {},
         "options": {
-          "maxTokens": 800
+          "maxTokens": 250
         }
       },
       "id": "b9f35c3c-120a-43c7-85ab-0b481554b7ea",
@@ -440,7 +275,7 @@
           "values": [
             {
               "role": "system",
-              "content": "=You write an Instagram intro caption for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Goal: reach, saves and profile visits; the blog link lives in the bio. Write in English. You get the blog post TITLE, SUMMARY, CONTENT and an optional POSITION HINT. Summarize the whole post and make people want to read it. The first line must hook within about 125 characters. Short airy paragraphs, emojis welcome but not overloaded. End with a question or a save-this nudge. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends. Do NOT include any URL or a link-in-bio call to action. After the caption, add 5 to 8 specific hashtags on their own final line, each starting with #, mixing niche sailing and travel tags with location tags, avoiding banned or spammy tags. Return ONLY the caption text followed by that hashtag line."
+              "content": "=You write an Instagram intro caption for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. The blog link lives in the bio. Write in English. You get the blog post TITLE, SUMMARY, CONTENT and an optional POSITION HINT. Pick the one or two most interesting concrete details and say them plainly. One or two short sentences. End with a plain \"Link in bio.\" That is the only call to action. No questions to the reader, no save-this nudge. Emojis welcome but not overloaded. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends. Do NOT include any URL. After the caption, add 5 to 8 specific hashtags on their own final line, each starting with #, mixing niche sailing and travel tags with location tags, avoiding banned or spammy tags. Return ONLY the caption text followed by that hashtag line."
             },
             {
               "content": "=TITLE:\n{{ $('Assemble Multilingual Blocks').item.json.titles.en }}\n\nSUMMARY:\n{{ $('Publish Webhook').item.json.body.meta.summary }}\n\nCONTENT:\n{{ $('Assemble Multilingual Blocks').item.json.english_text }}\n\nPOSITION HINT:\n{{ $('Publish Webhook').item.json.body.meta.position }}"
@@ -449,7 +284,7 @@
         },
         "builtInTools": {},
         "options": {
-          "maxTokens": 800
+          "maxTokens": 250
         }
       },
       "id": "67644765-2fa4-47bd-9f00-812e5c8e8358",
@@ -481,7 +316,7 @@
           "values": [
             {
               "role": "system",
-              "content": "=You write an X (Twitter) intro post for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Goal: grow the audience and earn interest in the blog. Write in English. You get the blog post TITLE, SUMMARY, CONTENT and an optional POSITION HINT. Summarize the whole post in one punchy thought: a hook, a vivid detail or a dry observation. Plain language, at most one emoji. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends. Do NOT include any URL. End the post with 0 to 2 short relevant hashtags, each starting with #. The entire post including the hashtags must be at most 240 characters. Return ONLY the post text followed by the hashtags."
+              "content": "=You write an X (Twitter) intro post for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. The blog link lives in the profile. Write in English. You get the blog post TITLE, SUMMARY, CONTENT and an optional POSITION HINT. One punchy thought about a concrete detail from the post. Plain language, at most one emoji. End with a plain \"Link in bio.\" That is the only call to action. No questions to the reader. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends. Do NOT include any URL. End the post with 0 to 2 short relevant hashtags, each starting with #. The entire post including the hashtags must be at most 240 characters. Return ONLY the post text followed by the hashtags."
             },
             {
               "content": "=TITLE:\n{{ $('Assemble Multilingual Blocks').item.json.titles.en }}\n\nSUMMARY:\n{{ $('Publish Webhook').item.json.body.meta.summary }}\n\nCONTENT:\n{{ $('Assemble Multilingual Blocks').item.json.english_text }}\n\nPOSITION HINT:\n{{ $('Publish Webhook').item.json.body.meta.position }}"
@@ -795,7 +630,172 @@
     },
     {
       "parameters": {
-        "type": "draft",
+        "type": "schedule",
+        "date": "={{ $now.plus(1, \"days\").toISO() }}",
+        "posts": {
+          "post": [
+            {
+              "integrationId": "cmrmbindh050spg0ypnszg5ag",
+              "group": "={{ $(\"Publish Webhook\").item.json.body.slug }}-intro",
+              "settings": {
+                "setting": [
+                  {
+                    "key": "__type",
+                    "stringValue": "facebook"
+                  },
+                  {
+                    "key": "post_type",
+                    "stringValue": "post"
+                  }
+                ]
+              },
+              "value": {
+                "contentItem": [
+                  {
+                    "content": "={{ $('Caption Intro FB').item.json.output[0].content[0].text }}\n\n{{ $(\"Publish Webhook\").item.json.body.post_url }}",
+                    "image": {
+                      "imageItem": [
+                        {
+                          "id": "={{ $json.id }}",
+                          "path": "={{ $json.path }}"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "e246e3de-0d94-4ee4-a633-6ed3696e7261",
+      "name": "Create FB Intro",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        1152,
+        192
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "mkv19KbAM7doUSaU",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "type": "schedule",
+        "date": "={{ $now.plus(1, \"days\").toISO() }}",
+        "posts": {
+          "post": [
+            {
+              "integrationId": "cmrmbjfkp00win60ybjz64sxw",
+              "group": "={{ $(\"Publish Webhook\").item.json.body.slug }}-intro",
+              "settings": {
+                "setting": [
+                  {
+                    "key": "__type",
+                    "stringValue": "instagram"
+                  },
+                  {
+                    "key": "post_type",
+                    "stringValue": "post"
+                  }
+                ]
+              },
+              "value": {
+                "contentItem": [
+                  {
+                    "content": "={{ $('Caption Intro IG').item.json.output[0].content[0].text }}",
+                    "image": {
+                      "imageItem": [
+                        {
+                          "id": "={{ $json.id }}",
+                          "path": "={{ $json.path }}"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "ae8c9865-804f-487e-b081-ece115e498b4",
+      "name": "Create IG Intro",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        1152,
+        384
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "mkv19KbAM7doUSaU",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "type": "schedule",
+        "date": "={{ $now.plus(1, \"days\").toISO() }}",
+        "posts": {
+          "post": [
+            {
+              "integrationId": "cmrmbk0b9050zpg0ytkz5uy0r",
+              "group": "={{ $(\"Publish Webhook\").item.json.body.slug }}-intro",
+              "settings": {
+                "setting": [
+                  {
+                    "key": "__type",
+                    "stringValue": "x"
+                  },
+                  {
+                    "key": "who_can_reply_post",
+                    "stringValue": "everyone"
+                  }
+                ]
+              },
+              "value": {
+                "contentItem": [
+                  {
+                    "content": "={{ $('Caption Intro X').item.json.output[0].content[0].text }}",
+                    "image": {
+                      "imageItem": [
+                        {
+                          "id": "={{ $json.id }}",
+                          "path": "={{ $json.path }}"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "id": "d0c30e04-5d43-4090-a805-aaf1f29c3eff",
+      "name": "Create X Intro",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        1152,
+        576
+      ],
+      "credentials": {
+        "postizApi": {
+          "id": "mkv19KbAM7doUSaU",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "type": "schedule",
         "date": "={{ $now.plus(2 + $itemIndex, \"days\").toISO() }}",
         "posts": {
           "post": [
@@ -826,7 +826,7 @@
         }
       },
       "id": "7ca47311-a300-4b89-b20a-b72c378c5d65",
-      "name": "Create Controversy X Draft",
+      "name": "Create X Controversy",
       "type": "n8n-nodes-postiz.postiz",
       "typeVersion": 1,
       "position": [
@@ -857,7 +857,7 @@
       "main": [
         [
           {
-            "node": "Create Intro FB Draft",
+            "node": "Create FB Intro",
             "type": "main",
             "index": 0
           }
@@ -879,7 +879,7 @@
       "main": [
         [
           {
-            "node": "Create Intro IG Draft",
+            "node": "Create IG Intro",
             "type": "main",
             "index": 0
           }
@@ -901,7 +901,7 @@
       "main": [
         [
           {
-            "node": "Create Intro X Draft",
+            "node": "Create X Intro",
             "type": "main",
             "index": 0
           }
@@ -1075,7 +1075,7 @@
       "main": [
         [
           {
-            "node": "Create Controversy X Draft",
+            "node": "Create X Controversy",
             "type": "main",
             "index": 0
           }
@@ -1109,9 +1109,9 @@
   },
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "daef5e42-f8d5-45c2-afa6-449ea33388d5",
-  "activeVersionId": "daef5e42-f8d5-45c2-afa6-449ea33388d5",
-  "versionCounter": 29,
+  "versionId": "7b2f31ff-c1d2-4474-9221-cd3c685a695f",
+  "activeVersionId": "7b2f31ff-c1d2-4474-9221-cd3c685a695f",
+  "versionCounter": 39,
   "triggerCount": 1,
   "sourceWorkflowId": null,
   "tags": []
