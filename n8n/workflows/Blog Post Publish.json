@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-18T09:45:11.217Z",
+  "updatedAt": "2026-08-25T09:09:24.698Z",
   "createdAt": "2026-08-05T15:02:25.910Z",
   "id": "l7HCCWtO1ALC82n6",
   "name": "Blog Post Publish",
@@ -47,10 +47,10 @@
           "values": [
             {
               "role": "system",
-              "content": "=You are an expert translator and localizer for a personal sailing and travel blog. Translate the post TITLE and each text/title block item from {{ {de:\"German\",en:\"English\",es:\"Spanish\",fr:\"French\",it:\"Italian\"}[$(\"Prepare Blocks\").item.json.source_lang] }} into every natural target language in en, es, fr, it that is not the source language {{ $(\"Prepare Blocks\").item.json.source_lang }}. Preserve ALL markdown exactly: links, headings, bold, italic, lists, tables. In image syntax ![alt](filename) you may translate the alt text but the filename in parentheses must stay byte for byte identical. Never change file paths or URLs. Keep proper nouns, place names and certification codes. Write fluent natural language that reads like a native blogger. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to readers. Return ONLY a JSON object of the form {\"translations\":[{\"lang_code\":\"en\",\"title\":\"...\",\"items\":[{\"index\":0,\"text\":\"...\"}]}]} with one entry per target language. Each items array must include every provided index with the translated text. Do not include the source language. Do not include pirate speak (arrr). Do not add any disclaimer line; it is appended later."
+              "content": "=You are an expert translator and localizer for a personal sailing and travel blog. Translate the post TITLE, the SUMMARY, and each text/title block item from {{ {de:\"German\",en:\"English\",es:\"Spanish\",fr:\"French\",it:\"Italian\"}[$(\"Prepare Blocks\").item.json.source_lang] }} into every natural target language in en, es, fr, it that is not the source language {{ $(\"Prepare Blocks\").item.json.source_lang }}. Preserve ALL markdown exactly: links, headings, bold, italic, lists, tables. In image syntax ![alt](filename) you may translate the alt text but the filename in parentheses must stay byte for byte identical. Never change file paths or URLs. Keep proper nouns, place names and certification codes. Write fluent natural language that reads like a native blogger. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to readers. Return ONLY a JSON object of the form {\"translations\":[{\"lang_code\":\"en\",\"title\":\"...\",\"summary\":\"...\",\"items\":[{\"index\":0,\"text\":\"...\"}]}]} with one entry per target language. Each items array must include every provided index with the translated text. Do not include the source language. Do not include pirate speak (arrr). Do not add any disclaimer line; it is appended later."
             },
             {
-              "content": "=TITLE:\n{{ $(\"Prepare Blocks\").item.json.title }}\n\nITEMS:\n{{ JSON.stringify($(\"Prepare Blocks\").item.json.translate_items) }}"
+              "content": "=TITLE:\n{{ $(\"Prepare Blocks\").item.json.title }}\n\nSUMMARY:\n{{ $(\"Prepare Blocks\").item.json.meta.summary }}\n\nITEMS:\n{{ JSON.stringify($(\"Prepare Blocks\").item.json.translate_items) }}"
             }
           ]
         },
@@ -112,7 +112,7 @@
       "typeVersion": 2.2,
       "position": [
         -224,
-        576
+        768
       ]
     },
     {
@@ -409,7 +409,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const prep = $('Prepare Blocks').item.json;\nconst parseTr = (j) => {\n  let t = j?.output?.[0]?.content?.[0]?.text ?? j;\n  if (typeof t === 'string') t = JSON.parse(t);\n  return t.translations || [];\n};\nconst LANG_NAMES = { en: 'english', de: 'german', es: 'spanish', fr: 'french', it: 'italian', arrr: 'pirate' };\nconst blocks = prep.blocks.map((b) => ({ ...b }));\nconst titles = { [prep.source_lang]: prep.title };\nfor (const tr of [...parseTr($('Natural Language Translation').item.json), ...parseTr($('Pirate Speak Generator').item.json)]) {\n  const code = tr.lang_code;\n  if (!code || code === prep.source_lang) continue;\n  titles[code] = code === 'arrr' ? prep.title : (tr.title || prep.title);\n  for (const { index: i, text } of tr.items || []) {\n    if (blocks[i] && (blocks[i].kind === 'title' || blocks[i].kind === 'text')) blocks[i][code] = text ?? '';\n  }\n}\nconst flat = {};\nfor (const code of Object.keys(titles)) {\n  const name = LANG_NAMES[code];\n  if (!name) continue;\n  const title = titles[code] || '';\n  const body = blocks\n    .filter((b) => b.kind === 'title' || b.kind === 'text')\n    .map((b) => b[code] || '')\n    .filter(Boolean)\n    .join('\\n\\n');\n  flat[`${name}_text`] = [title, body].filter(Boolean).join('\\n\\n');\n}\nreturn [{ json: { slug: prep.slug, meta: prep.meta, source_lang: prep.source_lang, blocks, titles, ...flat } }];"
+        "jsCode": "const prep = $('Prepare Blocks').item.json;\nconst parseTr = (j) => {\n  let t = j?.output?.[0]?.content?.[0]?.text ?? j;\n  if (typeof t === 'string') t = JSON.parse(t);\n  return t.translations || [];\n};\nconst LANG_NAMES = { en: 'english', de: 'german', es: 'spanish', fr: 'french', it: 'italian', arrr: 'pirate' };\nconst blocks = prep.blocks.map((b) => ({ ...b }));\nconst titles = { [prep.source_lang]: prep.title };\nconst summaries = { [prep.source_lang]: prep.meta?.summary || '' };\nfor (const tr of [...parseTr($('Natural Language Translation').item.json), ...parseTr($('Pirate Speak Generator').item.json)]) {\n  const code = tr.lang_code;\n  if (!code || code === prep.source_lang) continue;\n  titles[code] = code === 'arrr' ? prep.title : (tr.title || prep.title);\n  if (code !== 'arrr' && tr.summary) summaries[code] = tr.summary;\n  for (const { index: i, text } of tr.items || []) {\n    if (blocks[i] && (blocks[i].kind === 'title' || blocks[i].kind === 'text')) blocks[i][code] = text ?? '';\n  }\n}\nconst flat = {};\nfor (const code of Object.keys(titles)) {\n  const name = LANG_NAMES[code];\n  if (!name) continue;\n  const title = titles[code] || '';\n  const body = blocks\n    .filter((b) => b.kind === 'title' || b.kind === 'text')\n    .map((b) => b[code] || '')\n    .filter(Boolean)\n    .join('\\n\\n');\n  flat[`${name}_text`] = [title, body].filter(Boolean).join('\\n\\n');\n}\nreturn [{ json: { slug: prep.slug, meta: prep.meta, source_lang: prep.source_lang, blocks, titles, summaries, ...flat } }];"
       },
       "id": "26ef7f10-7b46-4a2b-a384-4ba59d34e2c2",
       "name": "Assemble Multilingual Blocks",
@@ -839,6 +839,242 @@
           "name": "Postiz account"
         }
       }
+    },
+    {
+      "parameters": {
+        "part": [
+          "id",
+          "snippet"
+        ],
+        "limit": 1,
+        "filters": {},
+        "options": {}
+      },
+      "id": "9458d237-181f-49d2-a930-701628bc0574",
+      "name": "Check YouTube",
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [
+        1152,
+        864
+      ],
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "ZRR6PgY5kcUnORq5",
+          "name": "YouTube account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "getStatus",
+        "id": "syndicator-auth-check"
+      },
+      "id": "30336e59-8e5a-4a78-b4dd-46e682bdaba0",
+      "name": "Check Narrareach",
+      "type": "n8n-nodes-narrareach.narrareach",
+      "typeVersion": 1,
+      "position": [
+        64,
+        1008
+      ],
+      "credentials": {
+        "narrareachApi": {
+          "id": "k7QmN2pVxR9wLc4T",
+          "name": "Narrareach account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const src = $('Publish Webhook').first().json.body ?? $('Publish Webhook').first().json;\nconst slug = src.slug;\nconst VIDEO_RE = /\\.(mp4|mov|m4v|webm|avi|mkv|mpeg|mpg)$/i;\nconst videos = [];\nconst seen = new Set();\nfor (const b of src.blocks || []) {\n  const m = b.media || {};\n  const name = m.source_filename || '';\n  const isVideo = b.kind === 'video' || m.kind === 'video' || VIDEO_RE.test(name);\n  if (!isVideo || !name || seen.has(name)) continue;\n  seen.add(name);\n  videos.push({ filename: name, path: `/syndicator/${slug}/source/${name}`, slug });\n}\nreturn [{ json: { slug, videos, youtubeIds: {}, hasVideos: videos.length > 0 } }];"
+      },
+      "id": "8dcb2c3c-5717-448b-b858-b3397e53f272",
+      "name": "List Local Videos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        704,
+        1008
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "has-videos",
+              "leftValue": "={{ $json.hasVideos }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "09701c34-7743-4b0e-8212-8f736895ea63",
+      "name": "Has Local Videos?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        928,
+        1008
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "videos",
+        "options": {}
+      },
+      "id": "e9861b2d-913b-4a19-939f-1948be41c696",
+      "name": "Split Local Videos",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        864
+      ]
+    },
+    {
+      "parameters": {
+        "fileSelector": "={{ $json.path || $json.videos.path }}",
+        "options": {
+          "dataPropertyName": "data"
+        }
+      },
+      "id": "1aa55a3d-cc8a-4d57-bd67-bc6e05658bdd",
+      "name": "Read Local Video",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        1824,
+        864
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "video",
+        "operation": "upload",
+        "title": "={{ $('Split Local Videos').item.json.slug }} / {{ $json.fileName }}",
+        "regionCode": "US",
+        "categoryId": "22",
+        "options": {
+          "embeddable": true,
+          "notifySubscribers": false,
+          "privacyStatus": "unlisted",
+          "selfDeclaredMadeForKids": false
+        }
+      },
+      "id": "1f9bac79-adcd-4d0d-b1e0-8ab7b6fbadc4",
+      "name": "Upload Unlisted YouTube",
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [
+        2048,
+        864
+      ],
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "ZRR6PgY5kcUnORq5",
+          "name": "YouTube account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const uploads = $input.all();\nconst sources = $('Split Local Videos').all();\nconst youtubeIds = {};\nfor (let i = 0; i < uploads.length; i++) {\n  const j = sources[i] && sources[i].json;\n  const fn = j && (j.filename || (j.videos && j.videos.filename));\n  const id = uploads[i].json.id || uploads[i].json.uploadId;\n  if (fn && id) youtubeIds[fn] = id;\n}\nconst listed = $('List Local Videos').first().json;\nreturn [{ json: { slug: listed.slug, youtubeIds, hasVideos: true } }];"
+      },
+      "id": "af282810-c992-4799-a8b2-7e38cd2095a5",
+      "name": "Merge Video IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2272,
+        864
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function from(name) {\n  try { return $(name).first().json; } catch (e) { return {}; }\n}\nconst hook = $('Publish Webhook').first().json.body ?? $('Publish Webhook').first().json;\nconst assembled = $('Assemble Multilingual Blocks').first().json;\nconst ytMap = Object.assign({}, from('List Local Videos').youtubeIds || {}, from('Merge Video IDs').youtubeIds || {});\nconst VIDEO_RE = /\\.(mp4|mov|m4v|webm|avi|mkv|mpeg|mpg)$/i;\nconst sourceLang = assembled.source_lang || hook.meta?.lang_code || 'de';\nfunction withoutLang(url) {\n  return String(url || '').replace(/\\/(de|en|es|fr|it|arrr)(?=\\/posts\\/)/i, '');\n}\nfunction absUrl(file) {\n  const base = withoutLang(hook.post_url).replace(/\\/?$/, '/');\n  return base + String(file || '').replace(/^\\//, '');\n}\nfunction featuredName(header) {\n  const n = String(header || '').trim();\n  if (!n) return '';\n  const ext = n.includes('.') ? n.slice(n.lastIndexOf('.')) : '.jpg';\n  return 'featured' + ext;\n}\nfunction escapeHtml(s) {\n  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\nfunction ytIframe(id) {\n  return '<div class=\"video\"><iframe src=\"https://www.youtube.com/embed/' + id + '\" allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture\" allowfullscreen></iframe></div>';\n}\nfunction mdToHtml(text) {\n  let s = String(text || '');\n  s = s.replace(/\\{\\{<\\s*youtube\\s+([^>\\s]+)\\s*>\\}\\}/g, (_, id) => ytIframe(id.trim()));\n  s = s.replace(/\\{\\{<\\s*video\\s+src=\"([^\"]+)\"\\s*>\\}\\}/g, (_, file) => {\n    const id = ytMap[file];\n    return id ? ytIframe(id) : '';\n  });\n  s = s.replace(/!\\[([^\\]]*)\\]\\(([^)]+)\\)/g, (_, alt, file) => {\n    if (VIDEO_RE.test(file)) {\n      const id = ytMap[file];\n      return id ? ytIframe(id) : '';\n    }\n    return '<img src=\"' + escapeHtml(absUrl(file)) + '\" alt=\"' + escapeHtml(alt) + '\">';\n  });\n  s = s.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href=\"$2\">$1</a>');\n  s = s.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');\n  const lines = s.split('\\n');\n  const out = [];\n  let para = [];\n  const flush = () => {\n    if (!para.length) return;\n    const t = para.join('\\n').trim();\n    if (t) out.push('<p>' + t.replace(/\\n/g, '<br>') + '</p>');\n    para = [];\n  };\n  for (const line of lines) {\n    const h = /^(#{1,6})\\s+(.*)$/.exec(line);\n    if (h) { flush(); const n = h[1].length; out.push('<h' + n + '>' + h[2] + '</h' + n + '>'); continue; }\n    if (/^<(div|iframe|img|h\\d)/.test(line.trim())) { flush(); out.push(line); continue; }\n    if (!line.trim()) { flush(); continue; }\n    para.push(line);\n  }\n  flush();\n  return out.join('\\n');\n}\nfunction plain(text) {\n  return String(text || '')\n    .replace(/\\{\\{<[^>]+>\\}\\}/g, '')\n    .replace(/!\\[[^\\]]*\\]\\([^)]+\\)/g, '')\n    .replace(/\\[([^\\]]+)\\]\\([^)]+\\)/g, '$1')\n    .replace(/[#*_`>]/g, '')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\nconst lang = 'en';\nconst parts = [];\nfor (const b of assembled.blocks || []) {\n  if (b.kind === 'title' || b.kind === 'text') {\n    const text = b[lang] || (sourceLang === 'en' ? (b.raw || '') : '');\n    const html = mdToHtml(text);\n    if (html) parts.push(html);\n    continue;\n  }\n  if (b.kind === 'youtube' && b.media && b.media.youtube_id) {\n    parts.push(ytIframe(b.media.youtube_id));\n    continue;\n  }\n  const m = b.media || {};\n  const name = m.source_filename || '';\n  if (b.kind === 'video' || m.kind === 'video' || VIDEO_RE.test(name)) {\n    const id = ytMap[name];\n    if (id) parts.push(ytIframe(id));\n    continue;\n  }\n  if (name) {\n    const alt = sourceLang === 'en' ? (m.alt || '') : '';\n    parts.push('<img src=\"' + escapeHtml(absUrl(name)) + '\" alt=\"' + escapeHtml(alt) + '\">');\n  }\n}\nconst title = (assembled.titles && assembled.titles.en) || (sourceLang === 'en' ? (hook.meta.title || '') : '');\nlet subtitle = (assembled.summaries && assembled.summaries.en) || (sourceLang === 'en' ? (hook.meta.summary || '') : '');\nif (!subtitle) {\n  const first = (assembled.blocks || []).find((b) => b.kind === 'text' && b.en);\n  subtitle = plain(first && first.en);\n  if (subtitle.length > 280) subtitle = subtitle.slice(0, 277).replace(/\\s+\\S*$/, '') + '…';\n}\nreturn [{ json: {\n  title,\n  subtitle,\n  contentHtml: parts.join('\\n'),\n  sourceUrl: withoutLang(hook.post_url),\n  coverImageUrl: hook.header_source ? absUrl(featuredName(hook.header_source)) : '',\n  idempotencyKey: hook.slug,\n  slug: hook.slug,\n} }];"
+      },
+      "id": "08d9a7f1-d007-4b1c-84f2-e8370db875dd",
+      "name": "Prepare Narrareach Article",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2496,
+        1008
+      ]
+    },
+    {
+      "parameters": {
+        "title": "={{ $json.title }}",
+        "subtitle": "={{ $json.subtitle }}",
+        "contentHtml": "={{ $json.contentHtml }}",
+        "sourceUrl": "={{ $json.sourceUrl }}",
+        "articlePlatforms": [
+          "SUBSTACK",
+          "MEDIUM"
+        ],
+        "coverImageUrl": "={{ $json.coverImageUrl }}",
+        "sendToNewsletter": true,
+        "scheduledFor": "={{ $now.plus(1, \"days\").toISO() }}",
+        "timezone": "Europe/Zurich",
+        "idempotencyKey": "={{ $json.slug }}"
+      },
+      "id": "91362fa2-8751-4968-bda5-c9380a93e611",
+      "name": "Schedule Substack Medium",
+      "type": "n8n-nodes-narrareach.narrareach",
+      "typeVersion": 1,
+      "position": [
+        2720,
+        1008
+      ],
+      "credentials": {
+        "narrareachApi": {
+          "id": "k7QmN2pVxR9wLc4T",
+          "name": "Narrareach account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [$('List Local Videos').first()];"
+      },
+      "id": "b78c07d1-56dd-4d1a-92be-32fe5e391c9b",
+      "name": "After YouTube Auth",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1376,
+        864
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function errText(item) {\n  const e = item?.error ?? item?.json?.error;\n  if (!e) return '';\n  if (typeof e === 'string') return e;\n  return [e.message, e.description, e.httpCode, JSON.stringify(e)].filter(Boolean).join(' ');\n}\nconst item = $input.first();\nconst text = errText(item);\nconst ok = !text || /404|not found|not_found/i.test(text);\nif (!ok) return [];\nreturn [{ json: { narrareachOk: true } }];"
+      },
+      "id": "de21f3ce-a270-4530-8a4f-9cc2a5c634f5",
+      "name": "Narrareach Auth Ok",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        1088
+      ]
     }
   ],
   "connections": {
@@ -1016,12 +1252,17 @@
       "main": [
         [
           {
-            "node": "Adapt Feature Image",
+            "node": "Check Narrareach",
             "type": "main",
             "index": 0
           },
           {
             "node": "Analyze Controversy X",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Adapt Feature Image",
             "type": "main",
             "index": 0
           }
@@ -1092,6 +1333,141 @@
           }
         ]
       ]
+    },
+    "Check Narrareach": {
+      "main": [
+        [
+          {
+            "node": "List Local Videos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Narrareach Auth Ok",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Local Videos": {
+      "main": [
+        [
+          {
+            "node": "Has Local Videos?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Local Videos?": {
+      "main": [
+        [
+          {
+            "node": "Check YouTube",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Narrareach Article",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Local Videos": {
+      "main": [
+        [
+          {
+            "node": "Read Local Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Local Video": {
+      "main": [
+        [
+          {
+            "node": "Upload Unlisted YouTube",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Unlisted YouTube": {
+      "main": [
+        [
+          {
+            "node": "Merge Video IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Video IDs": {
+      "main": [
+        [
+          {
+            "node": "Prepare Narrareach Article",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Narrareach Article": {
+      "main": [
+        [
+          {
+            "node": "Schedule Substack Medium",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check YouTube": {
+      "main": [
+        [
+          {
+            "node": "After YouTube Auth",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "After YouTube Auth": {
+      "main": [
+        [
+          {
+            "node": "Split Local Videos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Narrareach Auth Ok": {
+      "main": [
+        [
+          {
+            "node": "List Local Videos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
@@ -1109,9 +1485,9 @@
   },
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "7b2f31ff-c1d2-4474-9221-cd3c685a695f",
-  "activeVersionId": "7b2f31ff-c1d2-4474-9221-cd3c685a695f",
-  "versionCounter": 39,
+  "versionId": "60635fa3-b0a9-4aa3-b56c-9e094d1efa7a",
+  "activeVersionId": "60635fa3-b0a9-4aa3-b56c-9e094d1efa7a",
+  "versionCounter": 159,
   "triggerCount": 1,
   "sourceWorkflowId": null,
   "tags": []

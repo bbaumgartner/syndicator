@@ -5,9 +5,9 @@ Date: 2026-08-12
 
 ## Context
 
-Syndicator runs three materially different services on one machine:
+Syndicator runs different services on one machine:
 
-- n8n/Node with ffmpeg and two community node packages
+- n8n/Node with ffmpeg and community node packages
 - pyautoflip/Python with native media and machine-learning dependencies
 - a chrooted OpenSSH SFTP endpoint
 

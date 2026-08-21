@@ -60,7 +60,7 @@ function fingerprint() {
     digest.update(path.relative(BUNDLE, filePath));
     digest.update(fs.readFileSync(filePath));
   }
-  for (const name of ["N8N_ENCRYPTION_KEY", "OPENAI_API_KEY", "POSTIZ_API_KEY"]) {
+  for (const name of ["N8N_ENCRYPTION_KEY", "OPENAI_API_KEY", "POSTIZ_API_KEY", "NARRAREACH_API_TOKEN"]) {
     digest.update(name);
     digest.update(process.env[name] || "");
   }
@@ -128,10 +128,16 @@ function workflowFiles() {
   return ordered;
 }
 
+function templateSecrets(templatePath) {
+  return [
+    ...fs.readFileSync(templatePath, "utf8").matchAll(/\$\{([A-Z0-9_]+)\}/g),
+  ].map((match) => match[1]);
+}
+
 function renderCredential(templatePath) {
   const raw = fs.readFileSync(templatePath, "utf8");
   const rendered = raw.replace(/\$\{([A-Z0-9_]+)\}/g, (_, key) => {
-    if (process.env[key] === undefined) {
+    if (!process.env[key]) {
       fail(`Missing environment value for template: ${key}`);
     }
     return JSON.stringify(process.env[key]).slice(1, -1);
@@ -426,6 +432,15 @@ async function main() {
   try {
     console.log(`Importing credentials for owner ${userId}...`);
     for (const templatePath of listBundle("credentials", ".template.json")) {
+      const missing = templateSecrets(templatePath).filter(
+        (key) => !process.env[key],
+      );
+      if (missing.length) {
+        console.log(
+          `Skipping ${path.basename(templatePath)} (unset: ${missing.join(", ")}).`,
+        );
+        continue;
+      }
       const out = path.join(
         tmp,
         path.basename(templatePath, ".template.json") + ".json",

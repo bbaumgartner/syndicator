@@ -35,6 +35,9 @@ with a list of values that still need input. Fill in:
 - Postiz API key
 - the public URL and bind addresses appropriate for the host
 
+`NARRAREACH_API_TOKEN` is optional. Leave it empty to run without Substack and
+Medium syndication.
+
 The lifecycle passes `.env` to Compose as an env file, never as shell code. Quote
 values that contain spaces or `#`; single quotes preserve `$`, backticks, and
 other characters literally.
