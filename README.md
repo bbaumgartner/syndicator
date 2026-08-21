@@ -2,7 +2,7 @@
 
 Syndicator takes a blog post and:
 1. Generate a static web site translated to EN, DE, ES, FR, IT, and Pirate Speak
-2. Distribute the blog post to social media platforms Instagram, Facebook, YouTube, and X.
+2. Distribute the blog post to social media platforms Instagram, Facebook, YouTube, Twitter, Substack and Medium.
 
 It uses AI extensively for various aspects like translation, post text generation, and media cropping.
 
@@ -18,12 +18,15 @@ ASCII context (kept for LLM / text-only readers):
                                         │
                                         ├──────( ○───────[OpenAI]
                                         │
-                                        └──────( ○───────[Hugo]
+                                        ├──────( ○───────[Hugo]
+                                        │
+                                        └──────( ○───────[Narrareach]───────( ○───────[Substack, Medium]
 -->
 
 Syndicator provides the `syndicate` interface specified in this document.
 
 * Syndicator uses [Postiz](https://postiz.com/) to schedule social media posts.
+* Syndicator uses [Narrareach](https://www.narrareach.com/) to schedule to Substack and Medium (title, subtitle, and body).
 * Syndicator uses [OpenAI](https://openai.com/) for AI tasks.
 * Syndicator uses [Hugo](https://gohugo.io/) to generate static blog post site.
 
@@ -36,7 +39,7 @@ Callers invoke syndicate by:
 3. The webhook responds with HTTP 2xx as soon as the request is accepted and continues asynchronously.
 
 When Syndicator is done processing the webhook calls, callers can:
-* Review post drafts in Postiz
+* Review posts in Postiz and Narrareach
 * Fetch the static webpage from SFTP
 
 ### Media Upload
@@ -111,7 +114,7 @@ Before the webhooks are invoked the blog post medias have to be made available t
 | `blocks[]` | Ordered content; kinds `title`, `text`, `youtube`, `media` |
 | `blocks[].media.source_filename` | Basename present under `<base>/<slug>/source/` in SFTP |
 | `header_source` | Basename of the header file under `<base>/<slug>/source/` (e.g. `header.jpg`) |
-| `flags.redeploy` | `false` = full publish (site + social drafts); `true` = site-only rebuild, no drafts |
+| `flags.redeploy` | `false` = full publish (site + social); `true` = site-only rebuild, no drafts |
 
 Once Syndicator has finished processing Blog Post Publish the static Hugo post can be retrieved through SFTP at following location:
 
@@ -163,6 +166,8 @@ bin/syndicator verify
 ```
 
 `init.sh` creates `.env` and an encryption key. Compose builds and starts the stack. `verify` reconciles n8n credentials and workflows inside Compose, then checks n8n, webhook registration, pyautoflip, and SFTP. It is safe to run repeatedly; an unchanged reconcile is skipped.
+
+`NARRAREACH_API_TOKEN` is optional. Leave it empty to instantiate Syndicator without Substack and Medium. When set, use an automation token from Narrareach settings (`articles:write`); Substack and Medium must already be connected in that Narrareach account. YouTube OAuth is only required when a post contains local video files (they are uploaded unlisted so Substack and Medium get embeds). Connect it once in the n8n UI (Google sign-in); it is not an env value. Without the Narrareach token, Blog Post Publish skips the Narrareach branch. Without YouTube OAuth, posts that have local videos skip that branch; posts without local videos still schedule to Substack and Medium.
 
 Owner account is provisioned from env on n8n start (`N8N_INSTANCE_OWNER_*`). After n8n is healthy, the `n8n-reconcile` service logs in with `N8N_OWNER_EMAIL` / `N8N_OWNER_PASSWORD`, imports credentials and workflows from git, and publishes webhooks. UI login uses the same owner credentials.
 
@@ -254,6 +259,8 @@ flowchart LR
   N8N -->|HTTP /reframe on /syndicator| PyAF
   N8N --> OpenAI["OpenAI"]
   N8N --> Postiz["Postiz"]
+  N8N --> YouTube["YouTube"]
+  N8N --> Narrareach["Narrareach"]
   N8N --> Hugo["Hugo site tree"]
 ```
 
@@ -265,7 +272,7 @@ flowchart LR
 
 | Workflow | Role |
 |----------|------|
-| Blog Post Publish | Webhook `/webhook/publish` → Hugo adapt + social feature adapt |
+| Blog Post Publish | Webhook `/webhook/publish` → Hugo adapt + social feature adapt + Narrareach (Substack, Medium) |
 | Reel Publish | Webhook `/webhook/reel` → adapt → caption → Postiz |
 
 For brevity, subworkflows invoked by these workflows are not listed here.

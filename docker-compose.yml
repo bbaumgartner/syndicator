@@ -114,6 +114,7 @@ services:
       N8N_OWNER_PASSWORD: ${N8N_OWNER_PASSWORD:?set N8N_OWNER_PASSWORD in .env}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?set OPENAI_API_KEY in .env}
       POSTIZ_API_KEY: ${POSTIZ_API_KEY:?set POSTIZ_API_KEY in .env}
+      NARRAREACH_API_TOKEN: ${NARRAREACH_API_TOKEN:-}
       N8N_INTERNAL_URL: http://n8n:5678
     volumes:
       - n8n_data:/home/node/.n8n
