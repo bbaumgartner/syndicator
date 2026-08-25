@@ -13,6 +13,11 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_DIR = ROOT / "n8n" / "workflows"
 CREDENTIAL_DIR = ROOT / "n8n" / "credentials"
 
+# OAuth credentials connected in the n8n UI; they are not reconstructed from .env.
+UI_OAUTH_CREDENTIALS = {
+    "ZRR6PgY5kcUnORq5": "YouTube account",
+}
+
 
 def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
@@ -149,6 +154,13 @@ class RepositoryManifestTests(unittest.TestCase):
             for node in workflow.get("nodes", []):
                 for reference in node.get("credentials", {}).values():
                     credential_id = reference.get("id")
+                    if credential_id in UI_OAUTH_CREDENTIALS:
+                        self.assertEqual(
+                            reference.get("name"),
+                            UI_OAUTH_CREDENTIALS[credential_id],
+                            f"{path.name}: {node.get('name')}",
+                        )
+                        continue
                     self.assertIn(
                         credential_id,
                         known_ids,
@@ -157,11 +169,21 @@ class RepositoryManifestTests(unittest.TestCase):
 
     def test_credential_templates_contain_only_placeholders(self) -> None:
         placeholder = re.compile(r"^\$\{[A-Z][A-Z0-9_]*\}$")
+        public_url = re.compile(
+            r"^https://[a-z0-9.-]+(?::\d+)?(?:/[A-Za-z0-9._~/-]*)?$"
+        )
+        url_keys = {"baseurl", "url", "host"}
         for credential in self.credentials:
             data = credential.get("data")
             self.assertIsInstance(data, dict, credential.get("name"))
             for key, value in data.items():
                 self.assertIsInstance(value, str, f"{credential.get('name')}.{key}")
+                if key.lower() in url_keys:
+                    self.assertTrue(
+                        placeholder.fullmatch(value) or public_url.fullmatch(value),
+                        f"{credential.get('name')}.{key}",
+                    )
+                    continue
                 self.assertRegex(value, placeholder, f"{credential.get('name')}.{key}")
 
     def test_runtime_dependencies_are_locked(self) -> None:
