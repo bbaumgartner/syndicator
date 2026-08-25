@@ -3,7 +3,7 @@
   "private": true,
   "dependencies": {
     "n8n-nodes-ffmpeg-studio": "1.0.0",
-    "n8n-nodes-narrareach": "0.1.5",
+    "n8n-nodes-narrareach": "0.1.7",
     "n8n-nodes-postiz": "0.2.17",
     "n8n-workflow": "2.33.2"
   },
