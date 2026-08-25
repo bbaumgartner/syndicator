@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-14T13:50:59.000Z",
+  "updatedAt": "2026-08-25T08:41:53.055Z",
   "createdAt": "2026-08-05T15:02:11.968Z",
   "id": "OGa6Xa8GxkSmA7Cr",
   "name": "Adapt Hugo Media",
@@ -82,7 +82,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const job = $input.item.json;\nfunction quote(p) {\n  return '\"' + String(p).replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"') + '\"';\n}\nconst customArgs = `-y -i ${quote(job.source_sftp_path)} -vf \"scale=700:394:force_original_aspect_ratio=decrease\" -c:v libx264 -preset veryfast -crf 28 -pix_fmt yuv420p -c:a aac -movflags +faststart ${quote(job.sftp_path)}`;\nreturn { json: { ...job, customArgs } };"
+        "jsCode": "const job = $input.item.json;\nfunction quote(p) {\n  return '\"' + String(p).replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"') + '\"';\n}\nconst customArgs = `-y -i ${quote(job.source_sftp_path)} -vf \"scale=700:-2\" -c:v libx264 -preset veryfast -crf 28 -pix_fmt yuv420p -c:a aac -movflags +faststart ${quote(job.sftp_path)}`;\nreturn { json: { ...job, customArgs } };"
       },
       "id": "6596da44-d212-41bd-b3b9-9eefdad0f7e5",
       "name": "Plan Hugo Resize",
@@ -277,9 +277,9 @@
   },
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "1b99023a-47e1-47ff-aace-e8817b5f9d03",
-  "activeVersionId": "1b99023a-47e1-47ff-aace-e8817b5f9d03",
-  "versionCounter": 3,
+  "versionId": "7df49761-5ee8-4bbe-b24d-3bf086be2669",
+  "activeVersionId": "7df49761-5ee8-4bbe-b24d-3bf086be2669",
+  "versionCounter": 4,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": []
