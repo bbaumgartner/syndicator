@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-25T08:26:35.194Z",
+  "updatedAt": "2026-08-25T18:13:44.584Z",
   "createdAt": "2026-08-05T15:02:30.610Z",
   "id": "zh21miLsQC8Jvua6",
   "name": "Reel Publish",
@@ -45,7 +45,7 @@
           "mode": "id",
           "value": "gpt-5.4-mini"
         },
-        "text": "=You write a Facebook post for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Write in English.\n\nThe attached images are several frames from this reel, in time order. Look at ALL of them. Write only about what those frames show. If it is not visible in the frames, do not write it. Do not summarize the blog post.\n\nNearby blog text for this clip (use it only to name things you can actually see in the frames):\nSection title: {{ $('Parse Reel Payload').item.json.video.section_title }}\n\n{{ $('Parse Reel Payload').item.json.video.clip_context }}\n\nRules:\n- One short paragraph, two or three sentences max.\n- If a distinctive building, monument, or place is visible in the frames, find its name in the nearby text and use that name.\n- Do not write about a road, city, or scene from the text unless it is visible in the frames.\n- End with a plain \"Read more.\" That is the only call to action. No questions to the reader, no \"watch till the end\".\n- A single tasteful emoji is optional.\n- Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends.\n- Do NOT include any URL.\nAfter the caption, add 0 to 3 relevant hashtags on their own final line, each starting with #. Return ONLY the caption text followed by that hashtag line.",
+        "text": "=You write a Facebook post for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Write in English.\n\nThe attached images are several frames from this reel, in time order. Look at ALL of them. Write only about what those frames show. If it is not visible in the frames, do not write it. Do not summarize the blog post.\n\nNearby blog text for this clip (use it only to name things you can actually see in the frames):\nSection title: {{ $('Parse Reel Payload').item.json.video.section_title }}\n\n{{ $('Parse Reel Payload').item.json.video.clip_context }}\n\nRules:\n- One punchy thought about what the video shows.\n- If a distinctive building, monument, or place is visible in the frames, find its name in the nearby text and use that name.\n- Do not write about a road, city, or scene from the text unless it is visible in the frames.\n- Plain language, at most one emoji. End with a plain \"Read more.\" That is the only call to action. No questions to the reader, no \"watch till the end\".\n- Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends.\n- Do NOT include any URL.\nAfter the caption, add 0 to 3 relevant hashtags on their own final line, each starting with #. Return ONLY the caption text followed by that hashtag line.",
         "inputType": "base64",
         "binaryPropertyName": "={{ $json.frameKeys }}",
         "options": {
@@ -394,12 +394,12 @@
           "mode": "id",
           "value": "gpt-5.4-mini"
         },
-        "text": "=You write a YouTube Short for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Write in English.\n\nThe attached images are several frames from this reel, in time order. Look at ALL of them. Write only about what those frames show. If it is not visible in the frames, do not write it. Do not summarize the blog post.\n\nNearby blog text for this clip (use it only to name things you can actually see in the frames):\nSection title: {{ $('Parse Reel Payload').item.json.video.section_title }}\n\n{{ $('Parse Reel Payload').item.json.video.clip_context }}\n\nIf a distinctive building, monument, or place is visible in the frames, find its name in the nearby text and use that name. Do not write about a road, city, or scene from the text unless it is visible in the frames. End the description with a plain \"Read more.\" That is the only call to action. No questions to the reader. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends.\n\nReturn EXACTLY this format and nothing else:\nTITLE: <short YouTube Shorts title about this clip, max 70 characters, punchy, no hashtags>\nDESCRIPTION:\n<1 or 2 short sentences about what the clip shows, at most one emoji. Then \"Read more.\" End with 2 to 4 relevant hashtags including #Shorts, each starting with #. Do NOT include any URL.>",
+        "text": "=You write a YouTube Short for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Write in English.\n\nThe attached images are several frames from this reel, in time order. Look at ALL of them. Write only about what those frames show. If it is not visible in the frames, do not write it. Do not summarize the blog post.\n\nNearby blog text for this clip (use it only to name things you can actually see in the frames):\nSection title: {{ $('Parse Reel Payload').item.json.video.section_title }}\n\n{{ $('Parse Reel Payload').item.json.video.clip_context }}\n\nRules:\n- If a distinctive building, monument, or place is visible in the frames, find its name in the nearby text and use that name. \n- Do not write about a road, city, or scene from the text unless it is visible in the frames. \n- End the description with a plain \"Read more.\" That is the only call to action. No questions to the reader. \n- Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends.\n\nReturn EXACTLY this format and nothing else:\nTITLE: <YouTube Shorts title: One punchy thought about what the video shows, max 70 characters>\nDESCRIPTION:\n<1 or 2 sentences about the clip. Use the clips context from the blog post near the [VIDEO] marker to explain this video to the viewer. Then \"Read more.\" End with 2 to 4 relevant hashtags including #Shorts, each starting with #. Do NOT include any URL.>",
         "inputType": "base64",
         "binaryPropertyName": "={{ $json.frameKeys }}",
         "options": {
           "detail": "auto",
-          "maxTokens": 200
+          "maxTokens": 250
         }
       },
       "id": "64dcb311-d5a3-4d9f-a207-fcd74c4bc9a8",
@@ -1130,9 +1130,9 @@
   },
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "3ec9aaa1-619f-4259-810f-06cb86c7434c",
-  "activeVersionId": "3ec9aaa1-619f-4259-810f-06cb86c7434c",
-  "versionCounter": 38,
+  "versionId": "ffa2c490-7b04-409d-b965-810bfc56c05b",
+  "activeVersionId": "ffa2c490-7b04-409d-b965-810bfc56c05b",
+  "versionCounter": 54,
   "triggerCount": 1,
   "sourceWorkflowId": null,
   "tags": []
