@@ -167,6 +167,8 @@ bin/syndicator verify
 
 `init.sh` creates `.env` and an encryption key. Compose builds and starts the stack. `verify` reconciles n8n credentials and workflows inside Compose, then checks n8n, webhook registration, pyautoflip, and SFTP. It is safe to run repeatedly; an unchanged reconcile is skipped.
 
+`GEMINI_API_KEY` is required. Use a Google AI Studio key; reconcile imports it as the Google Gemini credential (same pattern as OpenAI). Do not paste keys into workflow JSON.
+
 `NARRAREACH_API_TOKEN` is optional. Leave it empty to instantiate Syndicator without Substack and Medium. When set, use an automation token from Narrareach settings (`articles:write`); Substack and Medium must already be connected in that Narrareach account. YouTube OAuth is only required when a post contains local video files (they are uploaded unlisted so Substack and Medium get embeds). Connect it once in the n8n UI (Google sign-in); it is not an env value. Without the Narrareach token, Blog Post Publish skips the Narrareach branch. Without YouTube OAuth, posts that have local videos skip that branch; posts without local videos still schedule to Substack and Medium.
 
 Owner account is provisioned from env on n8n start (`N8N_INSTANCE_OWNER_*`). After n8n is healthy, the `n8n-reconcile` service logs in with `N8N_OWNER_EMAIL` / `N8N_OWNER_PASSWORD`, imports credentials and workflows from git, and publishes webhooks. UI login uses the same owner credentials.

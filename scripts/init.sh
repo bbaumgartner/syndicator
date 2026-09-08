@@ -25,6 +25,7 @@ required = (
     "N8N_OWNER_EMAIL",
     "N8N_OWNER_PASSWORD",
     "OPENAI_API_KEY",
+    "GEMINI_API_KEY",
     "POSTIZ_API_KEY",
 )
 values: dict[str, str] = {}

@@ -32,6 +32,7 @@ with a list of values that still need input. Fill in:
 
 - n8n owner email and password
 - OpenAI API key
+- Gemini API key (Google AI Studio)
 - Postiz API key
 - the public URL and bind addresses appropriate for the host
 
