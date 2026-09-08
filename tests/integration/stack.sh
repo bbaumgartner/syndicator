@@ -39,6 +39,7 @@ N8N_ENCRYPTION_KEY=integration-only-encryption-key
 N8N_OWNER_EMAIL=ci@example.invalid
 N8N_OWNER_PASSWORD=ci-owner-password
 OPENAI_API_KEY=integration-openai-key
+GEMINI_API_KEY=integration-gemini-key
 POSTIZ_API_KEY=integration-postiz-key
 SFTP_PUBLISH_PORT=$sftp_port
 SFTP_KEYS_DIR=$tmp/keys
