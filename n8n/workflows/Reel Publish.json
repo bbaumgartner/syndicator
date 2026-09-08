@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-25T18:13:44.584Z",
+  "updatedAt": "2026-09-07T15:48:08.807Z",
   "createdAt": "2026-08-05T15:02:30.610Z",
   "id": "zh21miLsQC8Jvua6",
   "name": "Reel Publish",
@@ -803,6 +803,228 @@
           "name": "Postiz account"
         }
       }
+    },
+    {
+      "id": "bb4a7eb3-6c1e-4747-aece-701f024beecd",
+      "name": "Scale YT Proxy",
+      "type": "n8n-nodes-ffmpeg-studio.ffmpegVideo",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        -640
+      ],
+      "parameters": {
+        "crf": 28,
+        "inputVideo": "={{ $('Merge Adapt Into Payload').item.json.video_9x16_local }}",
+        "operation": "scale",
+        "outputFormat": "mp4",
+        "outputPath": "=/syndicator/{{ $('Parse Reel Payload').item.json.slug }}/reels/9x16/{{ $('Parse Reel Payload').item.json.video.index }}-yt-proxy.mp4",
+        "returnBinary": false,
+        "scaleHeight": "720",
+        "scalePreset": "custom",
+        "scaleWidth": "-2",
+        "timeoutSeconds": 900,
+        "videoCodec": "libx264"
+      },
+      "notes": "Write a 720p 9:16 proxy on disk. Gemini reads this file; never load the full 9:16 into n8n binary.",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "8fa8a2df-25f3-4133-998f-cb10ca9793cf",
+      "name": "Read YT Proxy",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        1568,
+        -640
+      ],
+      "parameters": {
+        "fileSelector": "=/syndicator/{{ $('Parse Reel Payload').item.json.slug }}/reels/9x16/{{ $('Parse Reel Payload').item.json.video.index }}-yt-proxy.mp4",
+        "operation": "read",
+        "options": {
+          "dataPropertyName": "data",
+          "fileName": "yt-proxy.mp4",
+          "mimeType": "video/mp4"
+        }
+      }
+    },
+    {
+      "id": "71dd7ca8-c91b-456c-b8a0-b26a1916bca3",
+      "name": "Analyze YT Highlights",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        1792,
+        -640
+      ],
+      "parameters": {
+        "binaryPropertyName": "data",
+        "inputType": "binary",
+        "modelId": {
+          "__rl": true,
+          "cachedResultName": "models/gemini-2.5-flash",
+          "mode": "id",
+          "value": "models/gemini-2.5-flash"
+        },
+        "operation": "analyze",
+        "options": {
+          "maxOutputTokens": 8192
+        },
+        "resource": "video",
+        "simplify": true,
+        "text": "=You are choosing YouTube Shorts from a long travel video for \"Sailing Nomads\", a personal sailing and travel blog by a Swiss couple sailing Europe with their dog Charly. Write in English. This file is {{ $('Analyze YT Duration').item.json.duration }} seconds long.\n\nWatch the whole video, picture and soundtrack. Propose standalone Shorts: each clip must make sense without the rest of the film. Prefer visually striking, complete mini-stories with a clear beginning and payoff. Skip recaps, uneventful transit, and anything that only works as the middle of a longer scene.\n\nNearby blog text (use it only to name things that are actually in a clip; do not invent a place from the text if you cannot see or hear it in that clip):\nSection title: {{ $('Parse Reel Payload').item.json.video.section_title }}\n\n{{ $('Parse Reel Payload').item.json.video.clip_context }}\n\nConstraints:\n- 3 to 5 clips\n- each 20 to 60 seconds\n- start_sec and end_sec are seconds from the start of THIS file\n- clips must not overlap\n- 0 <= start_sec < end_sec <= {{ $('Analyze YT Duration').item.json.duration }}\n- rank best first (score 0-10)\n\nFor each clip also write a YouTube title and description. Title: max 70 characters, punchy, no hashtags. Description: 1 or 2 short sentences about what THAT clip shows, at most one emoji. Then \"Read more.\" End with 2 to 4 relevant hashtags including #Shorts, each starting with #. Do NOT include any URL. Write only about what happens between start_sec and end_sec. If it is not in that window, do not write it. Do not summarize the blog post. If a distinctive building, monument, or place is visible in that window, find its name in the nearby text and use that name. Do not write about a road, city, or scene from the text unless it is visible in that window. End the description with a plain \"Read more.\" That is the only call to action. No questions to the reader. Avoid AI tells: never use the em dash; avoid words like delve, tapestry, vibrant, crucial, seamless, robust, leverage, foster, realm, and journey cliches. Sound like a real person writing to friends.\n\nReturn ONLY JSON (no markdown) with this shape:\n{\"clips\":[{\"start_sec\":0,\"end_sec\":30,\"score\":8,\"reason\":\"short reason\",\"title\":\"title\",\"description\":\"sentences Read more. #tag #Shorts\"}]}"
+      },
+      "credentials": {
+        "googlePalmApi": {
+          "id": "1bxsnPC5Uru2V9v2",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      },
+      "notes": "One Flash call returns clip windows plus YouTube title and description. maxOutputTokens must stay high so JSON is not truncated.",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "0608fa9b-0818-41ef-894d-9e92b8b13b52",
+      "name": "Parse YT Highlights",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        -640
+      ],
+      "parameters": {
+        "jsCode": "function extractText(j) {\n  if (typeof j === 'string') return j;\n  if (!j || typeof j !== 'object') return '';\n  if (typeof j.text === 'string') return j.text;\n  const parts = j.content?.parts;\n  if (Array.isArray(parts)) {\n    const t = parts.map((p) => (p && p.text) || '').join('\\n');\n    if (t.trim()) return t;\n  }\n  if (typeof j.content === 'string') return j.content;\n  if (Array.isArray(j.candidates)) return extractText(j.candidates[0]);\n  if (Array.isArray(j) && j[0]) return extractText(j[0]);\n  return '';\n}\n\nconst duration = Number($('Analyze YT Duration').first().json.duration || 0);\nconst payload = $('Parse Reel Payload').first().json;\nconst src9 = $('Merge Adapt Into Payload').first().json.video_9x16_local;\nlet raw = extractText($input.first().json);\nraw = String(raw).trim();\nconst fence = raw.match(/```(?:json)?\\s*([\\s\\S]*?)```/i);\nif (fence) raw = fence[1].trim();\nlet data;\ntry {\n  data = JSON.parse(raw);\n} catch (e) {\n  throw new Error('Gemini highlights were not JSON: ' + raw.slice(0, 400));\n}\nconst clips = Array.isArray(data) ? data : (Array.isArray(data.clips) ? data.clips : []);\nconst out = [];\nconst used = [];\nfor (const clip of clips) {\n  let start = Number(clip.start_sec);\n  let end = Number(clip.end_sec);\n  if (!Number.isFinite(start) || !Number.isFinite(end)) continue;\n  start = Math.max(0, start);\n  end = Math.min(duration, end);\n  if (end - start < 20 || end - start >= 180) continue;\n  const overlap = used.some(([a, b]) => start < b && end > a);\n  if (overlap) continue;\n  let title = String(clip.title || '').trim().replace(/^TITLE:\\s*/i, '').slice(0, 100);\n  let description = String(clip.description || '').trim();\n  if (title.length < 2) title = 'Sailing Nomads';\n  if (!description) continue;\n  used.push([start, end]);\n  const n = out.length + 1;\n  const slug = payload.slug;\n  const index = payload.video.index;\n  const clipPath = '/syndicator/' + slug + '/reels/9x16/' + index + '-yt-' + n + '.mp4';\n  out.push({\n    json: {\n      clipOrdinal: n - 1,\n      clipNumber: n,\n      start_sec: Math.round(start * 100) / 100,\n      end_sec: Math.round(end * 100) / 100,\n      score: Number(clip.score) || 0,\n      title,\n      description,\n      clip_local: clipPath,\n      source_9x16: src9,\n    },\n  });\n}\nreturn out;\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "80fb358b-7237-471c-89db-a81e4d00a2f8",
+      "name": "Trim YT Highlight",
+      "type": "n8n-nodes-ffmpeg-studio.ffmpegVideo",
+      "typeVersion": 1,
+      "position": [
+        2240,
+        -640
+      ],
+      "parameters": {
+        "endTime": "={{ $('Parse YT Highlights').item.json.end_sec }}",
+        "inputVideo": "={{ $('Parse YT Highlights').item.json.source_9x16 }}",
+        "operation": "trim",
+        "outputFormat": "mp4",
+        "outputPath": "={{ $('Parse YT Highlights').item.json.clip_local }}",
+        "returnBinary": false,
+        "startTime": "={{ $('Parse YT Highlights').item.json.start_sec }}",
+        "timeoutSeconds": 600,
+        "videoCodec": "libx264"
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "5888d493-2bee-47a9-a816-586be2e701cf",
+      "name": "Download YT Highlight",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        2464,
+        -640
+      ],
+      "parameters": {
+        "fileSelector": "={{ $('Parse YT Highlights').item.json.clip_local }}",
+        "operation": "read",
+        "options": {
+          "dataPropertyName": "data"
+        }
+      }
+    },
+    {
+      "id": "0710149c-06c4-469c-8374-2dec156f5e80",
+      "name": "Upload YT Highlight",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        2688,
+        -640
+      ],
+      "parameters": {
+        "binaryProperty": "data",
+        "operation": "uploadFile"
+      },
+      "credentials": {
+        "postizApi": {
+          "id": "mkv19KbAM7doUSaU",
+          "name": "Postiz account"
+        }
+      }
+    },
+    {
+      "id": "0bd22e86-cc14-4d5a-a77b-76ddd650b167",
+      "name": "Create YT Highlight",
+      "type": "n8n-nodes-postiz.postiz",
+      "typeVersion": 1,
+      "position": [
+        2912,
+        -640
+      ],
+      "parameters": {
+        "date": "={{ $now.plus(1 + $('Reel Webhook').item.json.body.video.index + $('Parse YT Highlights').item.json.clipOrdinal, \"days\").toISO() }}",
+        "posts": {
+          "post": [
+            {
+              "group": "={{ $(\"Parse Reel Payload\").item.json.slug }}-reel-{{ $(\"Parse Reel Payload\").item.json.video.index }}-yt-{{ $('Parse YT Highlights').item.json.clipNumber }}",
+              "integrationId": "cmsc7q71501bdqn0y255zpc75",
+              "settings": {
+                "setting": [
+                  {
+                    "key": "__type",
+                    "stringValue": "youtube"
+                  },
+                  {
+                    "key": "title",
+                    "stringValue": "={{ $('Parse YT Highlights').item.json.title }}"
+                  },
+                  {
+                    "key": "type",
+                    "stringValue": "public"
+                  },
+                  {
+                    "key": "selfDeclaredMadeForKids",
+                    "stringValue": "no"
+                  }
+                ]
+              },
+              "value": {
+                "contentItem": [
+                  {
+                    "content": "={{ $('Parse YT Highlights').item.json.description }}\n\n{{ $(\"Parse Reel Payload\").item.json.post.url }}",
+                    "image": {
+                      "imageItem": [
+                        {
+                          "id": "={{ $json.id }}",
+                          "path": "={{ $json.path }}"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "type": "schedule"
+      },
+      "credentials": {
+        "postizApi": {
+          "id": "mkv19KbAM7doUSaU",
+          "name": "Postiz account"
+        }
+      }
     }
   ],
   "connections": {
@@ -1030,6 +1252,13 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Scale YT Proxy",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -1113,6 +1342,83 @@
           }
         ]
       ]
+    },
+    "Scale YT Proxy": {
+      "main": [
+        [
+          {
+            "node": "Read YT Proxy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read YT Proxy": {
+      "main": [
+        [
+          {
+            "node": "Analyze YT Highlights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze YT Highlights": {
+      "main": [
+        [
+          {
+            "node": "Parse YT Highlights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse YT Highlights": {
+      "main": [
+        [
+          {
+            "node": "Trim YT Highlight",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trim YT Highlight": {
+      "main": [
+        [
+          {
+            "node": "Download YT Highlight",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download YT Highlight": {
+      "main": [
+        [
+          {
+            "node": "Upload YT Highlight",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload YT Highlight": {
+      "main": [
+        [
+          {
+            "node": "Create YT Highlight",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
@@ -1128,11 +1434,27 @@
     "aiBuilderAssisted": true,
     "builderVariant": "mcp"
   },
-  "nodeGroups": [],
+  "nodeGroups": [
+    {
+      "id": "95b0eb52-e4a9-40d6-8d10-4214b5bf5ac8",
+      "name": "Long YouTube Shorts",
+      "nodeIds": [
+        "bb4a7eb3-6c1e-4747-aece-701f024beecd",
+        "8fa8a2df-25f3-4133-998f-cb10ca9793cf",
+        "71dd7ca8-c91b-456c-b8a0-b26a1916bca3",
+        "0608fa9b-0818-41ef-894d-9e92b8b13b52",
+        "80fb358b-7237-471c-89db-a81e4d00a2f8",
+        "5888d493-2bee-47a9-a816-586be2e701cf",
+        "0710149c-06c4-469c-8374-2dec156f5e80",
+        "0bd22e86-cc14-4d5a-a77b-76ddd650b167"
+      ],
+      "description": "Videos 180s or longer: 720p proxy, Gemini Flash clip windows, trim 9:16, Postiz Shorts."
+    }
+  ],
   "pinData": {},
-  "versionId": "ffa2c490-7b04-409d-b965-810bfc56c05b",
-  "activeVersionId": "ffa2c490-7b04-409d-b965-810bfc56c05b",
-  "versionCounter": 54,
+  "versionId": "f533576c-7510-4916-9bbd-7a5d62de177c",
+  "activeVersionId": "f533576c-7510-4916-9bbd-7a5d62de177c",
+  "versionCounter": 59,
   "triggerCount": 1,
   "sourceWorkflowId": null,
   "tags": []
