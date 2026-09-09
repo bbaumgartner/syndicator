@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-14T13:51:08.000Z",
+  "updatedAt": "2026-09-09T10:06:05.151Z",
   "createdAt": "2026-08-05T15:02:21.158Z",
   "id": "y9TTx7N8Iygn88ry",
   "name": "Adapt Reel Media",
@@ -123,7 +123,196 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
+        2464,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "inputFile": "={{ $('Plan Reframe').item.json.video_4x5_local }}"
+      },
+      "id": "c70f9c25-f9ea-4c62-bc65-785633fd3c85",
+      "name": "Analyze 4x5 Size",
+      "type": "n8n-nodes-ffmpeg-studio.ffmpegAnalyze",
+      "typeVersion": 1,
+      "position": [
         1120,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "4x5-size-gt-95mb",
+              "leftValue": "={{ $json.size }}",
+              "operator": {
+                "operation": "gt",
+                "type": "number"
+              },
+              "rightValue": 99614720
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "40b0c1d8-6a4c-40e3-aeb3-52503247cb60",
+      "name": "4x5 Over Size Limit?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1344,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const MAX_BYTES = 95 * 1024 * 1024;\nconst meta = $input.first().json;\nconst plan = $('Plan Reframe').first().json;\nconst inputPath = plan.video_4x5_local;\nconst duration = Number(meta.duration) || 0;\nif (!duration || duration <= 0) {\n  throw new Error('Cannot compress 4x5: missing duration');\n}\nconst audioBr = Number(meta.audio && meta.audio.bitrate) || 128000;\nconst targetBps = (MAX_BYTES * 8 * 0.90) / duration;\nconst videoBps = Math.max(500000, Math.floor(targetBps - audioBr));\nconst videoKbps = Math.floor(videoBps / 1000);\nconst maxrateKbps = Math.floor(videoKbps * 1.15);\nconst bufsizeKbps = videoKbps * 2;\nfunction quote(p) {\n  return '\"' + String(p).replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"') + '\"';\n}\nconst tmpPath = String(inputPath).replace(/\\.mp4$/i, '') + '.cap.tmp.mp4';\nconst customArgs = `-y -i ${quote(inputPath)} -c:v libx264 -preset medium -b:v ${videoKbps}k -maxrate ${maxrateKbps}k -bufsize ${bufsizeKbps}k -pix_fmt yuv420p -c:a aac -b:a 128k -ac 2 -ar 48000 -movflags +faststart ${quote(tmpPath)}`;\nreturn [{ json: { inputPath, tmpPath, videoKbps, customArgs, originalSize: meta.size, duration } }];"
+      },
+      "id": "f7b0148b-764f-49d4-b20e-b822c6152124",
+      "name": "Plan Compress 4x5",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        -224
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "custom",
+        "timeoutSeconds": 900,
+        "customArgs": "={{ $json.customArgs }}"
+      },
+      "id": "bc7cbab1-b4ee-416d-80ce-b69f14a0a6f6",
+      "name": "Compress 4x5",
+      "type": "n8n-nodes-ffmpeg-studio.ffmpegVideo",
+      "typeVersion": 1,
+      "position": [
+        1792,
+        -224
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst { inputPath, tmpPath, videoKbps, originalSize } = $('Plan Compress 4x5').first().json;\nif (!fs.existsSync(tmpPath)) {\n  throw new Error('Compressed 4x5 missing: ' + tmpPath);\n}\nfs.renameSync(tmpPath, inputPath);\nconst size = fs.statSync(inputPath).size;\nreturn [{ json: { aspect: '4x5', inputPath, size, originalSize, videoKbps, compressed: true } }];"
+      },
+      "id": "c39f4c8a-4c68-49b0-966a-e29146b31941",
+      "name": "Replace Compressed 4x5",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        -224
+      ]
+    },
+    {
+      "parameters": {
+        "inputFile": "={{ $('Plan Reframe').item.json.video_9x16_local }}"
+      },
+      "id": "1484e51d-0457-4d87-a774-5ad1959f2207",
+      "name": "Analyze 9x16 Size",
+      "type": "n8n-nodes-ffmpeg-studio.ffmpegAnalyze",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "9x16-size-gt-95mb",
+              "leftValue": "={{ $json.size }}",
+              "operator": {
+                "operation": "gt",
+                "type": "number"
+              },
+              "rightValue": 99614720
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "id": "5a4e2e93-1f92-4b3f-8362-0102f85fcda8",
+      "name": "9x16 Over Size Limit?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1344,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const MAX_BYTES = 95 * 1024 * 1024;\nconst meta = $input.first().json;\nconst plan = $('Plan Reframe').first().json;\nconst inputPath = plan.video_9x16_local;\nconst duration = Number(meta.duration) || 0;\nif (!duration || duration <= 0) {\n  throw new Error('Cannot compress 9x16: missing duration');\n}\nconst audioBr = Number(meta.audio && meta.audio.bitrate) || 128000;\nconst targetBps = (MAX_BYTES * 8 * 0.90) / duration;\nconst videoBps = Math.max(500000, Math.floor(targetBps - audioBr));\nconst videoKbps = Math.floor(videoBps / 1000);\nconst maxrateKbps = Math.floor(videoKbps * 1.15);\nconst bufsizeKbps = videoKbps * 2;\nfunction quote(p) {\n  return '\"' + String(p).replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"') + '\"';\n}\nconst tmpPath = String(inputPath).replace(/\\.mp4$/i, '') + '.cap.tmp.mp4';\nconst customArgs = `-y -i ${quote(inputPath)} -c:v libx264 -preset medium -b:v ${videoKbps}k -maxrate ${maxrateKbps}k -bufsize ${bufsizeKbps}k -pix_fmt yuv420p -c:a aac -b:a 128k -ac 2 -ar 48000 -movflags +faststart ${quote(tmpPath)}`;\nreturn [{ json: { inputPath, tmpPath, videoKbps, customArgs, originalSize: meta.size, duration } }];"
+      },
+      "id": "8e81ab01-2b74-4b05-a550-dd4cef0e1a23",
+      "name": "Plan Compress 9x16",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "custom",
+        "timeoutSeconds": 900,
+        "customArgs": "={{ $json.customArgs }}"
+      },
+      "id": "1fd7920d-f770-44a9-9c9c-6fce0490c906",
+      "name": "Compress 9x16",
+      "type": "n8n-nodes-ffmpeg-studio.ffmpegVideo",
+      "typeVersion": 1,
+      "position": [
+        1792,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst { inputPath, tmpPath, videoKbps, originalSize } = $('Plan Compress 9x16').first().json;\nif (!fs.existsSync(tmpPath)) {\n  throw new Error('Compressed 9x16 missing: ' + tmpPath);\n}\nfs.renameSync(tmpPath, inputPath);\nconst size = fs.statSync(inputPath).size;\nreturn [{ json: { aspect: '9x16', inputPath, size, originalSize, videoKbps, compressed: true } }];"
+      },
+      "id": "c87f409b-aa26-4fde-803e-a1d7760ab02e",
+      "name": "Replace Compressed 9x16",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "939b0948-a26f-43f0-bb6f-ce1f07170c79",
+      "name": "Merge Size Caps",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        2240,
         -16
       ]
     }
@@ -193,6 +382,146 @@
       "main": [
         [
           {
+            "node": "Analyze 4x5 Size",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Analyze 9x16 Size",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze 4x5 Size": {
+      "main": [
+        [
+          {
+            "node": "4x5 Over Size Limit?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4x5 Over Size Limit?": {
+      "main": [
+        [
+          {
+            "node": "Plan Compress 4x5",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Size Caps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Compress 4x5": {
+      "main": [
+        [
+          {
+            "node": "Compress 4x5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compress 4x5": {
+      "main": [
+        [
+          {
+            "node": "Replace Compressed 4x5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Replace Compressed 4x5": {
+      "main": [
+        [
+          {
+            "node": "Merge Size Caps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze 9x16 Size": {
+      "main": [
+        [
+          {
+            "node": "9x16 Over Size Limit?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "9x16 Over Size Limit?": {
+      "main": [
+        [
+          {
+            "node": "Plan Compress 9x16",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Size Caps",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Plan Compress 9x16": {
+      "main": [
+        [
+          {
+            "node": "Compress 9x16",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compress 9x16": {
+      "main": [
+        [
+          {
+            "node": "Replace Compressed 9x16",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Replace Compressed 9x16": {
+      "main": [
+        [
+          {
+            "node": "Merge Size Caps",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Size Caps": {
+      "main": [
+        [
+          {
             "node": "Build Result",
             "type": "main",
             "index": 0
@@ -215,9 +544,9 @@
   },
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "fa4d56d5-2c61-4a13-8d60-941b59f17bbc",
-  "activeVersionId": "fa4d56d5-2c61-4a13-8d60-941b59f17bbc",
-  "versionCounter": 5,
+  "versionId": "420802b2-bd77-4506-bb15-56f6ae8ccace",
+  "activeVersionId": "420802b2-bd77-4506-bb15-56f6ae8ccace",
+  "versionCounter": 7,
   "triggerCount": 0,
   "sourceWorkflowId": null,
   "tags": []
