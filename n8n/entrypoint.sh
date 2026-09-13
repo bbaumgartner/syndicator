@@ -18,6 +18,12 @@ if [ -d "$SEED_DIR/node_modules" ] && [ -f "$SEED_DIR/package-lock.json" ]; then
 	fi
 fi
 
+# Re-apply after sync. The volume keeps the previous copy when the lockfile
+# hash is unchanged, and that copy is what n8n loads.
+if [ -d "$NODES_DIR/node_modules" ]; then
+	node /opt/syndicator/patch-ffmpeg-timeout.js "$NODES_DIR"
+fi
+
 if [ -z "${N8N_INSTANCE_OWNER_PASSWORD_HASH:-}" ]; then
 	if [ -z "${N8N_OWNER_PASSWORD:-}" ]; then
 		echo "N8N_OWNER_PASSWORD is required" >&2

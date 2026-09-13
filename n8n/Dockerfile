@@ -13,7 +13,10 @@ COPY --from=ffmpeg /ffprobe /usr/local/bin/ffprobe
 # into /home/node/.n8n/nodes when the lock changes.
 WORKDIR /opt/n8n-nodes-seed
 COPY package.json package-lock.json ./
+COPY patch-ffmpeg-timeout.js /opt/syndicator/patch-ffmpeg-timeout.js
+# Community nodes ignore their Timeout setting and always use runFfmpeg's 300s default.
 RUN npm ci --omit=dev \
+	&& node /opt/syndicator/patch-ffmpeg-timeout.js /opt/n8n-nodes-seed \
 	&& chown -R node:node /opt/n8n-nodes-seed
 
 COPY entrypoint.sh /entrypoint-syndicator.sh
