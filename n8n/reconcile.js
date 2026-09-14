@@ -158,8 +158,18 @@ function cookieHeader(res) {
 
 const BROWSER_ID = crypto.randomUUID();
 
+function isStaleConnection(error) {
+  const code = error && error.cause && error.cause.code;
+  return (
+    code === "UND_ERR_SOCKET" ||
+    code === "ECONNRESET" ||
+    code === "EPIPE" ||
+    code === "UND_ERR_SOCKET_CLOSED"
+  );
+}
+
 async function request(url, { method = "GET", headers = {}, body, cookie } = {}) {
-  const res = await fetch(url, {
+  const init = {
     method,
     headers: {
       "browser-id": BROWSER_ID,
@@ -167,7 +177,18 @@ async function request(url, { method = "GET", headers = {}, body, cookie } = {})
       ...(cookie ? { Cookie: cookie } : {}),
     },
     body,
-  });
+  };
+  // CLI import can idle long enough for n8n to close the pooled socket.
+  // The next fetch then fails with "other side closed"; retry on a new socket.
+  let res;
+  try {
+    res = await fetch(url, init);
+  } catch (error) {
+    if (!isStaleConnection(error)) {
+      throw error;
+    }
+    res = await fetch(url, init);
+  }
   const text = await res.text();
   let json = null;
   try {
@@ -469,4 +490,8 @@ async function main() {
   console.log("n8n bootstrap complete.");
 }
 
-main().catch((error) => fail(error.stack || String(error)));
+main().catch((error) => {
+  const cause = error && error.cause;
+  const detail = cause ? `\nCaused by: ${cause.stack || cause}` : "";
+  fail(`${error.stack || error}${detail}`);
+});
