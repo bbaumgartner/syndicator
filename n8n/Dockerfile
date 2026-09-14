@@ -2,7 +2,7 @@
 
 FROM mwader/static-ffmpeg:7.1.1@sha256:11a44711684c0b9f754c047dcd64235b8b52deab251bd0e0a86f22faa160749c AS ffmpeg
 
-FROM docker.io/n8nio/n8n:2.33.7@sha256:3989d9b8ebb77b4ee8f604519eb73e44f4384bfaa689526e0104eed79a237d30
+FROM docker.io/n8nio/n8n:2.38.7@sha256:a8c95f75c6fdf65f5f2b7a7b354744eaa1c62bb911b5c00af6499c3f38e4cd32
 
 USER root
 
@@ -15,7 +15,11 @@ WORKDIR /opt/n8n-nodes-seed
 COPY package.json package-lock.json ./
 COPY patch-ffmpeg-timeout.js /opt/syndicator/patch-ffmpeg-timeout.js
 # Community nodes ignore their Timeout setting and always use runFfmpeg's 300s default.
-RUN npm ci --omit=dev \
+# Ignore install scripts: this image has no compiler, and DHI Alpine omits
+# /etc/alpine-release so isolated-vm would load the glibc prebuild and crash.
+# Copy the musl prebuild into the path node-gyp-build checks first.
+RUN npm ci --omit=dev --ignore-scripts \
+	&& node -e 'const fs=require("fs"),os=require("os"),path=require("path"); const dir="/opt/n8n-nodes-seed/node_modules/isolated-vm"; const src=path.join(dir,"prebuilds","linux-"+os.arch(),"isolated-vm.abi"+process.versions.modules+".musl.node"); const dest=path.join(dir,"build","Release"); fs.mkdirSync(dest,{recursive:true}); fs.copyFileSync(src,path.join(dest,"isolated_vm.node"));' \
 	&& node /opt/syndicator/patch-ffmpeg-timeout.js /opt/n8n-nodes-seed \
 	&& chown -R node:node /opt/n8n-nodes-seed
 
