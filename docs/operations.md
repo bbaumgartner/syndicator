@@ -80,6 +80,9 @@ For an internet-facing host:
 - terminate HTTPS in Caddy, nginx, or another reverse proxy
 - set `N8N_WEBHOOK_URL=https://.../`, `N8N_PROTOCOL=https`, and
   `N8N_SECURE_COOKIE=true`
+- set `N8N_EDITOR_BASE_URL=https://.../` when the editor is reached on 443
+  rather than `N8N_HOST:N8N_PORT` (leave empty to derive from host, protocol,
+  and port)
 - set `N8N_PROXY_HOPS=1` when there is one trusted reverse proxy
 - expose SFTP only to required source addresses
 
