@@ -213,7 +213,7 @@ class RepositoryManifestTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("--hash=sha256:", requirements)
-        self.assertIn("torch==2.13.0+cpu", requirements)
+        self.assertIn("torch==2.14.1+cpu", requirements)
         self.assertNotIn("\nnvidia-", requirements)
         self.assertTrue((ROOT / "pyautoflip" / "requirements.in").is_file())
 
