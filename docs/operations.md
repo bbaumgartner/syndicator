@@ -90,6 +90,23 @@ The current webhook workflows do not authenticate requests. Do not publish the
 n8n port directly to an untrusted network. Adding webhook authentication is an
 application contract change and must be coordinated with callers.
 
+## Queued executions
+
+`N8N_CONCURRENCY_PRODUCTION_LIMIT` defaults to 1, so webhook-triggered
+`/publish` and `/reel` executions from a `syndicate` run queue in FIFO order
+and only one runs at a time. Sub-workflow executions (media adapt) do not
+count toward the limit; the parent holds the slot until the whole job
+finishes.
+
+The executions tab header shows active executions against the configured
+limit. n8n logs when executions are queued and released. Queued executions
+cannot be retried; cancelling one removes it from the queue. On n8n restart,
+queued executions resume up to the concurrency limit.
+
+Callers should treat a read timeout after the request body was sent as
+accepted (queued), not as a failure to retry. A 2xx reply is sent only when a
+slot is free.
+
 ## Routine commands
 
 Inspect logs:

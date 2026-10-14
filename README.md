@@ -36,7 +36,7 @@ Callers invoke syndicate by:
 
 1. uploading medias to SFTP (port `2222`, key-only; authorize a public key in `sftp/keys/`)
 2. POSTing JSON to the Blog Post Publish and Reel Publish webhook. 
-3. The webhook responds with HTTP 2xx as soon as the request is accepted and continues asynchronously.
+3. When a production slot is free, the webhook responds with HTTP 2xx as soon as the request is accepted and continues asynchronously. With `N8N_CONCURRENCY_PRODUCTION_LIMIT=1`, later calls are queued and hold the HTTP connection until a slot frees; callers should treat a read timeout after the body was sent as accepted.
 
 When Syndicator is done processing the webhook calls, callers can:
 * Review posts in Postiz and Narrareach
