@@ -13,12 +13,6 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_DIR = ROOT / "n8n" / "workflows"
 CREDENTIAL_DIR = ROOT / "n8n" / "credentials"
 
-# OAuth credentials connected in the n8n UI; they are not reconstructed from .env.
-UI_OAUTH_CREDENTIALS = {
-    "ZRR6PgY5kcUnORq5": "YouTube account",
-}
-
-
 def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -154,13 +148,6 @@ class RepositoryManifestTests(unittest.TestCase):
             for node in workflow.get("nodes", []):
                 for reference in node.get("credentials", {}).values():
                     credential_id = reference.get("id")
-                    if credential_id in UI_OAUTH_CREDENTIALS:
-                        self.assertEqual(
-                            reference.get("name"),
-                            UI_OAUTH_CREDENTIALS[credential_id],
-                            f"{path.name}: {node.get('name')}",
-                        )
-                        continue
                     self.assertIn(
                         credential_id,
                         known_ids,

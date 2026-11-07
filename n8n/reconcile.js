@@ -60,7 +60,7 @@ function fingerprint() {
     digest.update(path.relative(BUNDLE, filePath));
     digest.update(fs.readFileSync(filePath));
   }
-  for (const name of ["N8N_ENCRYPTION_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "POSTIZ_API_KEY", "NARRAREACH_API_TOKEN"]) {
+  for (const name of ["N8N_ENCRYPTION_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "POSTIZ_API_KEY"]) {
     digest.update(name);
     digest.update(process.env[name] || "");
   }
