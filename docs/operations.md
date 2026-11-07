@@ -197,7 +197,7 @@ Fast checks:
 python3 -m unittest discover -s tests -p 'test_*.py'
 bash tests/test-init.sh
 bash tests/validate-compose.sh
-npm audit --prefix n8n
+bash scripts/audit-n8n.sh
 ```
 
 Full isolated test:

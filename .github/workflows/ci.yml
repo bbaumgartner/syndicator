@@ -35,8 +35,7 @@ jobs:
         run: bash tests/validate-compose.sh
 
       - name: Audit locked community nodes
-        working-directory: n8n
-        run: npm audit
+        run: bash scripts/audit-n8n.sh
 
   build-images:
     needs: validate
