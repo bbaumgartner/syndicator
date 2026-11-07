@@ -2,7 +2,7 @@
 
 FROM mwader/static-ffmpeg:9.0.2-1@sha256:f5d100184884eb3e82b0eb14bb5ebf98da99826ac824989720297fb9ef21c822 AS ffmpeg
 
-FROM docker.io/n8nio/n8n:2.44.0@sha256:92e8d64780d6ed26d14eaa5e7c0b83aa51add651f4d22289558aaafbffce0a07
+FROM docker.io/n8nio/n8n:2.47.2@sha256:83ec9349e09a8efdb51f7e2729f1f83503c038475747a351772ff6b78838f02a
 
 USER root
 
