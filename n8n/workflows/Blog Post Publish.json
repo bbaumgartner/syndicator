@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-09-05T09:13:03.043Z",
+  "updatedAt": "2026-11-07T08:02:02.204Z",
   "createdAt": "2026-08-05T15:02:25.910Z",
   "id": "l7HCCWtO1ALC82n6",
   "name": "Blog Post Publish",
@@ -40,8 +40,9 @@
       "parameters": {
         "modelId": {
           "__rl": true,
-          "mode": "id",
-          "value": "gpt-5.4-mini"
+          "value": "gpt-5.6-terra",
+          "mode": "list",
+          "cachedResultName": "GPT-5.6-TERRA"
         },
         "responses": {
           "values": [
@@ -1031,6 +1032,7 @@
         "coverImageUrl": "={{ $json.coverImageUrl }}",
         "sendToNewsletter": true,
         "scheduledFor": "={{ $now.plus(1, \"days\").toISO() }}",
+        "articleOptions": {},
         "timezone": "Europe/Zurich",
         "idempotencyKey": "={{ $json.slug }}"
       },
@@ -1252,17 +1254,12 @@
       "main": [
         [
           {
-            "node": "Check Narrareach",
+            "node": "Adapt Feature Image",
             "type": "main",
             "index": 0
           },
           {
             "node": "Analyze Controversy X",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Adapt Feature Image",
             "type": "main",
             "index": 0
           }
@@ -1485,9 +1482,9 @@
   },
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "60635fa3-b0a9-4aa3-b56c-9e094d1efa7a",
-  "activeVersionId": "60635fa3-b0a9-4aa3-b56c-9e094d1efa7a",
-  "versionCounter": 159,
+  "versionId": "7e783ae7-2df5-42fe-afa4-57a09ad49aba",
+  "activeVersionId": "7e783ae7-2df5-42fe-afa4-57a09ad49aba",
+  "versionCounter": 181,
   "triggerCount": 1,
   "sourceWorkflowId": null,
   "tags": []

@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-09-14T09:46:05.794Z",
+  "updatedAt": "2026-11-07T09:02:20.821Z",
   "createdAt": "2026-08-05T15:02:30.610Z",
   "id": "zh21miLsQC8Jvua6",
   "name": "Reel Publish",
@@ -1239,13 +1239,7 @@
             "index": 0
           }
         ],
-        [
-          {
-            "node": "Scale YT Proxy",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Caption YT": {
@@ -1306,12 +1300,12 @@
             "index": 0
           },
           {
-            "node": "Caption X",
+            "node": "Analyze YT Duration",
             "type": "main",
             "index": 0
           },
           {
-            "node": "Analyze YT Duration",
+            "node": "Caption X",
             "type": "main",
             "index": 0
           }
@@ -1438,8 +1432,8 @@
     }
   ],
   "pinData": {},
-  "versionId": "d0497349-d158-41e7-a4c6-7e90f2c39712",
-  "activeVersionId": "d0497349-d158-41e7-a4c6-7e90f2c39712",
+  "versionId": "4d0dfd33-50c5-4c4d-ba2f-25f030acc2ef",
+  "activeVersionId": "4d0dfd33-50c5-4c4d-ba2f-25f030acc2ef",
   "versionCounter": 65,
   "triggerCount": 1,
   "sourceWorkflowId": null,
